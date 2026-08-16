@@ -1,0 +1,59 @@
+[package]
+name = "modula-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Modula"
+publish = false
+
+[lib]
+name = "modula_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "modula-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+# Parse app-settings.toml in build.rs to bake the update knobs as `env!` constants.
+toml = "0.8"
+
+[dependencies]
+# `macos-private-api` must stay in the base table: tauri-build reads the base
+# `[dependencies].tauri` features statically and rejects a target-gated feature
+# against `macOSPrivateApi: true` (tauri-apps/tauri#11142). The feature's body is
+# `cfg(target_os = "macos")`-gated inside tauri, so it is inert on Windows.
+# `image-png` lets us decode the bundled menu-bar template PNG at runtime
+# (Image::from_bytes) for the tray icon.
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+# Driven from Rust (src/update.rs), not the JS plugin; relaunch uses tauri core's
+# restart, so no process plugin.
+tauri-plugin-updater = "2"
+anyhow.workspace = true
+# `generate_context!` expands the updater plugin config through serde_json.
+serde_json.workspace = true
+# Update-related: status payload (serde), poll-loop sleep (tokio/time), endpoint
+# URL (url), RFC3339 release date (time).
+serde.workspace = true
+tokio = { workspace = true, features = ["time"] }
+url = "2"
+time = { version = "0.3", features = ["formatting"] }
+modula-platform = { path = "../../../crates/modula_platform" }
+# The desktop backend reaches the engine through `modula-client`, which owns the
+# IPC channel and converts protos to `modula-types` domain types at the edge;
+# commands take/return those domain types and serialize them straight to the
+# webview.
+modula-client.workspace = true
+modula-types.workspace = true
+# Consume the client's domain-item streams (event/run/log/conversation watch)
+# and forward each item onto a Tauri `Channel`.
+tokio-stream.workspace = true
+tauri-plugin-os = "2.3.2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

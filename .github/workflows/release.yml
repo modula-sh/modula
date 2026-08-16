@@ -1,0 +1,376 @@
+name: Release
+
+# Builds the Tauri desktop app for each desktop OS/arch on a tag push and
+# publishes every bundle to a single GitHub Release under a stable,
+# version-less asset name (Modula-<arch>.<ext>). That stable name is what makes
+# https://github.com/<owner>/<repo>/releases/latest/download/Modula-<arch>.<ext>
+# resolve across releases.
+#
+# Repo-agnostic: the only repo references are the github.* contexts, which
+# resolve at runtime to whichever repo this lives in — so moving from the
+# private repo to modula-sh/modula needs no edits here.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.ref_name }}
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # latest.json's version comes from the tag; the binary self-reports the
+      # version baked from tauri.conf.json. A mismatch ships a perpetual
+      # "update available" loop, so refuse to build one.
+      - name: Verify the tag matches tauri.conf.json's version
+        run: |
+          ver="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"
+          if [ "v$ver" != "$TAG" ]; then
+            echo "tag $TAG does not match tauri.conf.json version $ver — bump the version or retag" >&2
+            exit 1
+          fi
+
+      # Draft until every asset (and latest.json) is uploaded — the publish job
+      # flips it live at the end. A published-at-start release would make this
+      # tag "latest" immediately, 404ing every /releases/latest/download URL
+      # (installs and update checks) for the whole build window, and a failed
+      # platform build would leave that broken state permanent.
+      - name: Create or reuse the draft release for this tag
+        run: gh release view "$TAG" || gh release create "$TAG" --draft --title "$TAG" --generate-notes
+
+  build:
+    needs: create-release
+    # Minisign keys that sign the updater artifacts (.sig files). The keypair is
+    # separate from OS code-signing; add these as repo Actions secrets (matching
+    # the pubkey embedded in tauri.conf.json) or updater signing fails.
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Apple Developer ID signing + notarization (macOS bundler; unset → unsigned).
+      # See docs/APPLE.md.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      # APPLE_API_KEY_PATH is the notarization .p8 written by the step below.
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_PATH: ${{ github.workspace }}/apple-api-key.p8
+      # Runs the dmg bundler's Finder AppleScript, which the bundler otherwise
+      # skips whenever CI=true, leaving the image with no icon layout.
+      TAURI_BUNDLER_DMG_IGNORE_CI: "true"
+      # Azure Trusted Signing — the post-2023 Windows path, no exportable .pfx
+      # (unset → unsigned). Endpoint/account/profile aren't secret. See docs/WINDOWS.md.
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+      AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+      AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest,     rust-target: aarch64-apple-darwin,      arch: arm64, bundle: dmg,      ext: dmg }
+          - { runner: macos-15-intel,   rust-target: x86_64-apple-darwin,       arch: x86,   bundle: dmg,      ext: dmg }
+          - { runner: windows-latest,   rust-target: x86_64-pc-windows-msvc,    arch: x86,   bundle: nsis,     ext: exe }
+          # Linux builds three formats in one pass; `bundle`/`ext` name the
+          # primary (updater-capable) artifact the shared steps operate on, and
+          # the deb/rpm get their own Linux-only stage & upload step below.
+          - { runner: ubuntu-22.04,     rust-target: x86_64-unknown-linux-gnu,  arch: x86,   bundle: appimage, ext: AppImage, bundles: "appimage,deb,rpm" }
+          - { runner: ubuntu-24.04-arm, rust-target: aarch64-unknown-linux-gnu, arch: arm64, bundle: appimage, ext: AppImage, bundles: "appimage,deb,rpm" }
+          # Windows on ARM (preview runner) — append when ready, no other change needed:
+          # - { runner: windows-11-arm, rust-target: aarch64-pc-windows-msvc, arch: arm64, bundle: nsis, ext: exe }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      # The rpc build script compiles proto/*.proto via prost-build,
+      # which needs the protoc binary (not on GitHub runners by default).
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Add Rust target (toolchain pinned by rust-toolchain.toml)
+        run: rustup target add ${{ matrix.rust-target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust-target }}
+
+      - name: Install frontend dependencies
+        run: pnpm --dir apps/desktop install --frozen-lockfile
+
+      # The repo uses the cargo subcommand (see scripts/dev.sh: `cargo tauri`);
+      # there is no @tauri-apps/cli in package.json, so `pnpm tauri` won't work.
+      # install-action ships a prebuilt binary, so this is seconds, not a build.
+      - name: Install the Tauri CLI
+        uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
+
+      # Build the engine for this target and stage it where Tauri's externalBin
+      # expects the sidecar (name carries the target triple; Tauri strips it in
+      # the final bundle). The bundle config below opts externalBin in.
+      - name: Build & stage the engine sidecar
+        shell: bash
+        run: |
+          cargo build --release -p modula-engine --target ${{ matrix.rust-target }}
+          mkdir -p apps/desktop/src-tauri/binaries
+          src="target/${{ matrix.rust-target }}/release/modula"
+          dst="apps/desktop/src-tauri/binaries/modula-${{ matrix.rust-target }}"
+          [ "${{ runner.os }}" = "Windows" ] && { src="$src.exe"; dst="$dst.exe"; }
+          cp "$src" "$dst"
+
+      # Write the notarizer's .p8 (base64 in the secret). No-op when unset.
+      - name: Write the notarization API key (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          if [ -n "$APPLE_API_KEY_P8_BASE64" ]; then
+            printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY_PATH"
+          fi
+
+      # When the Azure secrets exist, install the signer and emit a signCommand
+      # override the build merges in; otherwise the Windows build stays unsigned.
+      - name: Prepare Windows signing (Azure Trusted Signing)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ]; then
+            echo "no Azure signing secrets — Windows build stays unsigned"
+            exit 0
+          fi
+          cargo install trusted-signing-cli --locked
+          jq -n --arg cmd \
+            "trusted-signing-cli -e $AZURE_SIGN_ENDPOINT -a $AZURE_SIGN_ACCOUNT -c $AZURE_SIGN_PROFILE -d Modula %1" \
+            '{ bundle: { windows: { signCommand: $cmd } } }' \
+            > apps/desktop/src-tauri/tauri.winsign.conf.json
+          echo "WIN_SIGN_CONFIG=--config src-tauri/tauri.winsign.conf.json" >> "$GITHUB_ENV"
+
+      - name: Build the desktop bundle
+        working-directory: apps/desktop
+        run: cargo tauri build --target ${{ matrix.rust-target }} --bundles ${{ matrix.bundles || matrix.bundle }} --config src-tauri/tauri.bundle.conf.json ${{ env.WIN_SIGN_CONFIG }}
+
+      # linuxdeploy bundles the runner's libwayland-* into the AppImage. On any
+      # host whose mesa is newer than that libwayland (Ubuntu 25+, Arch, Fedora),
+      # EGL display creation fails (EGL_BAD_PARAMETER), WebKit's render process
+      # aborts, and the window stays black. The bundler has no exclude knob, so
+      # strip the libs and repack — every Linux desktop ships its own libwayland,
+      # matched to its mesa. Repacking changes the bytes, so re-sign for the
+      # updater (reads the same TAURI_SIGNING_* env as the build).
+      - name: Strip bundled libwayland from the AppImage & re-sign
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dir="target/${{ matrix.rust-target }}/release/bundle/appimage"
+          files=("$dir"/*.AppImage)
+          if [ ${#files[@]} -ne 1 ]; then
+            echo "expected exactly one AppImage, found ${#files[@]}: ${files[*]}" >&2
+            exit 1
+          fi
+          app="$(basename "${files[0]}")"
+          curl -fsSL -o /tmp/appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage"
+          chmod +x /tmp/appimagetool
+          cd "$dir"
+          "./$app" --appimage-extract >/dev/null
+          wayland=(squashfs-root/usr/lib/libwayland-*.so*)
+          if [ ${#wayland[@]} -eq 0 ]; then
+            echo "no bundled libwayland found — if the bundler stopped shipping it, drop this step" >&2
+            exit 1
+          fi
+          rm -v "${wayland[@]}"
+          ARCH="$(uname -m)" APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool squashfs-root "$app"
+          rm -rf squashfs-root
+          cargo tauri signer sign "$app"
+
+      - name: Rename bundle to the stable asset name
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(target/${{ matrix.rust-target }}/release/bundle/${{ matrix.bundle }}/*.${{ matrix.ext }})
+          if [ ${#files[@]} -ne 1 ]; then
+            echo "expected exactly one ${{ matrix.ext }} bundle, found ${#files[@]}: ${files[*]}" >&2
+            exit 1
+          fi
+          mv "${files[0]}" "Modula-${{ matrix.arch }}.${{ matrix.ext }}"
+
+      # Submits the dmg to Apple's notary service and staples the ticket to it.
+      - name: Notarize & staple the DMG (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$APPLE_API_KEY_PATH" ]; then
+            echo "no notarization key — DMG stays unnotarized"
+            exit 0
+          fi
+          dmg="Modula-${{ matrix.arch }}.dmg"
+          xcrun notarytool submit "$dmg" --wait \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER"
+          xcrun stapler staple "$dmg"
+
+      - name: Upload the asset to the release
+        shell: bash
+        run: gh release upload "$TAG" "Modula-${{ matrix.arch }}.${{ matrix.ext }}" --clobber
+
+      # A raw binary downloaded over HTTP never carries the executable bit, so
+      # browsers save the bare AppImage non-runnable. Ship a tar.gz alongside it
+      # (tar preserves mode) as the human-facing download; the bare AppImage
+      # stays published because latest.json points the updater at it.
+      - name: Package & upload the executable-preserving tarball (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x "Modula-${{ matrix.arch }}.AppImage"
+          tar -czf "Modula-${{ matrix.arch }}.AppImage.tar.gz" "Modula-${{ matrix.arch }}.AppImage"
+          gh release upload "$TAG" "Modula-${{ matrix.arch }}.AppImage.tar.gz" --clobber
+
+      # deb/rpm are the recommended installs for Ubuntu/Fedora: nothing bundled
+      # (they depend on the system WebKit, sidestepping the libwayland problem)
+      # and the package manager sets permissions. They are not updater
+      # artifacts — no .sig, and latest.json stays AppImage-only.
+      - name: Stage & upload the deb/rpm packages (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for fmt in deb rpm; do
+            files=(target/${{ matrix.rust-target }}/release/bundle/$fmt/*.$fmt)
+            if [ ${#files[@]} -ne 1 ]; then
+              echo "expected exactly one $fmt, found ${#files[@]}: ${files[*]}" >&2
+              exit 1
+            fi
+            mv "${files[0]}" "Modula-${{ matrix.arch }}.$fmt"
+            gh release upload "$TAG" "Modula-${{ matrix.arch }}.$fmt" --clobber
+          done
+
+      # Windows (nsis) and Linux (appimage) are themselves updater-capable: the
+      # bundle we already ship IS the updater artifact, so we just also publish
+      # its .sig (renamed to track the stable asset name — renaming the bundle
+      # doesn't change its bytes, so the signature stays valid).
+      - name: Stage & upload the updater signature (Windows/Linux)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          sigs=(target/${{ matrix.rust-target }}/release/bundle/${{ matrix.bundle }}/*.${{ matrix.ext }}.sig)
+          if [ ${#sigs[@]} -ne 1 ]; then
+            echo "expected exactly one ${{ matrix.ext }}.sig, found ${#sigs[@]}: ${sigs[*]}" >&2
+            exit 1
+          fi
+          mv "${sigs[0]}" "Modula-${{ matrix.arch }}.${{ matrix.ext }}.sig"
+          gh release upload "$TAG" "Modula-${{ matrix.arch }}.${{ matrix.ext }}.sig" --clobber
+
+      # macOS dmg is NOT updater-capable, so the matrix dmg above stays as the
+      # first-install artifact and we additionally build the app bundle to get
+      # the updatable Modula-<arch>.app.tar.gz (+ .sig).
+      - name: Build the macOS updater bundle (app.tar.gz)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: cargo tauri build --target ${{ matrix.rust-target }} --bundles app --config src-tauri/tauri.bundle.conf.json
+
+      - name: Stage & upload the macOS updater bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dir="target/${{ matrix.rust-target }}/release/bundle/macos"
+          tars=("$dir"/*.app.tar.gz)
+          sigs=("$dir"/*.app.tar.gz.sig)
+          if [ ${#tars[@]} -ne 1 ] || [ ${#sigs[@]} -ne 1 ]; then
+            echo "expected one app.tar.gz + one .sig, found ${#tars[@]}/${#sigs[@]}" >&2
+            exit 1
+          fi
+          mv "${tars[0]}" "Modula-${{ matrix.arch }}.app.tar.gz"
+          mv "${sigs[0]}" "Modula-${{ matrix.arch }}.app.tar.gz.sig"
+          gh release upload "$TAG" \
+            "Modula-${{ matrix.arch }}.app.tar.gz" \
+            "Modula-${{ matrix.arch }}.app.tar.gz.sig" --clobber
+
+  # Assemble the static latest.json the updater polls, from the per-platform
+  # .sig assets the build job published. Version comes from the tag so it always
+  # matches the released tauri.conf.json version.
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assemble & upload latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="${TAG#v}"
+          base="https://github.com/$GH_REPO/releases/latest/download"
+          mkdir -p sigs
+          gh release download "$TAG" --pattern '*.sig' --dir sigs
+          read_sig() { cat "sigs/$1"; }
+          jq -n \
+            --arg version "$ver" \
+            --arg notes "Modula $TAG" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg base "$base" \
+            --arg darwin_arm_sig "$(read_sig Modula-arm64.app.tar.gz.sig)" \
+            --arg darwin_x86_sig "$(read_sig Modula-x86.app.tar.gz.sig)" \
+            --arg windows_x86_sig "$(read_sig Modula-x86.exe.sig)" \
+            --arg linux_x86_sig "$(read_sig Modula-x86.AppImage.sig)" \
+            --arg linux_arm_sig "$(read_sig Modula-arm64.AppImage.sig)" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": { signature: $darwin_arm_sig, url: ($base + "/Modula-arm64.app.tar.gz") },
+                "darwin-x86_64":  { signature: $darwin_x86_sig, url: ($base + "/Modula-x86.app.tar.gz") },
+                "windows-x86_64": { signature: $windows_x86_sig, url: ($base + "/Modula-x86.exe") },
+                "linux-x86_64":   { signature: $linux_x86_sig,   url: ($base + "/Modula-x86.AppImage") },
+                "linux-aarch64":  { signature: $linux_arm_sig,   url: ($base + "/Modula-arm64.AppImage") }
+              }
+            }' > latest.json
+          gh release upload "$TAG" latest.json --clobber
+
+  # Runs only after every platform's assets and latest.json are up, so "latest"
+  # flips atomically from the previous complete release to this one. Any earlier
+  # failure leaves an unpublished draft, never a half-empty "latest".
+  publish:
+    needs: manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        run: gh release edit "$TAG" --draft=false

@@ -1,0 +1,45 @@
+syntax = "proto3";
+package modula.v1;
+
+service WorkspaceService {
+  rpc List(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc Get(GetWorkspaceRequest) returns (Workspace);
+  rpc Create(CreateWorkspaceRequest) returns (CreateWorkspaceResponse);
+  rpc Delete(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
+}
+
+message Workspace {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  optional string description = 4;
+  string created_at = 5;
+  string path = 6;
+}
+
+message ListWorkspacesRequest {}
+message ListWorkspacesResponse {
+  repeated Workspace workspaces = 1;
+}
+
+message GetWorkspaceRequest {
+  string id = 1;
+}
+
+message CreateWorkspaceRequest {
+  string name = 1;
+  optional string description = 2;
+}
+message CreateWorkspaceResponse {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string path = 4;
+}
+
+message DeleteWorkspaceRequest {
+  string id = 1;
+}
+message DeleteWorkspaceResponse {
+  string id = 1;
+}

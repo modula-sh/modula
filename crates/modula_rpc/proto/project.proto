@@ -1,0 +1,172 @@
+syntax = "proto3";
+package modula.v1;
+
+service ProjectService {
+  rpc List(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc Get(GetProjectRequest) returns (Project);
+  rpc Create(CreateProjectRequest) returns (CreateProjectResponse);
+  rpc Clone(CloneProjectRequest) returns (CloneProjectResponse);
+  rpc Update(UpdateProjectRequest) returns (UpdateProjectResponse);
+  rpc Delete(DeleteProjectRequest) returns (DeleteProjectResponse);
+
+  // Working-tree diff for a project (optionally on a specific branch).
+  // Large diffs are delivered as a chunked server stream.
+  rpc Diff(ProjectDiffRequest) returns (stream DiffChunk);
+  // Raw unified-diff text stream (for large payloads).
+  rpc DiffText(ProjectDiffRequest) returns (stream DiffChunk);
+
+  rpc ListCommits(ListCommitsRequest) returns (ListCommitsResponse);
+  rpc GetCommitDiff(GetCommitDiffRequest) returns (stream DiffChunk);
+
+  rpc Stage(StageRequest) returns (StageResponse);
+  rpc Unstage(UnstageRequest) returns (UnstageResponse);
+
+  // Branches for a task's variants (worktrees / direct-mode branch).
+  rpc GetTaskBranches(GetTaskBranchesRequest) returns (GetTaskBranchesResponse);
+  // All branches for a repo at a given filesystem path.
+  rpc GetRepoBranches(GetRepoBranchesRequest) returns (GetRepoBranchesResponse);
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  string base_branch = 4;
+  // Whether the project path currently exists on disk.
+  bool exists = 5;
+  // Worktree directory names under `<path>/.worktrees`.
+  repeated string worktrees = 6;
+}
+
+// Chunked server stream for large diff/text payloads.
+message DiffChunk {
+  bytes data = 1;
+}
+
+message ListProjectsRequest {
+  string workspace_id = 1;
+}
+message ListProjectsResponse {
+  repeated Project projects = 1;
+}
+
+message GetProjectRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+}
+
+message CreateProjectRequest {
+  string workspace_id = 1;
+  string name = 2;
+  string path = 3;
+  string base_branch = 4;
+}
+message CreateProjectResponse {
+  string id = 1;
+  string name = 2;
+}
+
+message CloneProjectRequest {
+  string workspace_id = 1;
+  string name = 2;
+  string path = 3;
+  string git_url = 4;
+}
+message CloneProjectResponse {
+  string id = 1;
+  string name = 2;
+}
+
+message UpdateProjectRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+  optional string name = 3;
+  optional string path = 4;
+  optional string base_branch = 5;
+}
+message UpdateProjectResponse {
+  string id = 1;
+}
+
+message DeleteProjectRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+}
+message DeleteProjectResponse {
+  string id = 1;
+}
+
+message ProjectDiffRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+  optional string branch = 3;
+}
+
+message ListCommitsRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+  optional string branch = 3;
+  optional string since = 4;
+  uint32 limit = 5;
+}
+message ListCommitsResponse {
+  // Serialised as JSON chunks via DiffChunk for large payloads; here kept as
+  // a repeated message since commit lists are typically small.
+  repeated CommitSummary commits = 1;
+}
+message CommitSummary {
+  string sha = 1;
+  string short = 2;
+  string author = 3;
+  int64 time = 4;
+  string subject = 5;
+}
+
+message GetCommitDiffRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+  string sha = 3;
+  optional string branch = 4;
+}
+
+message StageRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+  optional string branch = 3;
+  repeated string files = 4;
+}
+message StageResponse {
+  bool ok = 1;
+}
+
+message UnstageRequest {
+  string workspace_id = 1;
+  string project_id = 2;
+  optional string branch = 3;
+  repeated string files = 4;
+}
+message UnstageResponse {
+  bool ok = 1;
+}
+
+message GetTaskBranchesRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+}
+message GetTaskBranchesResponse {
+  // JSON-encoded branch info (reuses existing branch service shape).
+  repeated string branches = 1;
+}
+
+message GetRepoBranchesRequest {
+  string workspace_id = 1;
+  string path = 2;
+}
+message RepoBranchInfo {
+  bool is_git = 1;
+  repeated string branches = 2;
+  optional string default_branch = 3;
+}
+message GetRepoBranchesResponse {
+  RepoBranchInfo info = 1;
+}

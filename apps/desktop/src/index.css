@@ -1,0 +1,449 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: 250 250 251;
+  --color-chrome: 244 244 245;
+  --color-surface: 244 244 245;
+  --color-surface-2: 228 228 231;
+  --color-card: 255 255 255;
+  --color-card-border: 212 212 216;
+  --color-chat-input: 255 255 255;
+  --color-chat-input-border: 212 212 216;
+  --color-border: 212 212 216;
+  --color-border-focus: 113 113 122;
+  --color-fg: 24 24 27;
+  --color-fg-muted: 82 82 91;
+  --color-fg-subtle: 113 113 122;
+  --color-overlay: rgb(0 0 0 / 0.6);
+  --shadow-panel: 0 2px 11px -4px rgba(0, 0, 0, 0.13);
+  --shadow-section: 0 1px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sidebar: inset -4px 0 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-popover: 0 4px 20px -4px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="dark"] {
+  --color-chrome: 9 9 11;
+  --color-bg: 16 16 18;
+  --color-surface: 39 39 42;
+  --color-surface-2: 52 52 56;
+  --color-card: 24 24 27;
+  --color-card-border: 39 39 42;
+  --color-chat-input: 24 24 27;
+  --color-chat-input-border: 39 39 42;
+  --color-border: 47 47 51;
+  --color-border-focus: 82 82 91;
+  --color-fg: 244 244 245;
+  --color-fg-muted: 161 161 170;
+  --color-fg-subtle: 113 113 122;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sidebar: inset -4px 0 6px -4px rgba(0, 0, 0, 0.22);
+}
+
+/* Set for one frame during a theme switch so color tokens flip instantly. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
+@layer base {
+  /* Prevent window-level elastic scrolling. */
+  html,
+  body {
+    @apply h-full overflow-hidden overscroll-none;
+  }
+  body {
+    @apply bg-bg text-fg;
+  }
+  /* Native-app feel: suppress the webview's text-selection popover and the
+     touch/force-click callout app-wide so no system context menu can surface
+     over chrome (buttons, icons, labels). `user-select`/`-webkit-touch-callout`
+     both inherit, so disabling on `body` cascades everywhere; editable regions
+     (and CodeMirror) opt back in below so caret + cut/copy/paste still work.
+     Pairs with useSuppressContextMenu, the right-click backstop. */
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea,
+  [contenteditable="true"],
+  .cm-editor,
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-2 rounded;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-fg-subtle;
+  }
+  /* Native-feel sidebar: anchor tags default to draggable, and selection makes
+     it feel like a web view. Disable both for everything under the sidebar. */
+  #sidebar,
+  #sidebar * {
+    -webkit-user-drag: none;
+  }
+  /* Slim down all lucide icons. `!important` beats the inline
+     `stroke-width="2"` presentation attribute; per-icon overrides via the
+     `strokeWidth` prop still win because that writes a `style=` rule. */
+  svg.lucide,
+  svg[class*="lucide-"] {
+    stroke-width: 1.5 !important;
+  }
+}
+
+/* Hide the scrollbar while keeping the element scrollable. */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
+/* Markdown live-preview styles (paired with MarkdownEditor decorations). */
+/* Nudge the placeholder right so it doesn't sit on top of the caret. */
+.cm-placeholder {
+  color: rgb(var(--color-fg-subtle));
+  padding-left: 4px;
+}
+
+.cm-md-bold {
+  font-weight: 700;
+}
+.cm-md-italic {
+  font-style: italic;
+}
+.cm-md-strike {
+  text-decoration: line-through;
+  color: rgb(var(--color-fg-subtle));
+}
+.cm-md-code {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 0.92em;
+  background: rgb(var(--color-surface));
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+}
+.cm-md-h1 {
+  font-size: 1.7em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.cm-md-h2 {
+  font-size: 1.45em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.cm-md-h3 {
+  font-size: 1.25em;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.cm-md-h4 {
+  font-size: 1.1em;
+  font-weight: 700;
+}
+.cm-md-h5 {
+  font-weight: 700;
+}
+.cm-md-h6 {
+  font-weight: 700;
+  color: rgb(var(--color-fg-muted));
+}
+.cm-md-link {
+  color: rgb(var(--color-fg));
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--color-fg-subtle));
+  cursor: pointer;
+}
+.cm-md-link:hover {
+  text-decoration-color: rgb(var(--color-fg));
+}
+.cm-md-image {
+  color: rgb(var(--color-fg-subtle));
+  font-style: italic;
+}
+.cm-md-image-rendered {
+  max-width: 100%;
+  max-height: 400px;
+  height: auto;
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+.cm-md-table-line-hidden {
+  opacity: 0;
+}
+.cm-md-fm-hidden {
+  opacity: 0;
+}
+.cm-md-fm-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.cm-md-fm-wrap {
+  position: absolute;
+  left: max(1.5rem, calc(50% - 24rem));
+  right: max(1.5rem, calc(50% - 24rem));
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  border-bottom: 1px solid rgb(var(--color-border));
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.cm-md-fm-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 22px;
+}
+.cm-md-fm-key {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(var(--color-fg-subtle));
+  font-weight: 500;
+  min-width: 72px;
+}
+.cm-md-fm-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  color: rgb(var(--color-fg-muted));
+}
+.cm-md-fm-pill {
+  display: inline-flex;
+  align-items: center;
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-fg));
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgb(var(--color-border));
+  white-space: nowrap;
+}
+.cm-md-table-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.cm-md-table-wrap {
+  position: absolute;
+  left: max(1.5rem, calc(50% - 24rem));
+  pointer-events: auto;
+}
+.cm-md-table-frame {
+  position: relative;
+  padding-right: 14px;
+  padding-bottom: 14px;
+  display: inline-block;
+}
+.cm-md-table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+  background: rgb(var(--color-bg));
+}
+.cm-md-table th,
+.cm-md-table td {
+  border: 1px solid rgb(var(--color-border));
+  padding: 0 10px;
+  text-align: left;
+  min-width: 40px;
+  outline: none;
+  line-height: 1;
+  vertical-align: middle;
+}
+.cm-md-table th:focus,
+.cm-md-table td:focus {
+  background: rgb(var(--color-surface));
+  box-shadow: inset 0 0 0 2px rgb(var(--color-border-focus));
+}
+.cm-md-table th {
+  background: rgb(var(--color-surface));
+  font-weight: 600;
+}
+.cm-md-table-add {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  color: rgb(var(--color-fg-subtle));
+  background: transparent;
+  border: 1px dashed rgb(var(--color-border));
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    opacity 80ms,
+    background-color 80ms,
+    color 80ms;
+}
+.cm-md-table-add-col {
+  right: 0;
+  top: 0;
+  bottom: 14px;
+  width: 14px;
+}
+.cm-md-table-add-row {
+  bottom: 0;
+  left: 0;
+  right: 14px;
+  height: 14px;
+}
+.cm-md-table-frame:hover .cm-md-table-add {
+  opacity: 1;
+}
+.cm-md-table-add:hover {
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-fg));
+  border-style: solid;
+  border-color: rgb(var(--color-border-focus));
+}
+.cm-md-quote-line {
+  border-left: 3px solid rgb(var(--color-border));
+  padding-left: 0.7em !important;
+  color: rgb(var(--color-fg-muted));
+}
+.cm-md-hr {
+  color: transparent;
+  border-bottom: 1px solid rgb(var(--color-border));
+  display: inline-block;
+  width: 100%;
+}
+.cm-md-bullet {
+  color: rgb(var(--color-fg-muted));
+  font-size: 1.1em;
+  line-height: 0;
+}
+input.cm-md-taskbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid rgb(var(--color-fg-subtle));
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  vertical-align: -2px;
+  margin-right: 4px;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background-color 80ms ease,
+    border-color 80ms ease;
+}
+input.cm-md-taskbox:hover {
+  border-color: rgb(var(--color-fg));
+}
+input.cm-md-taskbox:checked {
+  background: rgb(var(--color-fg));
+  border-color: rgb(var(--color-fg));
+}
+input.cm-md-taskbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 3.5px;
+  width: 3px;
+  height: 6px;
+  border: solid rgb(var(--color-bg));
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+.cm-md-list-num {
+  color: rgb(var(--color-fg-subtle) / 0.55);
+}
+[data-theme="dark"] .cm-md-list-num {
+  color: rgb(var(--color-fg-subtle));
+}
+.cm-md-comment {
+  color: rgb(var(--color-fg-subtle));
+  font-style: italic;
+}
+.cm-md-code-line {
+  position: relative;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 0.9em;
+  background: rgb(var(--color-surface));
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+.cm-md-code-line[data-lang]::after {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 9px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(var(--color-fg-subtle));
+  background: rgb(var(--color-surface-2));
+  padding: 2px 5px;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+/* Experimental sidebar "snake" loader: a lit dot chases around the perimeter
+   of a 2×3 grid, each dot fading back to off behind it. */
+@keyframes snake-dot {
+  0% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.28;
+  }
+  72% {
+    opacity: 0.18;
+  }
+  88% {
+    opacity: 0.18;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.snake-dot {
+  opacity: 0.18;
+  animation: snake-dot 0.9s linear infinite;
+}
+
+/* Modal dim overlay eases in so opening isn't an abrupt flash. */
+@keyframes overlay-fade {
+  from {
+    background-color: transparent;
+  }
+}
+
+.overlay-fade {
+  animation: overlay-fade 150ms ease-out;
+}

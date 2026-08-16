@@ -1,0 +1,179 @@
+syntax = "proto3";
+package modula.v1;
+
+import "google/protobuf/struct.proto";
+
+service AgentService {
+  // List currently running agent processes.
+  rpc ListRunning(ListRunningAgentsRequest) returns (ListRunningAgentsResponse);
+  // Full agent config including prompt.
+  rpc Get(GetAgentRequest) returns (Agent);
+  rpc GetConfig(GetAgentConfigRequest) returns (GetAgentConfigResponse);
+  rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse);
+  rpc Create(CreateAgentRequest) returns (CreateAgentResponse);
+  rpc Update(UpdateAgentRequest) returns (UpdateAgentResponse);
+  rpc Delete(DeleteAgentRequest) returns (DeleteAgentResponse);
+  // Manually trigger a `manual=true` agent.
+  rpc Trigger(TriggerAgentRequest) returns (TriggerAgentResponse);
+  // Kill a running agent by PID.
+  rpc Kill(KillAgentRequest) returns (KillAgentResponse);
+  // List installed CLI tools (git, gh, etc.).
+  rpc ListSystemTools(ListSystemToolsRequest) returns (ListSystemToolsResponse);
+}
+
+message AgentArgDef {
+  string flag = 1;
+  bool required = 2;
+  optional string help = 3;
+}
+
+message AgentSchedule {
+  string cron = 1;
+  string timezone = 2;
+  bool enabled = 3;
+}
+
+message Agent {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string provider_id = 4;
+  optional string model = 5;
+  bool manual = 6;
+  optional AgentSchedule schedule = 7;
+  repeated string rules = 8;
+  repeated AgentArgDef args = 9;
+  optional string next_fire = 10;
+  bool spawn_per_variant = 11;
+  repeated string skills = 12;
+  // Prompt is only populated by AgentService.Get, not in list/config responses.
+  optional string prompt = 13;
+}
+
+message RunningAgent {
+  int32 pid = 1;
+  string agent_id = 2;
+  string agent_name = 3;
+  optional string task_id = 4;
+  optional string variant_id = 5;
+  string started_at = 6;
+}
+
+message AgentSkill {
+  string slug = 1;
+  string name = 2;
+  string description = 3;
+  bool hidden = 4;
+  int64 position = 5;
+}
+
+message ListRunningAgentsRequest {
+  string workspace_id = 1;
+}
+message ListRunningAgentsResponse {
+  repeated RunningAgent agents = 1;
+}
+
+message GetAgentRequest {
+  string workspace_id = 1;
+  string agent_id = 2;
+}
+
+message GetAgentConfigRequest {
+  string workspace_id = 1;
+}
+message GetAgentConfigResponse {
+  repeated Agent agents = 1;
+}
+
+message ListSkillsRequest {
+  string workspace_id = 1;
+}
+message ListSkillsResponse {
+  repeated AgentSkill skills = 1;
+}
+
+message CreateAgentRequest {
+  string workspace_id = 1;
+  string name = 2;
+  string description = 3;
+  string provider_id = 4;
+  optional string model = 5;
+  bool manual = 6;
+  optional AgentSchedule schedule = 7;
+  repeated string rules = 8;
+  repeated AgentArgDef args = 9;
+  string prompt = 10;
+  bool spawn_per_variant = 11;
+  repeated string skills = 12;
+}
+message CreateAgentResponse {
+  string id = 1;
+  string name = 2;
+}
+
+message UpdateAgentRequest {
+  string workspace_id = 1;
+  string agent_id = 2;
+  optional string description = 3;
+  optional string provider_id = 4;
+  optional string model = 5;
+  bool clear_model = 6;
+  optional bool manual = 7;
+  optional AgentSchedule schedule = 8;
+  bool clear_schedule = 9;
+  repeated string rules = 10;
+  bool update_rules = 11;
+  repeated AgentArgDef args = 12;
+  bool update_args = 13;
+  optional string prompt = 14;
+  optional bool spawn_per_variant = 15;
+  repeated string skills = 16;
+  bool update_skills = 17;
+}
+message UpdateAgentResponse {
+  string id = 1;
+}
+
+message DeleteAgentRequest {
+  string workspace_id = 1;
+  string agent_id = 2;
+}
+message DeleteAgentResponse {
+  string id = 1;
+}
+
+message TriggerAgentRequest {
+  string workspace_id = 1;
+  string agent_id = 2;
+  // Arg values by key (flag name without leading "--").
+  google.protobuf.Struct args = 3;
+}
+message TriggerAgentResponse {
+  string id = 1;
+  string name = 2;
+  int32 pid = 3;
+  repeated string args = 4;
+}
+
+message KillAgentRequest {
+  string workspace_id = 1;
+  int32 pid = 2;
+  bool escalate = 3;
+}
+message KillAgentResponse {
+  bool ok = 1;
+  string message = 2;
+  // True when killing this pid also tripped a running loop's cancel flag, so
+  // the loop controller won't spawn the next iteration.
+  bool loop_cancelled = 3;
+}
+
+message SystemTool {
+  string id = 1;
+  bool installed = 2;
+}
+message ListSystemToolsRequest {}
+message ListSystemToolsResponse {
+  repeated SystemTool tools = 1;
+}

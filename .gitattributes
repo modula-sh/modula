@@ -1,0 +1,8 @@
+# Force LF on checkout for all text files so the Windows CI runner doesn't
+# convert to CRLF (which makes biome and rustfmt --check report every line as
+# differing). Binary assets are auto-detected by text=auto and left untouched.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary

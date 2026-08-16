@@ -1,0 +1,84 @@
+syntax = "proto3";
+package modula.v1;
+
+service WikiService {
+  rpc GetTree(GetWikiTreeRequest) returns (GetWikiTreeResponse);
+  rpc GetFile(GetWikiFileRequest) returns (GetWikiFileResponse);
+  // Create a new file (fails if already exists).
+  rpc CreateFile(CreateWikiFileRequest) returns (WikiFileResponse);
+  // Overwrite an existing file.
+  rpc WriteFile(WriteWikiFileRequest) returns (WikiFileResponse);
+  rpc CreateFolder(CreateWikiFolderRequest) returns (WikiFolderResponse);
+  rpc Rename(RenameWikiPathRequest) returns (RenameWikiPathResponse);
+  rpc Delete(DeleteWikiPathRequest) returns (DeleteWikiPathResponse);
+}
+
+message WikiTreeNode {
+  string path = 1;
+  string name = 2;
+  bool is_dir = 3;
+  repeated WikiTreeNode children = 4;
+}
+
+message GetWikiTreeRequest {
+  string workspace_id = 1;
+}
+message GetWikiTreeResponse {
+  repeated WikiTreeNode nodes = 1;
+}
+
+message GetWikiFileRequest {
+  string workspace_id = 1;
+  string path = 2;
+}
+message GetWikiFileResponse {
+  string path = 1;
+  // Wiki file bodies are schemaless markdown; bytes to avoid size constraints.
+  bytes content = 2;
+}
+
+message CreateWikiFileRequest {
+  string workspace_id = 1;
+  string path = 2;
+  bytes content = 3;
+}
+
+message WriteWikiFileRequest {
+  string workspace_id = 1;
+  string path = 2;
+  bytes content = 3;
+}
+
+message WikiFileResponse {
+  bool ok = 1;
+  string path = 2;
+}
+
+message CreateWikiFolderRequest {
+  string workspace_id = 1;
+  string path = 2;
+}
+message WikiFolderResponse {
+  bool ok = 1;
+  string path = 2;
+}
+
+message RenameWikiPathRequest {
+  string workspace_id = 1;
+  string from = 2;
+  string to = 3;
+}
+message RenameWikiPathResponse {
+  bool ok = 1;
+  string from = 2;
+  string to = 3;
+}
+
+message DeleteWikiPathRequest {
+  string workspace_id = 1;
+  string path = 2;
+}
+message DeleteWikiPathResponse {
+  bool ok = 1;
+  string path = 2;
+}

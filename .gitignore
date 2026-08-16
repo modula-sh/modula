@@ -1,0 +1,35 @@
+.DS_Store
+.worktrees/
+prompts/
+
+# Cargo build artifacts.
+target/
+**/target/
+
+# Rustfmt backups.
+**/*.rs.bk
+
+# MSVC Windows debug info.
+*.pdb
+
+# cargo-mutants output.
+**/mutants.out*/
+
+# rustc internal-compiler-error stack traces.
+rustc-ice-*.txt
+
+# Node / Vite.
+node_modules/
+apps/desktop/dist/
+apps/desktop/tsconfig.tsbuildinfo
+
+# Tauri-generated schemas (regenerated on every build).
+apps/desktop/src-tauri/gen/
+
+# Bundled engine sidecar, staged per-target at build time.
+apps/desktop/src-tauri/binaries/
+
+# Stray Python leftovers from the pre-Rust era.
+.venv/
+__pycache__/
+*.pyc

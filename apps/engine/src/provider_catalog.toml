@@ -1,0 +1,42 @@
+# Built-in provider catalog — lists supported provider types and their model identifiers.
+# To override, place a provider_catalog.toml in your MODULA_DIR (default ~/.modula/).
+# The engine reads the override file at runtime; changes take effect on the next engine restart.
+#
+# Each model may be a bare id string (`"opus"`) or an inline table with a label
+# (`{ id = "opus", label = "Opus" }`). When no label is given, the id is used.
+
+[[providers]]
+id = "claude"
+models = [
+  { id = "opus", label = "Opus (alias)" },
+  { id = "sonnet", label = "Sonnet (alias)" },
+  { id = "haiku", label = "Haiku (alias)" },
+  { id = "claude-fable-5", label = "Claude Fable 5" },
+  { id = "claude-opus-4-8", label = "Claude Opus 4.8" },
+  { id = "claude-opus-4-7", label = "Claude Opus 4.7" },
+  { id = "claude-sonnet-4-6", label = "Claude Sonnet 4.6" },
+  { id = "claude-haiku-4-5-20251001", label = "Claude Haiku 4.5" },
+]
+
+[[providers]]
+id = "codex"
+models = [
+  { id = "gpt-5.5", label = "GPT-5.5" },
+  { id = "gpt-5.4", label = "GPT-5.4" },
+  { id = "gpt-5.4-mini", label = "GPT-5.4 Mini" },
+  { id = "gpt-5.3-codex", label = "GPT-5.3 Codex" },
+  { id = "gpt-5.2", label = "GPT-5.2" },
+]
+
+# Fallback only: when the `opencode` CLI is available the engine populates
+# this list from `opencode models` (built-in defaults plus the user's
+# configured providers) instead.
+[[providers]]
+id = "opencode"
+models = [
+  { id = "anthropic/claude-opus-4-7", label = "Claude Opus 4.7 (Anthropic)" },
+  { id = "anthropic/claude-sonnet-4-6", label = "Claude Sonnet 4.6 (Anthropic)" },
+  { id = "anthropic/claude-haiku-4-5-20251001", label = "Claude Haiku 4.5 (Anthropic)" },
+  { id = "openai/gpt-4o", label = "GPT-4o (OpenAI)" },
+  { id = "google/gemini-2.5-pro", label = "Gemini 2.5 Pro (Google)" },
+]

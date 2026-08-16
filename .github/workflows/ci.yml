@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      # The rpc build script compiles proto/*.proto via prost-build,
+      # which needs the protoc binary (not on GitHub runners by default).
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Install frontend dependencies
+        run: pnpm --dir apps/desktop install --frozen-lockfile
+
+      # Biome lint + format check in one no-write pass; fails on style/lint errors.
+      - name: Lint & format (frontend)
+        run: pnpm --dir apps/desktop exec biome ci .
+
+      # Runs tsc -b && vite build, so this also type-checks the frontend.
+      # tauri::generate_context!() then embeds apps/desktop/dist at compile time.
+      - name: Build frontend
+        run: pnpm --dir apps/desktop build
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # Single-threaded: the E2E harness boots a real engine per test.
+      # The Windows leg is non-blocking until it goes green on a Windows runner:
+      # the engine's Job-Object process tracking was authored without one, so
+      # build + clippy gate the port there while the E2E suite is confirmed.
+      - name: Tests
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        # MODULA_TEST_ENGINE_STDOUT surfaces engine boot logs in CI output.
+        env:
+          MODULA_TEST_ENGINE_STDOUT: 1
+        run: cargo test --workspace -- --test-threads=1

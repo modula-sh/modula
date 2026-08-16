@@ -1,0 +1,139 @@
+syntax = "proto3";
+package modula.v1;
+
+import "google/protobuf/struct.proto";
+
+service ConversationService {
+  rpc List(ListConversationsRequest) returns (ListConversationsResponse);
+  rpc Get(GetConversationRequest) returns (Conversation);
+  rpc Create(CreateConversationRequest) returns (CreateConversationResponse);
+  rpc Update(UpdateConversationRequest) returns (UpdateConversationResponse);
+  rpc Delete(DeleteConversationRequest) returns (DeleteConversationResponse);
+  // Start or continue a run; returns a server stream of ConvEvent.
+  // Dropping the stream detaches without cancelling the underlying run.
+  rpc Send(SendMessageRequest) returns (stream ConvEvent);
+  // Attach to an in-flight run; replays buffered events then streams live ones.
+  // Dropping the stream detaches; the run continues.
+  rpc Attach(AttachConversationRequest) returns (stream ConvEvent);
+  rpc Cancel(CancelConversationRequest) returns (CancelConversationResponse);
+}
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+  string ts = 3;
+}
+
+message ConversationSummary {
+  string id = 1;
+  string title = 2;
+  string provider_id = 3;
+  optional string model = 4;
+  // Schemaless context (workspace_id, task_id, variant_id, etc.).
+  google.protobuf.Struct context = 5;
+  string updated_at = 6;
+}
+
+message Conversation {
+  string id = 1;
+  string title = 2;
+  string provider_id = 3;
+  optional string model = 4;
+  google.protobuf.Struct context = 5;
+  optional string session_id = 6;
+  repeated ChatMessage messages = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+// Server-streaming event. oneof mirrors the existing WireEvent variants.
+message ConvEvent {
+  oneof event {
+    SessionEvent session = 1;
+    ToolUseEvent tool_use = 2;
+    DeltaEvent delta = 3;
+    DoneEvent done = 4;
+    ErrorEvent error = 5;
+  }
+}
+
+message SessionEvent {
+  string id = 1;
+}
+
+message ToolUseEvent {
+  string name = 1;
+  // Tool input is schemaless provider-specific JSON.
+  google.protobuf.Struct input = 2;
+}
+
+message DeltaEvent {
+  string text = 1;
+}
+
+message DoneEvent {}
+
+message ErrorEvent {
+  string message = 1;
+}
+
+message ListConversationsRequest {
+  string workspace_id = 1;
+}
+message ListConversationsResponse {
+  repeated ConversationSummary conversations = 1;
+}
+
+message GetConversationRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+}
+
+message CreateConversationRequest {
+  string workspace_id = 1;
+  string provider_id = 2;
+  optional string title = 3;
+  optional string model = 4;
+  google.protobuf.Struct context = 5;
+}
+message CreateConversationResponse {
+  string id = 1;
+}
+
+message UpdateConversationRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  optional string title = 3;
+}
+message UpdateConversationResponse {
+  bool ok = 1;
+}
+
+message DeleteConversationRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+}
+message DeleteConversationResponse {
+  bool ok = 1;
+}
+
+message SendMessageRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  string message = 3;
+  // Optional per-turn model override (absent = keep current model).
+  optional string model = 4;
+}
+
+message AttachConversationRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+}
+
+message CancelConversationRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+}
+message CancelConversationResponse {
+  bool ok = 1;
+}

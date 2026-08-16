@@ -1,0 +1,97 @@
+syntax = "proto3";
+package modula.v1;
+
+service ThreadService {
+  rpc GetThreads(GetThreadsRequest) returns (GetThreadsResponse);
+  rpc AppendEntry(AppendEntryRequest) returns (AppendEntryResponse);
+  rpc EditEntry(EditEntryRequest) returns (EditEntryResponse);
+  rpc DeleteEntry(DeleteEntryRequest) returns (DeleteEntryResponse);
+}
+
+// Stable closed sets → proto enums per spec. Authors are an open set
+// (agents are user-defined), so `author` is a plain string.
+enum ThreadKind {
+  THREAD_KIND_UNSPECIFIED = 0;
+  THREAD_KIND_COMMENT = 1;
+  THREAD_KIND_QUESTION = 2;
+  THREAD_KIND_VERDICT = 3;
+  THREAD_KIND_REWORK = 4;
+}
+
+// Verdicts are scoped by whether a variant_id is present:
+//   variant scope: ACCEPT, REQUEST_CHANGES
+//   task scope:    APPROVE, KICK_BACK
+enum ThreadVerdict {
+  THREAD_VERDICT_UNSPECIFIED = 0;
+  THREAD_VERDICT_ACCEPT = 1;
+  THREAD_VERDICT_REQUEST_CHANGES = 2;
+  THREAD_VERDICT_APPROVE = 3;
+  THREAD_VERDICT_KICK_BACK = 4;
+}
+
+message ThreadEntry {
+  // task_id / variant_id: the enclosing response already scopes entries.
+  reserved 2, 3;
+  reserved "task_id", "variant_id";
+  int64 id = 1;
+  string ts = 4;
+  string author = 5;
+  ThreadKind kind = 6;
+  optional int64 round = 7;
+  string content = 8;
+  optional ThreadVerdict verdict = 9;
+  // Populated only for KICK_BACK verdicts; lists affected variant ids.
+  repeated string affected_variants = 10;
+}
+
+message VariantThread {
+  string variant_id = 1;
+  repeated ThreadEntry entries = 2;
+}
+
+message GetThreadsRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+}
+message GetThreadsResponse {
+  string task_id = 1;
+  repeated ThreadEntry task_thread = 2;
+  repeated VariantThread variant_threads = 3;
+}
+
+message AppendEntryRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string content = 3;
+  string author = 4;
+  ThreadKind kind = 5;
+  optional string variant_id = 6;
+  optional int64 round = 7;
+  optional ThreadVerdict verdict = 8;
+  // Required when verdict = KICK_BACK.
+  repeated string affected_variants = 9;
+}
+message AppendEntryResponse {
+  ThreadEntry entry = 1;
+}
+
+message EditEntryRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  int64 entry_id = 3;
+  string content = 4;
+  string author = 5;
+}
+message EditEntryResponse {
+  ThreadEntry entry = 1;
+}
+
+message DeleteEntryRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  int64 entry_id = 3;
+  string author = 4;
+}
+message DeleteEntryResponse {
+  bool ok = 1;
+}

@@ -1,0 +1,80 @@
+syntax = "proto3";
+package modula.v1;
+
+import "agent.proto";
+
+// ConfigService.Get may return a large document (pipeline + providers + projects
+// + agents). The server raises its decode/encode limits for this service.
+service ConfigService {
+  rpc Get(GetConfigRequest) returns (WorkspaceConfig);
+}
+
+message GetConfigRequest {
+  string workspace_id = 1;
+}
+
+message WorkspaceConfig {
+  ConfigLimits limits = 1;
+  repeated PipelineStatus pipeline = 2;
+  repeated ConfigProvider providers = 3;
+  repeated ConfigProject projects = 4;
+  repeated ConfigAgent agents = 5;
+}
+
+message ConfigLimits {
+  int32 max_spawns_per_run = 1;
+}
+
+// pipeline station is a stable closed set; kept as enum per A1/spec.
+enum PipelineStation {
+  PIPELINE_STATION_UNSPECIFIED = 0;
+  PIPELINE_STATION_PLAN = 1;
+  PIPELINE_STATION_RESEARCH = 2;
+  PIPELINE_STATION_BUILD = 3;
+  PIPELINE_STATION_REVIEW = 4;
+  PIPELINE_STATION_ACCEPTED = 5;
+  PIPELINE_STATION_ERROR = 6;
+}
+
+// Pipeline status key stays a string (config-driven per arch rule #1).
+message PipelineStatus {
+  string key = 1;
+  string label = 2;
+  string tone = 3;
+  optional string station = 4;
+  bool terminal = 5;
+  bool error = 6;
+}
+
+// Minimal provider shape carried in config (full detail via ProviderService).
+message ConfigProvider {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string config_dir = 4;
+  optional string description = 5;
+}
+
+// Minimal project shape carried in config (full detail via ProjectService).
+message ConfigProject {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  string base_branch = 4;
+}
+
+// Minimal agent shape carried in config. Full detail (incl. prompt) via AgentService.Get.
+message ConfigAgent {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string provider_id = 4;
+  optional string model = 5;
+  bool manual = 6;
+  optional AgentSchedule schedule = 7;
+  repeated string rules = 8;
+  repeated AgentArgDef args = 9;
+  optional string next_fire = 10;
+  bool spawn_per_variant = 11;
+  repeated string skills = 12;
+}

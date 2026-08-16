@@ -1,0 +1,11 @@
+syntax = "proto3";
+package modula.v1;
+
+// Metadata seam for future tenant/account/node routing. Declared but not
+// enforced in the local-IPC phase; clients may omit it entirely.
+message RequestMeta {
+  optional string tenant_id = 1;
+  optional string account_id = 2;
+  optional string request_id = 3;
+  optional string node_id = 4;
+}

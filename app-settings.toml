@@ -1,0 +1,10 @@
+# Build-time settings, NOT user-facing runtime settings (those live in the DB).
+# Read by src-tauri/build.rs and baked into the binary as env! constants for the
+# Rust updater (src/update.rs).
+
+[update]
+# How often the updater polls for a newer release, in seconds.
+check_interval_secs = 21600 # 6h
+
+# The GitHub repo whose Releases host `latest.json`.
+repo = "modula-sh/modula"

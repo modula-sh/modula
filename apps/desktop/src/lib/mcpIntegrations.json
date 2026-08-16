@@ -1,0 +1,68 @@
+[
+  {
+    "id": "atlassian",
+    "label": "Atlassian",
+    "color": "#2684FF",
+    "pattern": "atlassian\\.com"
+  },
+  {
+    "id": "linear",
+    "label": "Linear",
+    "color": "#5E6AD2",
+    "pattern": "linear\\.app"
+  },
+  {
+    "id": "github",
+    "label": "GitHub",
+    "color": "#181717",
+    "pattern": "github\\.com|githubcopilot\\.com"
+  },
+  {
+    "id": "notion",
+    "label": "Notion",
+    "color": "#000000",
+    "pattern": "notion\\.(com|so)"
+  },
+  {
+    "id": "slack",
+    "label": "Slack",
+    "color": "#4A154B",
+    "pattern": "slack\\.com"
+  },
+  {
+    "id": "sentry",
+    "label": "Sentry",
+    "color": "#362D59",
+    "pattern": "sentry\\.(io|dev)"
+  },
+  {
+    "id": "stripe",
+    "label": "Stripe",
+    "color": "#635BFF",
+    "pattern": "stripe\\.com"
+  },
+  {
+    "id": "cloudflare",
+    "label": "Cloudflare",
+    "color": "#F38020",
+    "pattern": "cloudflare\\.com"
+  },
+  {
+    "id": "supabase",
+    "label": "Supabase",
+    "color": "#3FCF8E",
+    "pattern": "supabase\\.(com|co|io)"
+  },
+  {
+    "id": "vercel",
+    "label": "Vercel",
+    "color": "#000000",
+    "pattern": "vercel\\.(app|com)"
+  },
+  {
+    "id": "figma",
+    "label": "Figma",
+    "color": "#F24E1E",
+    "pattern": "figma\\.com"
+  }
+]

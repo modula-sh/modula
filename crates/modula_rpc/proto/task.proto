@@ -1,0 +1,199 @@
+syntax = "proto3";
+package modula.v1;
+
+import "google/protobuf/struct.proto";
+
+// TaskService covers task CRUD, reset, and per-task agent-settings.
+service TaskService {
+  rpc List(ListTasksRequest) returns (ListTasksResponse);
+  // Internal create — generates the auto display id (e.g. "MOD-001").
+  rpc Create(CreateTaskRequest) returns (CreateTaskResponse);
+  // External upsert — caller supplies external_id + source (jira/linear/github).
+  rpc Upsert(UpsertTaskRequest) returns (UpsertTaskResponse);
+  rpc Update(UpdateTaskRequest) returns (UpdateTaskResponse);
+  rpc Delete(DeleteTaskRequest) returns (DeleteTaskResponse);
+  rpc Reset(ResetTaskRequest) returns (ResetTaskResponse);
+  rpc ListAgentSettings(ListAgentSettingsRequest) returns (ListAgentSettingsResponse);
+  rpc SetAgentSettings(SetAgentSettingsRequest) returns (TaskAgentSetting);
+  rpc DeleteAgentSettings(DeleteAgentSettingsRequest) returns (DeleteAgentSettingsResponse);
+}
+
+// VariantService manages the variants of a task.
+service VariantService {
+  rpc Create(CreateVariantsRequest) returns (CreateVariantsResponse);
+  rpc Update(UpdateVariantRequest) returns (UpdateVariantResponse);
+}
+
+// ---- domain messages -------------------------------------------------------
+
+message Variant {
+  string id = 1;
+  optional string status = 2;
+  int64 position = 3;
+}
+
+message TaskLabel {
+  // type: labels attached to tasks are always task-kind.
+  reserved 2;
+  reserved "type";
+  string id = 1;
+  string name = 3;
+}
+
+message Task {
+  string id = 1;
+  optional string external_id = 2;
+  string title = 3;
+  string source = 4;
+  optional string status = 5;
+  // schemaless external metadata; may be a large JSON object
+  google.protobuf.Struct source_data = 6;
+  optional string url = 7;
+  optional bool approved = 8;
+  string description = 9;
+  optional int64 max_variants = 10;
+  optional bool worktree = 11;
+  optional string synced_at = 12;
+  optional string created_at = 13;
+  repeated Variant variants = 14;
+  repeated TaskLabel labels = 15;
+}
+
+// ---- TaskService requests/responses ----------------------------------------
+
+message ListTasksRequest {
+  string workspace_id = 1;
+}
+message ListTasksResponse {
+  repeated Task tasks = 1;
+}
+
+message CreateTaskRequest {
+  string workspace_id = 1;
+  string title = 2;
+  optional string description = 3;
+  optional bool approved = 4;
+  optional int64 max_variants = 5;
+  optional bool worktree = 6;
+  google.protobuf.Struct source_data = 7;
+}
+message CreateTaskResponse {
+  string id = 1;
+  string external_id = 2;
+}
+
+message UpsertTaskRequest {
+  string workspace_id = 1;
+  string external_id = 2;
+  string source = 3;
+  string title = 4;
+  optional string description = 5;
+  google.protobuf.Struct source_data = 6;
+  optional string status = 7;
+  optional string url = 8;
+  optional string synced_at = 9;
+  optional bool approved = 10;
+  optional int64 max_variants = 11;
+  optional bool worktree = 12;
+}
+message UpsertTaskResponse {
+  string id = 1;
+  string external_id = 2;
+  // "created" or "updated"
+  string upserted = 3;
+}
+
+// Only set the fields you want to change; absent fields are unchanged.
+message UpdateTaskRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  optional bool approved = 3;
+  optional int64 max_variants = 4;
+  optional bool worktree = 5;
+  optional string description = 6;
+  optional string title = 7;
+}
+message UpdateTaskResponse {
+  string id = 1;
+}
+
+message DeleteTaskRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+}
+message DeleteTaskResponse {
+  string id = 1;
+}
+
+message ResetTaskRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+}
+message ResetTaskResponse {
+  string task_id = 1;
+  repeated string files = 2;
+  repeated string errors = 3;
+}
+
+// ---- agent-settings sub-resource ------------------------------------------
+
+message TaskAgentSetting {
+  string agent_id = 1;
+  int64 loop_amount = 2;
+}
+
+message ListAgentSettingsRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+}
+message ListAgentSettingsResponse {
+  repeated TaskAgentSetting settings = 1;
+}
+
+message SetAgentSettingsRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string agent_id = 3;
+  int64 loop_amount = 4;
+}
+
+message DeleteAgentSettingsRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string agent_id = 3;
+}
+message DeleteAgentSettingsResponse {
+  bool ok = 1;
+}
+
+// ---- VariantService requests/responses -------------------------------------
+
+message CreateVariantsRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  uint32 count = 3;
+}
+message CreatedVariant {
+  string id = 1;
+  int64 position = 2;
+}
+message CreateVariantsResponse {
+  string task_id = 1;
+  repeated CreatedVariant created = 2;
+}
+
+// Set exactly one of `status` or `action` (mutually exclusive; server validates).
+message UpdateVariantRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string variant_id = 3;
+  // Direct status transition (e.g. "in_progress", "ready_for_review").
+  optional string status = 4;
+  // Named action: "accept" → "accepted", "rework" → "rework".
+  optional string action = 5;
+}
+message UpdateVariantResponse {
+  string task_id = 1;
+  string variant_id = 2;
+  string status = 3;
+}

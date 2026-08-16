@@ -1,0 +1,30 @@
+syntax = "proto3";
+package modula.v1;
+
+// SnapshotService delivers the full assembled workspace state. The snapshot
+// document is large; SnapshotService.Get raises its message-size limits.
+// SnapshotService.Stream chunks the same payload for size-safe delivery.
+// Live liveness updates come from EventService.Watch, not snapshot polling.
+service SnapshotService {
+  // Unary fetch of the full workspace snapshot JSON.
+  rpc Get(GetSnapshotRequest) returns (GetSnapshotResponse);
+  // Same payload delivered as a chunked server stream (size-safe).
+  rpc Stream(StreamSnapshotRequest) returns (stream SnapshotChunk);
+}
+
+message GetSnapshotRequest {
+  string workspace_id = 1;
+}
+// The snapshot document is a large JSON blob assembled from tasks, roadmap,
+// agents, runs, config, and conversations. It is delivered as bytes here;
+// deserialization is left to the client.
+message GetSnapshotResponse {
+  bytes snapshot_json = 1;
+}
+
+message StreamSnapshotRequest {
+  string workspace_id = 1;
+}
+message SnapshotChunk {
+  bytes data = 1;
+}

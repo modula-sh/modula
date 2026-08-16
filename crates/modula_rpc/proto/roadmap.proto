@@ -1,0 +1,38 @@
+syntax = "proto3";
+package modula.v1;
+
+service RoadmapService {
+  rpc List(ListRoadmapRequest) returns (ListRoadmapResponse);
+  // Upsert: creates a roadmap row if absent, patches if present.
+  rpc SetStatus(SetRoadmapStatusRequest) returns (SetRoadmapStatusResponse);
+}
+
+message RoadmapEntry {
+  string task_id = 1;
+  // Pipeline status key (config-driven string, not a proto enum).
+  string status = 2;
+  repeated string depends_on = 3;
+  string notes = 4;
+  int64 position = 5;
+}
+
+message ListRoadmapRequest {
+  string workspace_id = 1;
+}
+message ListRoadmapResponse {
+  repeated RoadmapEntry entries = 1;
+}
+
+message SetRoadmapStatusRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  // Must be a valid pipeline status key for this workspace.
+  string status = 3;
+  repeated string depends_on = 4;
+  optional string notes = 5;
+}
+message SetRoadmapStatusResponse {
+  string task_id = 1;
+  string status = 2;
+  bool created = 3;
+}

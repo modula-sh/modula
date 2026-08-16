@@ -1,0 +1,178 @@
+syntax = "proto3";
+package modula.v1;
+
+import "google/protobuf/struct.proto";
+
+service EventService {
+  // List recent events from the DB (bounded, read-only).
+  rpc List(ListEventsRequest) returns (ListEventsResponse);
+  // Debug/replay only: manually emit an event.
+  rpc Create(CreateEventRequest) returns (CreateEventResponse);
+  // Live workspace event watch stream. Delivers typed events as mutations occur.
+  // Clients subscribe once and receive all workspace changes without polling.
+  rpc Watch(WatchEventsRequest) returns (stream WorkspaceEvent);
+  // Bounded historical backfill (unary) — call before subscribing Watch to
+  // catch events that occurred before the stream was established.
+  rpc ListRecentEvents(ListRecentEventsRequest) returns (ListRecentEventsResponse);
+}
+
+// ---- DB event row (List/Create) -------------------------------------------
+
+message Event {
+  int64 id = 1;
+  string type = 2;
+  google.protobuf.Struct data = 3;
+  bool processed = 4;
+  string created_at = 5;
+}
+
+message ListEventsRequest {
+  string workspace_id = 1;
+}
+message ListEventsResponse {
+  repeated Event events = 1;
+}
+
+message CreateEventRequest {
+  string workspace_id = 1;
+  string type = 2;
+  google.protobuf.Struct data = 3;
+}
+message CreateEventResponse {
+  int64 id = 1;
+}
+
+// ---- Watch stream ---------------------------------------------------------
+
+message WatchEventsRequest {
+  string workspace_id = 1;
+  // Resume from a specific sequence number (0 = start from now).
+  int64 after_seq = 2;
+}
+
+// Typed workspace event; oneof carries the specific event payload.
+// seq is a monotonically increasing sequence number for ordering and reattach.
+message WorkspaceEvent {
+  int64 seq = 1;
+  string workspace_id = 2;
+  string created_at = 3;
+  oneof event {
+    TaskCreatedEvent task_created = 4;
+    TaskUpdatedEvent task_updated = 5;
+    TaskDeletedEvent task_deleted = 6;
+    TaskResetEvent task_reset = 7;
+    VariantUpdatedEvent variant_updated = 8;
+    ConversationCreatedEvent conversation_created = 9;
+    ConversationUpdatedEvent conversation_updated = 10;
+    ConversationDeletedEvent conversation_deleted = 11;
+    ThreadAppendedEvent thread_appended = 12;
+    ThreadUpdatedEvent thread_updated = 13;
+    ThreadDeletedEvent thread_deleted = 14;
+    AgentRunEvent agent_run = 15;
+    AgentCreatedEvent agent_created = 16;
+    AgentUpdatedEvent agent_updated = 17;
+    AgentDeletedEvent agent_deleted = 18;
+    ProviderCreatedEvent provider_created = 19;
+    ProviderUpdatedEvent provider_updated = 20;
+    ProviderDeletedEvent provider_deleted = 21;
+  }
+}
+
+message TaskCreatedEvent {
+  string task_id = 1;
+  string source = 2;
+  optional bool approved = 3;
+}
+
+// Changed-fields payload is schemaless (variable set of field names → values).
+message TaskUpdatedEvent {
+  string task_id = 1;
+  google.protobuf.Struct changed_fields = 2;
+  // Shortcut for the common roadmap-status change case.
+  optional string pipeline_status = 3;
+}
+
+message TaskDeletedEvent {
+  string task_id = 1;
+}
+
+message TaskResetEvent {
+  string task_id = 1;
+}
+
+message VariantUpdatedEvent {
+  string task_id = 1;
+  string variant_id = 2;
+  string status = 3;
+}
+
+message ConversationCreatedEvent {
+  string conversation_id = 1;
+}
+message ConversationUpdatedEvent {
+  string conversation_id = 1;
+}
+message ConversationDeletedEvent {
+  string conversation_id = 1;
+}
+
+message ThreadAppendedEvent {
+  string task_id = 1;
+  optional string variant_id = 2;
+  string kind = 3;
+  string author = 4;
+  optional string verdict = 5;
+}
+
+message ThreadUpdatedEvent {
+  string task_id = 1;
+  optional string variant_id = 2;
+  int64 entry_id = 3;
+  string author = 4;
+}
+
+message ThreadDeletedEvent {
+  string task_id = 1;
+  optional string variant_id = 2;
+  int64 entry_id = 3;
+}
+
+message AgentRunEvent {
+  string agent_id = 1;
+  string agent_name = 2;
+  string run_status = 3;
+  optional string task_id = 4;
+  optional string variant_id = 5;
+}
+
+message AgentCreatedEvent {
+  string agent_id = 1;
+}
+message AgentUpdatedEvent {
+  string agent_id = 1;
+}
+message AgentDeletedEvent {
+  string agent_id = 1;
+}
+
+message ProviderCreatedEvent {
+  string provider_id = 1;
+}
+message ProviderUpdatedEvent {
+  string provider_id = 1;
+}
+message ProviderDeletedEvent {
+  string provider_id = 1;
+}
+
+// ---- Recent events backfill -----------------------------------------------
+
+message ListRecentEventsRequest {
+  string workspace_id = 1;
+  int64 limit = 2;
+  // Return events with seq > after_seq (0 = return all recent).
+  int64 after_seq = 3;
+}
+message ListRecentEventsResponse {
+  repeated WorkspaceEvent events = 1;
+}

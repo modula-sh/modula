@@ -1,0 +1,30 @@
+pub mod agents;
+pub mod branches;
+pub mod config;
+pub mod conversations;
+pub mod diff;
+pub mod diffs;
+pub mod dispatcher;
+pub mod events;
+pub mod integrations;
+pub mod labels;
+pub mod logs;
+pub mod loop_registry;
+pub mod mcp_config;
+pub mod pr;
+pub mod processes;
+pub mod projects;
+pub mod providers;
+pub mod runs;
+pub mod scheduler;
+pub mod snapshot;
+pub mod spawn;
+pub mod tasks;
+pub mod threads;
+pub mod tools;
+pub mod usage;
+pub mod wiki;
+pub mod workspaces;
+
+#[cfg(test)]
+pub mod testkit;

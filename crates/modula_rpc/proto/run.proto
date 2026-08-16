@@ -1,0 +1,72 @@
+syntax = "proto3";
+package modula.v1;
+
+import "google/protobuf/struct.proto";
+
+service RunService {
+  rpc ListRecent(ListRecentRunsRequest) returns (ListRecentRunsResponse);
+  rpc ListForAgent(ListRunsForAgentRequest) returns (ListRunsForAgentResponse);
+  // Live run/agent status watch stream (spawn → running → exited).
+  rpc WatchStatus(WatchRunStatusRequest) returns (stream RunStatus);
+}
+
+enum RunPhase {
+  RUN_PHASE_UNSPECIFIED = 0;
+  RUN_PHASE_SPAWNED = 1;
+  RUN_PHASE_RUNNING = 2;
+  RUN_PHASE_EXITED = 3;
+}
+
+// Streamed by WatchStatus; also embedded in RunStatusEvent for EventService.
+message RunStatus {
+  string run_id = 1;
+  string agent_id = 2;
+  string agent_name = 3;
+  RunPhase phase = 4;
+  optional string task_id = 5;
+  optional string variant_id = 6;
+  int64 loop_iter = 7;
+  int64 loop_total = 8;
+  string updated_at = 9;
+}
+
+message AgentRun {
+  int64 id = 1;
+  string agent_id = 2;
+  string agent_name = 3;
+  optional int64 event_id = 4;
+  string status = 5;
+  int64 attempts = 6;
+  // Schemaless run data (args, trigger, etc.)
+  google.protobuf.Struct data = 7;
+  optional string task_id = 8;
+  optional string variant_id = 9;
+  optional string started_at = 10;
+  optional string finished_at = 11;
+  string created_at = 12;
+  optional string log_path = 13;
+  int64 loop_iter = 14;
+  int64 loop_total = 15;
+  optional int64 loop_group_id = 16;
+}
+
+message ListRecentRunsRequest {
+  string workspace_id = 1;
+}
+message ListRecentRunsResponse {
+  repeated AgentRun runs = 1;
+}
+
+message ListRunsForAgentRequest {
+  string workspace_id = 1;
+  string agent_id = 2;
+}
+message ListRunsForAgentResponse {
+  repeated AgentRun runs = 1;
+}
+
+message WatchRunStatusRequest {
+  string workspace_id = 1;
+  // Optionally filter to a specific agent.
+  optional string agent_id = 2;
+}

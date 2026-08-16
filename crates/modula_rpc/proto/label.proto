@@ -1,0 +1,55 @@
+syntax = "proto3";
+package modula.v1;
+
+service LabelService {
+  rpc List(ListLabelsRequest) returns (ListLabelsResponse);
+  // Get-or-create by (type, name); idempotent.
+  rpc Create(CreateLabelRequest) returns (CreateLabelResponse);
+  rpc AttachToTask(AttachLabelRequest) returns (AttachLabelResponse);
+  rpc DetachFromTask(DetachLabelRequest) returns (DetachLabelResponse);
+}
+
+message Label {
+  // type: List/Create already take the kind as a request filter.
+  reserved 2;
+  reserved "type";
+  string id = 1;
+  string name = 3;
+}
+
+message ListLabelsRequest {
+  string workspace_id = 1;
+  // Defaults to "task" when empty.
+  string type = 2;
+}
+message ListLabelsResponse {
+  repeated Label labels = 1;
+}
+
+message CreateLabelRequest {
+  string workspace_id = 1;
+  string name = 2;
+  // Defaults to "task" when empty.
+  string type = 3;
+}
+message CreateLabelResponse {
+  string id = 1;
+}
+
+message AttachLabelRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string label_id = 3;
+}
+message AttachLabelResponse {
+  bool ok = 1;
+}
+
+message DetachLabelRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string label_id = 3;
+}
+message DetachLabelResponse {
+  bool ok = 1;
+}

@@ -1,0 +1,31 @@
+syntax = "proto3";
+package modula.v1;
+
+// DiffService provides per-variant diffs (worktree vs base) and PR info.
+// Diffs can be large; Detail uses a chunked server stream to avoid the 4 MB cap.
+service DiffService {
+  // Chunked variant diff (JSON). Clients concatenate chunks.
+  rpc Detail(GetVariantDiffRequest) returns (stream DiffResponseChunk);
+  // PR info for a variant (unary; typically small).
+  rpc GetPr(GetVariantPrRequest) returns (GetVariantPrResponse);
+}
+
+message GetVariantDiffRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string variant_id = 3;
+}
+
+message DiffResponseChunk {
+  bytes data = 1;
+}
+
+message GetVariantPrRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string variant_id = 3;
+}
+message GetVariantPrResponse {
+  // PR info as JSON bytes (schemaless: url, title, state, etc.).
+  bytes pr_json = 1;
+}

@@ -1,0 +1,87 @@
+syntax = "proto3";
+package modula.v1;
+
+import "google/protobuf/struct.proto";
+
+// IntegrationService manages per-workspace external-service connections and
+// proxies search/fetch against them. Importing an external item as a task is
+// composed client-side with TaskService.Upsert — integrations stay
+// task-agnostic.
+service IntegrationService {
+  rpc List(ListIntegrationsRequest) returns (ListIntegrationsResponse);
+  // Health-checks the connection before persisting the config. Not named
+  // `Connect`: that would collide with tonic's generated client constructor.
+  rpc ConnectIntegration(ConnectIntegrationRequest) returns (ConnectIntegrationResponse);
+  rpc Delete(DeleteIntegrationRequest) returns (DeleteIntegrationResponse);
+  rpc Search(SearchIntegrationRequest) returns (SearchIntegrationResponse);
+  rpc Fetch(FetchIntegrationItemRequest) returns (ExternalItem);
+  // Repositories selectable for the integration (github only).
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+}
+
+message Integration {
+  // One of the fixed integration ids: github, jira, linear.
+  string id = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// An item in an external system; `key` is its human identifier there
+// (PROJ-123, owner/repo#42, ENG-123).
+message ExternalItem {
+  string key = 1;
+  string title = 2;
+  string description = 3;
+  string url = 4;
+  string state = 5;
+}
+
+message ListIntegrationsRequest {
+  string workspace_id = 1;
+}
+message ListIntegrationsResponse {
+  repeated Integration integrations = 1;
+}
+
+message ConnectIntegrationRequest {
+  string workspace_id = 1;
+  string id = 2;
+  google.protobuf.Struct data = 3;
+}
+message ConnectIntegrationResponse {
+  bool ok = 1;
+}
+
+message DeleteIntegrationRequest {
+  string workspace_id = 1;
+  string id = 2;
+}
+message DeleteIntegrationResponse {
+  bool ok = 1;
+}
+
+message SearchIntegrationRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string query = 3;
+  // Per-request config merged over the stored data (e.g. github `repo`).
+  google.protobuf.Struct params = 4;
+}
+message SearchIntegrationResponse {
+  repeated ExternalItem items = 1;
+}
+
+message FetchIntegrationItemRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string key = 3;
+  google.protobuf.Struct params = 4;
+}
+
+message ListReposRequest {
+  string workspace_id = 1;
+  string id = 2;
+}
+message ListReposResponse {
+  // `owner/repo` names.
+  repeated string repos = 1;
+}

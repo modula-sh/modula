@@ -1,0 +1,23 @@
+[package]
+name = "modula-engine-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+modula-platform.workspace = true
+modula-rpc.workspace = true
+tonic.workspace = true
+tower.workspace = true
+tokio.workspace = true
+hyper-util.workspace = true
+tokio-stream.workspace = true
+async-stream.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

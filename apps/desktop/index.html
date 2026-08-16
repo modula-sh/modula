@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        var saved = null;
+        try { saved = localStorage.getItem('modula.theme'); } catch (_) {}
+        var theme;
+        if (saved === 'light' || saved === 'dark') {
+          theme = saved;
+        } else {
+          var prefersDark = false;
+          try { prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (_) {}
+          theme = prefersDark ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <title>MODULA</title>
+  </head>
+  <body class="font-mono text-sm antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

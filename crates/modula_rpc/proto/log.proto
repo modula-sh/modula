@@ -1,0 +1,20 @@
+syntax = "proto3";
+package modula.v1;
+
+// LogService streams agent run log files line by line.
+service LogService {
+  // Drain existing lines then tail-follow; stream ends when the client
+  // disconnects (detach) — the run is not affected.
+  rpc Stream(StreamLogRequest) returns (stream LogChunk);
+}
+
+message StreamLogRequest {
+  string workspace_id = 1;
+  // Log file name (basename, e.g. "run-<id>.log").
+  string log_name = 2;
+}
+
+message LogChunk {
+  // One or more log lines (newline-terminated).
+  bytes data = 1;
+}

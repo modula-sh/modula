@@ -1,0 +1,21 @@
+[package]
+name = "modula-e2e"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# This crate contains only integration tests under tests/. The harness lives
+# in `crates/modula_test_support`; specs depend on it as a normal dev-dependency.
+
+[dev-dependencies]
+modula-test-support = { path = "../../crates/modula_test_support" }
+modula-rpc = { path = "../../crates/modula_rpc" }
+anyhow.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tokio.workspace = true
+tempfile.workspace = true
+futures.workspace = true
+tonic.workspace = true
