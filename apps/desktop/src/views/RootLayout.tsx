@@ -23,6 +23,7 @@ import { useSnapshotQuery } from "../queries/snapshot";
 import { Header } from "./Header";
 import { Onboarding } from "./Onboarding";
 import { Sidebar } from "./Sidebar";
+import { Titlebar } from "./Titlebar";
 
 /** Top-level layout route. Owns the long-lived state (workspace + SSE stream)
  * and exposes it to descendants via context. Always renders the Header and
@@ -116,65 +117,62 @@ function RootLayoutBody({
   const { snap } = useSnapshot();
   const location = useLocation();
   const { notifyRegionWidth } = useSidebarContext();
-  const regionRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Scroll to top on route change so deep-scrolled pages don't carry over.
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
-  // Auto-collapse the nav off the sidebar+content region. It wraps the nav and
-  // content but not the right drawers, so as a flex-1 sibling of those drawers
-  // its width is exactly window − drawers — and independent of the nav's own
-  // width, so collapsing never feeds back into the measurement.
-  const ready = !!snap;
+  // Auto-collapse the nav off the nav+content width — window minus the right
+  // drawers. Nav and content are measured separately and summed because the
+  // drawers now live inside the content card; the sum stays constant as the nav
+  // animates open or shut, so collapsing never feeds back into the measurement.
   useEffect(() => {
-    const region = regionRef.current;
-    if (!region) return;
-    const measure = () => notifyRegionWidth(region.offsetWidth);
+    const nav = navRef.current;
+    const content = contentRef.current;
+    if (!nav || !content) return;
+    const measure = () => notifyRegionWidth(nav.offsetWidth + content.offsetWidth);
     const ro = new ResizeObserver(measure);
-    ro.observe(region);
+    ro.observe(nav);
+    ro.observe(content);
     measure();
     return () => ro.disconnect();
-  }, [notifyRegionWidth, ready]);
-
-  if (!snap) {
-    return (
-      <div className="h-screen flex">
-        <Sidebar
-          workspace={workspace}
-          workspaces={workspaces}
-          onSwitchWorkspace={setWorkspace}
-          onRefreshWorkspaces={refreshWorkspaces}
-        />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Header />
-          <div className="flex-1 flex items-center justify-center text-fg-subtle">connecting…</div>
-        </div>
-      </div>
-    );
-  }
+  }, [notifyRegionWidth]);
 
   return (
-    <ModalPortalProvider className="h-screen flex relative">
-      <div ref={regionRef} className="flex-1 flex min-w-0">
+    // Base plate: the title bar and sidebar sit flat on it; the content card is
+    // raised above it, inset from the window's bottom and right edges.
+    <ModalPortalProvider className="h-screen flex flex-col relative bg-chrome">
+      <Titlebar />
+      <div className="flex-1 flex min-h-0 pr-2 pb-2">
         <Sidebar
+          ref={navRef}
           workspace={workspace}
           workspaces={workspaces}
           onSwitchWorkspace={setWorkspace}
           onRefreshWorkspaces={refreshWorkspaces}
         />
-        <HeaderSlotProvider>
-          <div className="flex-1 flex flex-col min-w-0">
-            <Header />
-            <div className="flex-1 flex flex-col min-h-0 relative">
-              <Outlet />
+        <div className="flex-1 flex min-w-0 rounded-xl border border-edge bg-bg shadow-content overflow-hidden">
+          <HeaderSlotProvider>
+            <div ref={contentRef} className="flex-1 flex flex-col min-w-0">
+              <Header />
+              <div className="flex-1 flex flex-col min-h-0 relative">
+                {snap ? (
+                  <Outlet />
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-fg-subtle">
+                    connecting…
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </HeaderSlotProvider>
+          </HeaderSlotProvider>
+          <ChatRightSidebarHost />
+          <RightPanel />
+        </div>
       </div>
-      <ChatRightSidebarHost />
-      <RightPanel />
     </ModalPortalProvider>
   );
 }

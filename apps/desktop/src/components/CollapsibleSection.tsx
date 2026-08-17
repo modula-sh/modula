@@ -14,7 +14,7 @@ export function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border border-border rounded-lg shadow-section">
+    <div className="border border-edge rounded-lg shadow-section">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

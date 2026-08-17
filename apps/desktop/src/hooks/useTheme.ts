@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { syncWindowChrome } from "../tauri/windowChrome";
+import { syncWindowChrome } from "../tauri/window";
 
 export type Theme = "light" | "dark";
 

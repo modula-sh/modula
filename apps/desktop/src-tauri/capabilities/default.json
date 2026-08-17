@@ -8,6 +8,9 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-background-color",
     "core:window:allow-set-theme",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
     {
       "identifier": "shell:allow-open",
       "allow": [{ "url": "https://**" }, { "url": "http://**" }, { "url": "mailto:**" }]

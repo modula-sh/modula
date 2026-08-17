@@ -33,12 +33,12 @@ export function UsageView() {
 
 function RunList({ records }: { records: UsageRecord[] | null }) {
   return (
-    <section className="flex flex-col overflow-hidden border border-border rounded">
-      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-border">
+    <section className="flex flex-col overflow-hidden border border-edge rounded">
+      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-edge">
         <span className="text-fg-muted text-xs uppercase tracking-wide">Runs</span>
         <span className="text-fg-subtle text-xs">({records?.length ?? "…"})</span>
       </div>
-      <div className="divide-y divide-border overflow-y-auto flex-1">
+      <div className="divide-y divide-edge overflow-y-auto flex-1">
         {records === null && (
           <div className="px-3 py-4">
             <Spinner />
@@ -77,8 +77,8 @@ function WorkspaceCard({ records }: { records: UsageRecord[] | null }) {
   const loading = records === null;
 
   return (
-    <section className="flex flex-col overflow-hidden border border-border rounded">
-      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-border">
+    <section className="flex flex-col overflow-hidden border border-edge rounded">
+      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-edge">
         <span className="text-fg-muted text-xs uppercase tracking-wide">Workspace</span>
       </div>
       <div className="overflow-y-auto flex-1 px-3 py-3">
@@ -111,8 +111,8 @@ function AgentsCard({ records }: { records: UsageRecord[] | null }) {
   const maxCost = stats.byAgent[0]?.cost ?? 0;
 
   return (
-    <section className="flex flex-col overflow-hidden border border-border rounded">
-      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-border">
+    <section className="flex flex-col overflow-hidden border border-edge rounded">
+      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-edge">
         <span className="text-fg-muted text-xs uppercase tracking-wide">By agent</span>
       </div>
       <div className="overflow-y-auto flex-1 px-3 py-3">

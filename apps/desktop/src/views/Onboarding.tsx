@@ -9,6 +9,7 @@ import {
 } from "../components/onboarding/LicenseAgreement";
 import { RequiredTools } from "../components/onboarding/RequiredTools";
 import { WorkspaceStep } from "../components/onboarding/WorkspaceStep";
+import { WindowControls } from "../components/WindowControls";
 import type { useWorkspaceState } from "../hooks/useWorkspaceState";
 import { useLocalStorage } from "../lib/useLocalStorage";
 
@@ -76,8 +77,14 @@ export function Onboarding({
   }
 
   return (
-    <main className="h-screen w-screen flex flex-col items-center justify-center gap-6 bg-bg text-fg">
-      {content}
+    <main className="h-screen w-screen flex flex-col bg-bg text-fg">
+      {/* Onboarding runs before the layout (and its Titlebar) mounts, so it
+          carries the window buttons itself — an undecorated window has no other
+          way to close. */}
+      <div className="shrink-0 flex justify-end">
+        <WindowControls />
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center gap-6">{content}</div>
     </main>
   );
 }

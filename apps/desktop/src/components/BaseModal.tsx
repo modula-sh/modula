@@ -38,7 +38,7 @@ export function BaseModal({
       }}
     >
       <div
-        className={`bg-bg border border-border rounded-xl shadow-xl max-w-[90vw] max-h-[90vh] overflow-y-auto p-4 flex flex-col gap-3 font-inter ${panelClassName}`}
+        className={`bg-bg border border-edge rounded-xl shadow-xl max-w-[90vw] max-h-[90vh] overflow-y-auto p-4 flex flex-col gap-3 font-inter ${panelClassName}`}
       >
         {children}
       </div>
