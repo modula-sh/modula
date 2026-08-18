@@ -138,7 +138,7 @@ function SidebarItem({
         </div>
       );
     }
-    const rowColor = hasActiveChild ? "text-fg" : "text-fg-subtle hover:text-fg";
+    const rowColor = hasActiveChild ? "text-fg" : "text-fg-muted hover:text-fg";
     return (
       <div>
         {sidebarOpen ? (
@@ -201,9 +201,7 @@ function SidebarItem({
       onContextMenu={item.onContextMenu}
       className={({ isActive }) =>
         `${rowLayout} py-2 rounded transition-colors ` +
-        (isActive
-          ? "bg-surface-2/50 text-fg"
-          : "text-fg-subtle hover:text-fg hover:bg-surface-2/30")
+        (isActive ? "bg-surface-2/50 text-fg" : "text-fg-muted hover:text-fg hover:bg-surface-2/30")
       }
     >
       {item.icon && <span className="shrink-0">{item.icon}</span>}
