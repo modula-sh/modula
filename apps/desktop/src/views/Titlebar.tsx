@@ -14,9 +14,12 @@ import { windowButtons } from "../tauri/window";
  * WindowControls' buttons, useTitlebarDrag's grab zone, and (on macOS) the
  * traffic-light offset in tauri.conf.json.
  *
- * Only the ends are platform-specific — macOS leaves a gutter for the overlay
- * traffic lights, Windows fills the right end with WindowControls, and Linux
- * keeps its native decorations above this row. */
+ * Only the ends are platform-specific. macOS leaves a gutter for the overlay
+ * traffic lights: they run x16–68, and the gutter clears them by the same ink-
+ * to-ink whitespace the icon buttons leave between each other — wider than the
+ * box gap, since the lights are solid circles where a chevron is a thin stroke
+ * floating in its box. Windows and Linux run undecorated, so WindowControls
+ * fills the right end instead. */
 export function Titlebar() {
   const { open, toggle } = useSidebarContext();
   const navigate = useNavigate();
@@ -32,7 +35,7 @@ export function Titlebar() {
     // Above the modal overlay (z-50), so the window buttons stay live while a
     // modal is open — as the OS-drawn macOS traffic lights already do.
     <header
-      className={`relative z-[60] shrink-0 h-[35px] flex items-center gap-1 font-inter select-none ${windowButtons() === "system" ? "pl-[78px]" : "pl-2"}`}
+      className={`relative z-[60] shrink-0 h-[35px] flex items-center gap-1 font-inter select-none ${windowButtons() === "system" ? "pl-[84px]" : "pl-2"}`}
     >
       <IconButton onClick={() => navigate(-1)} disabled={historyIdx <= 0} title="Back">
         <ChevronLeft size={16} />
