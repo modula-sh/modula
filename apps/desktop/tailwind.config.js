@@ -10,7 +10,6 @@ export default {
       boxShadow: {
         panel: "var(--shadow-panel)",
         content: "var(--shadow-content)",
-        section: "var(--shadow-section)",
         card: "var(--shadow-card)",
         popover: "var(--shadow-popover)",
       },

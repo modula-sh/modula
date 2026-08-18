@@ -69,7 +69,7 @@ export function TaskDetailPage() {
   const roadmap = snap.roadmap.find((r) => r.task === task.id);
 
   return (
-    <main className="flex-1 p-3 overflow-hidden">
+    <main className="flex-1 overflow-hidden">
       <TaskDetail
         task={task}
         roadmap={roadmap}

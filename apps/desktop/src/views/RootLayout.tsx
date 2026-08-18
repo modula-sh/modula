@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ChatRightSidebar } from "../components/chat/ChatRightSidebar";
 import { RightPanel } from "../components/right-panel/RightPanel";
+import { AsideCardProvider, AsideCardTarget } from "../contexts/AsideCardContext";
 import { ChatSidebarProvider, useChatSidebar } from "../contexts/ChatSidebarContext";
 import { ConversationStreamProvider } from "../contexts/ConversationStreamProvider";
 import { HeaderSlotProvider } from "../contexts/HeaderSlotContext";
@@ -125,10 +126,8 @@ function RootLayoutBody({
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
-  // Auto-collapse the nav off the nav+content width — window minus the right
-  // drawers. Nav and content are measured separately and summed because the
-  // drawers now live inside the content card; the sum stays constant as the nav
-  // animates open or shut, so collapsing never feeds back into the measurement.
+  // Nav + content = window minus the drawers and aside card. Summing the two
+  // keeps it constant as the nav animates, so collapsing never feeds back in.
   useEffect(() => {
     const nav = navRef.current;
     const content = contentRef.current;
@@ -142,37 +141,39 @@ function RootLayoutBody({
   }, [notifyRegionWidth]);
 
   return (
-    // Base plate: the title bar and sidebar sit flat on it; the content card is
-    // raised above it, inset from the window's bottom and right edges.
+    // Base plate: title bar and sidebar sit flat on it, the content card above it.
     <ModalPortalProvider className="h-screen flex flex-col relative bg-chrome">
       <Titlebar />
-      <div className="flex-1 flex min-h-0 pr-2 pb-2">
-        <Sidebar
-          ref={navRef}
-          workspace={workspace}
-          workspaces={workspaces}
-          onSwitchWorkspace={setWorkspace}
-          onRefreshWorkspaces={refreshWorkspaces}
-        />
-        <div className="flex-1 flex min-w-0 rounded-xl border border-edge bg-bg shadow-content overflow-hidden">
-          <HeaderSlotProvider>
-            <div ref={contentRef} className="flex-1 flex flex-col min-w-0">
-              <Header />
-              <div className="flex-1 flex flex-col min-h-0 relative">
-                {snap ? (
-                  <Outlet />
-                ) : (
-                  <div className="flex-1 flex items-center justify-center text-fg-subtle">
-                    connecting…
-                  </div>
-                )}
+      <AsideCardProvider>
+        <div className="flex-1 flex min-h-0 pr-2 pb-2">
+          <Sidebar
+            ref={navRef}
+            workspace={workspace}
+            workspaces={workspaces}
+            onSwitchWorkspace={setWorkspace}
+            onRefreshWorkspaces={refreshWorkspaces}
+          />
+          <div className="flex-1 flex min-w-0 rounded-xl border border-edge bg-bg shadow-content overflow-hidden">
+            <HeaderSlotProvider>
+              <div ref={contentRef} className="flex-1 flex flex-col min-w-0">
+                <Header />
+                <div className="flex-1 flex flex-col min-h-0 relative">
+                  {snap ? (
+                    <Outlet />
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-fg-subtle">
+                      connecting…
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </HeaderSlotProvider>
-          <ChatRightSidebarHost />
-          <RightPanel />
+            </HeaderSlotProvider>
+            <ChatRightSidebarHost />
+            <RightPanel />
+          </div>
+          <AsideCardTarget />
         </div>
-      </div>
+      </AsideCardProvider>
     </ModalPortalProvider>
   );
 }

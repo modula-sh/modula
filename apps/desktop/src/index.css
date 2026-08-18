@@ -13,19 +13,16 @@
   --color-chat-input-border: 212 212 216;
   --color-border: 212 212 216;
   --color-border-focus: 113 113 122;
-  /* The single knob for structural chrome: the content card's edge and every
-     divider between the panes docked inside it. Deliberately softer than
-     --color-border, which outlines components (buttons, pills, inputs). */
+  /* Structural chrome — card edges and pane dividers. Softer than
+     --color-border, which outlines components. */
   --color-edge: 231 231 234;
   --color-fg: 24 24 27;
   --color-fg-muted: 82 82 91;
   --color-fg-subtle: 113 113 122;
   --color-overlay: rgb(0 0 0 / 0.6);
   --shadow-panel: 0 2px 11px -4px rgba(0, 0, 0, 0.13);
-  /* The content card is inset from the window rather than lit from above, so
-     no y-offset: an even spill on all four sides. */
+  /* Inset, not lit from above: no y-offset, even spill on all sides. */
   --shadow-content: 0 0 12px -3px rgba(0, 0, 0, 0.1);
-  --shadow-section: 0 1px 4px -2px rgba(0, 0, 0, 0.1);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-popover: 0 4px 20px -4px rgba(0, 0, 0, 0.25);
 }
