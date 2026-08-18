@@ -343,8 +343,7 @@ export function Sidebar({
 
   return (
     <>
-      {/* Transparent: the sidebar reads as part of the base plate the title bar
-          sits on, with the content card raised above both. */}
+      {/* Transparent: reads as part of the base plate the content card sits on. */}
       <aside
         ref={ref}
         id="sidebar"

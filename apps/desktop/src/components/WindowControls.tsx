@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { watchMaximized, windowAction, windowButtons } from "../tauri/window";
 
-// Windows and Linux run undecorated (src-tauri/tauri.{windows,linux}.conf.json),
-// so the app draws its own caption buttons — the counterpart to the macOS
-// traffic lights. Both live in the Titlebar, one at each end. 46px wide is the
-// Windows caption-button width; the height matches the Titlebar row.
+// Caption buttons for the undecorated Windows/Linux window; 46px is the Windows
+// caption width.
 const BUTTON = "w-[46px] h-[35px]";
 
 export function WindowControls() {
@@ -59,7 +57,6 @@ function CaptionButton({
   title: string;
   close?: boolean;
 }) {
-  // Close keeps the platform's red hover so the destructive one reads as such.
   const hover = close ? "hover:bg-red-600 hover:text-white" : "hover:bg-fg/10 hover:text-fg";
   return (
     <button
@@ -74,7 +71,7 @@ function CaptionButton({
   );
 }
 
-/** 12×12 stroked glyph on a half-pixel grid so the 1px strokes stay crisp. */
+/** Half-pixel grid keeps the 1px strokes crisp. */
 function Glyph({ d }: { d: string }) {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">

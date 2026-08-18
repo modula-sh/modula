@@ -78,9 +78,7 @@ export function Onboarding({
 
   return (
     <main className="h-screen w-screen flex flex-col bg-bg text-fg">
-      {/* Onboarding runs before the layout (and its Titlebar) mounts, so it
-          carries the window buttons itself — an undecorated window has no other
-          way to close. */}
+      {/* Onboarding runs before the Titlebar mounts, so it carries the buttons. */}
       <div className="shrink-0 flex justify-end">
         <WindowControls />
       </div>
