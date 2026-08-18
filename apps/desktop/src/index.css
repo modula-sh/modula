@@ -59,8 +59,11 @@
   body {
     @apply h-full overflow-hidden overscroll-none;
   }
+  /* Transparent so the native window effect shows through; the base plate below
+     supplies the tint and the content card stays opaque. */
   body {
-    @apply bg-bg text-fg;
+    @apply text-fg;
+    background: transparent;
   }
   /* Native-app feel: suppress the webview's text-selection popover and the
      touch/force-click callout app-wide so no system context menu can surface

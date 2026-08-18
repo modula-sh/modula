@@ -12,7 +12,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useThemeContext } from "./contexts/ThemeContext";
-import type { Theme } from "./hooks/useTheme";
+import type { ThemeMode } from "./hooks/useTheme";
 import { useSnapshotQuery } from "./queries/snapshot";
 
 type Approved = boolean | null;
@@ -200,7 +200,7 @@ interface ScenePalette {
   taskHex: Record<TaskState, string>;
 }
 
-const PALETTES: Record<Theme, ScenePalette> = {
+const PALETTES: Record<ThemeMode, ScenePalette> = {
   dark: {
     bg: 0x09090b,
     grid: 0x27272a,
@@ -376,7 +376,7 @@ function elapsedShort(iso: string | undefined): string {
 export default function Overview({ workspace }: { workspace: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const snap = useSnapshot(workspace);
-  const { theme } = useThemeContext();
+  const { mode } = useThemeContext();
 
   // Snap held in a ref so the scene-construction effect (which reruns on
   // theme change) can rebuild with the latest data without depending on
@@ -391,7 +391,7 @@ export default function Overview({ workspace }: { workspace: string }) {
     const mount = mountRef.current;
     if (!mount) return;
     while (mount.firstChild) mount.removeChild(mount.firstChild);
-    const palette = PALETTES[theme];
+    const palette = PALETTES[mode];
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -821,7 +821,7 @@ export default function Overview({ workspace }: { workspace: string }) {
       });
       if (mount.contains(canvas)) mount.removeChild(canvas);
     };
-  }, [theme]);
+  }, [mode]);
 
   useEffect(() => {
     if (!snap) return;
@@ -832,13 +832,13 @@ export default function Overview({ workspace }: { workspace: string }) {
   return (
     <main className="flex-1 relative overflow-hidden bg-bg">
       <div ref={mountRef} className="absolute inset-0" />
-      <HUD snap={snap} theme={theme} />
+      <HUD snap={snap} mode={mode} />
     </main>
   );
 }
 
-function HUD({ snap, theme }: { snap: Snapshot | null; theme: Theme }) {
-  const palette = PALETTES[theme];
+function HUD({ snap, mode }: { snap: Snapshot | null; mode: ThemeMode }) {
+  const palette = PALETTES[mode];
   const tasks = snap?.tasks ?? [];
   const roadmap = snap?.roadmap ?? [];
   const agents = snap?.agents ?? [];

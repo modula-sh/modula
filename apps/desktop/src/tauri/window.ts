@@ -1,5 +1,5 @@
 import { platform } from "@tauri-apps/plugin-os";
-import type { Theme } from "../hooks/useTheme";
+import type { ThemeMode } from "../hooks/useTheme";
 
 // Everything the app does to its own native window. All of it needs the same
 // guard: the Tauri APIs throw outside the webview (browser dev mode).
@@ -62,23 +62,21 @@ export async function watchMaximized(onChange: (maximized: boolean) => void): Pr
   }
 }
 
-/** The background color kills the white flash behind the webview during a live
- * resize; setTheme drives the native appearance. */
-export async function syncWindowChrome(theme: Theme): Promise<void> {
+/** Native side of the theme. No background color is set: the window is
+ * transparent so the backdrop shows through. */
+export async function applyNativeTheme(mode: ThemeMode, glass: boolean): Promise<void> {
   if (!inTauri()) return;
   try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const { getCurrentWindow, Effect } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
-    // Read live so the native color never drifts from index.css.
-    const raw = getComputedStyle(document.documentElement)
-      .getPropertyValue("--color-chrome")
-      .trim();
-    const rgb = raw.split(/\s+/).map(Number);
-    if (rgb.length === 3 && rgb.every((n) => Number.isFinite(n))) {
-      await win.setBackgroundColor([rgb[0], rgb[1], rgb[2]]);
-    }
-    await win.setTheme(theme);
+    await win.setTheme(mode);
+    if (!glass) return await win.clearEffects();
+    // `system` is macOS. fullScreenUI frosts harder than sidebar; Windows
+    // acrylic has no adjustable strength.
+    await win.setEffects({
+      effects: [windowButtons() === "system" ? Effect.FullScreenUI : Effect.Acrylic],
+    });
   } catch (err) {
-    console.warn("window: failed to sync native chrome", err);
+    console.warn("window: failed to apply native theme", err);
   }
 }

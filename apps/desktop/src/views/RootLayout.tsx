@@ -11,7 +11,7 @@ import { PipelineContext } from "../contexts/PipelineContext";
 import { RightPanelProvider } from "../contexts/RightPanelProvider";
 import { SidebarProvider, useSidebarContext } from "../contexts/SidebarContext";
 import { SnapshotProvider, useSnapshot } from "../contexts/SnapshotContext";
-import { ThemeProvider } from "../contexts/ThemeContext";
+import { ThemeProvider, useThemeContext } from "../contexts/ThemeContext";
 import { ToastProvider } from "../contexts/ToastContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useEngineEvents } from "../hooks/useEngineEvents";
@@ -116,6 +116,7 @@ function RootLayoutBody({
   refreshWorkspaces: () => void;
 }) {
   const { snap } = useSnapshot();
+  const { glass } = useThemeContext();
   const location = useLocation();
   const { notifyRegionWidth } = useSidebarContext();
   const navRef = useRef<HTMLElement>(null);
@@ -142,7 +143,11 @@ function RootLayoutBody({
 
   return (
     // Base plate: title bar and sidebar sit flat on it, the content card above it.
-    <ModalPortalProvider className="h-screen flex flex-col relative bg-chrome">
+    // Translucent only for the glass themes; opaque otherwise, since the window
+    // itself is always transparent.
+    <ModalPortalProvider
+      className={`h-screen flex flex-col relative ${glass ? "bg-chrome/70" : "bg-chrome"}`}
+    >
       <Titlebar />
       <AsideCardProvider>
         <div className="flex-1 flex min-h-0 pr-2 pb-2">
