@@ -81,9 +81,9 @@ function taskToForm(t: Task): TaskForm {
 }
 
 // Below this the left pane gets too cramped to keep the metadata card.
-const ASIDE_MIN_WIDTH = 852;
-/** The aside card plus the gap to the content card (w-72 + ml-2). */
-const ASIDE_TOTAL_WIDTH = 296;
+const ASIDE_MIN_WIDTH = 836;
+/** The aside card plus the gap to the content card (w-[272px] + ml-2). */
+const ASIDE_TOTAL_WIDTH = 280;
 
 export function TaskDetail({
   task,

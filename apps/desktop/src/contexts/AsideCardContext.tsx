@@ -23,7 +23,7 @@ export function AsideCard({ children }: { children: React.ReactNode }) {
   const { el } = useContext(Ctx);
   if (!el) return null;
   return createPortal(
-    <aside className="w-72 shrink-0 ml-2 overflow-y-auto divide-y divide-edge rounded-xl border border-edge bg-bg shadow-content">
+    <aside className="w-[272px] shrink-0 ml-2 overflow-y-auto divide-y divide-edge rounded-xl border border-edge bg-bg shadow-content">
       {children}
     </aside>,
     el,
