@@ -37,7 +37,11 @@ export function Titlebar() {
         aria-controls="sidebar"
         title={open ? "Collapse sidebar" : "Expand sidebar"}
       >
-        {open ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        {open ? (
+          <PanelLeftClose size={16} className="icon-crisp" />
+        ) : (
+          <PanelLeftOpen size={16} className="icon-crisp" />
+        )}
       </IconButton>
       <div className="flex-1" />
       <WindowControls />
