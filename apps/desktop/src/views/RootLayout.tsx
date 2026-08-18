@@ -21,6 +21,7 @@ import { useWorkspaceState } from "../hooks/useWorkspaceState";
 import { getPipeline } from "../lib/pipeline";
 import { useLocalStorage } from "../lib/useLocalStorage";
 import { useSnapshotQuery } from "../queries/snapshot";
+import { windowButtons } from "../tauri/window";
 import { Header } from "./Header";
 import { Onboarding } from "./Onboarding";
 import { Sidebar } from "./Sidebar";
@@ -122,6 +123,10 @@ function RootLayoutBody({
   const navRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // Windows acrylic reads more solid than macOS vibrancy, so it needs less tint.
+  let plate = "bg-chrome";
+  if (glass) plate = windowButtons() === "system" ? "bg-chrome/80" : "bg-chrome/70";
+
   // Scroll to top on route change so deep-scrolled pages don't carry over.
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -143,11 +148,7 @@ function RootLayoutBody({
 
   return (
     // Base plate: title bar and sidebar sit flat on it, the content card above it.
-    // Translucent only for the glass themes; opaque otherwise, since the window
-    // itself is always transparent.
-    <ModalPortalProvider
-      className={`h-screen flex flex-col relative ${glass ? "bg-chrome/70" : "bg-chrome"}`}
-    >
+    <ModalPortalProvider className={`h-screen flex flex-col relative ${plate}`}>
       <Titlebar />
       <AsideCardProvider>
         <div className="flex-1 flex min-h-0 pr-2 pb-2">
