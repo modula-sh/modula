@@ -39,27 +39,25 @@ export function LogsView() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <TabsNav />
-      <main className="flex-1 p-3 overflow-hidden">
-        <section className="flex flex-col h-full overflow-hidden border border-border rounded">
-          <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-border">
-            <span className="text-fg-muted text-xs uppercase tracking-wide">Runs</span>
-            <span className="text-fg-subtle text-xs">({runs.length})</span>
-          </div>
-          <div className="divide-y divide-border overflow-y-auto flex-1">
-            {runs.length === 0 && <div className="px-3 py-4 text-fg-subtle text-xs">no runs</div>}
-            {runs.map((r) => (
-              <RunRow
-                key={r.id}
-                run={r}
-                ws={ws}
-                pid={pidByRunId.get(r.id) ?? null}
-                taskLabel={r.task ? (externalById.get(r.task) ?? r.task) : null}
-                variantLabel={r.variant ? (variantLabelById.get(r.variant) ?? r.variant) : null}
-                onOpen={() => r.log_path && navigate(logPath(r.log_path))}
-              />
-            ))}
-          </div>
-        </section>
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <div className="h-10 shrink-0 flex items-center gap-2 px-4 border-b border-edge">
+          <span className="text-fg-muted text-xs uppercase tracking-wide">Runs</span>
+          <span className="text-fg-subtle text-xs">({runs.length})</span>
+        </div>
+        <div className="divide-y divide-edge overflow-y-auto flex-1">
+          {runs.length === 0 && <div className="px-4 py-4 text-fg-subtle text-xs">no runs</div>}
+          {runs.map((r) => (
+            <RunRow
+              key={r.id}
+              run={r}
+              ws={ws}
+              pid={pidByRunId.get(r.id) ?? null}
+              taskLabel={r.task ? (externalById.get(r.task) ?? r.task) : null}
+              variantLabel={r.variant ? (variantLabelById.get(r.variant) ?? r.variant) : null}
+              onOpen={() => r.log_path && navigate(logPath(r.log_path))}
+            />
+          ))}
+        </div>
       </main>
     </div>
   );
@@ -116,7 +114,7 @@ function RunRow({
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 hover:bg-surface/50">
+    <div className="flex items-center gap-2 px-4 py-2 hover:bg-surface/50">
       <button
         onClick={onOpen}
         disabled={disabled}

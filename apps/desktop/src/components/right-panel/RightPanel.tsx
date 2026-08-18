@@ -12,8 +12,8 @@ export function RightPanel() {
   const { state, close } = useRightPanel();
   if (!state.open || !state.content) return null;
   return (
-    <aside className={`${PANEL_WIDTH} shrink-0 flex flex-col border-l border-border bg-chrome`}>
-      <div className="shrink-0 h-12 flex items-center justify-between gap-2 px-3 border-b border-border">
+    <aside className={`${PANEL_WIDTH} shrink-0 flex flex-col border-l border-edge`}>
+      <div className="shrink-0 h-12 flex items-center justify-between gap-2 px-3 border-b border-edge">
         <span className="text-xs text-fg font-inter font-medium truncate">
           {state.title ?? <PanelTitle content={state.content} />}
         </span>

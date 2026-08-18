@@ -13,14 +13,17 @@
   --color-chat-input-border: 212 212 216;
   --color-border: 212 212 216;
   --color-border-focus: 113 113 122;
+  /* Structural chrome — card edges and pane dividers. Softer than
+     --color-border, which outlines components. */
+  --color-edge: 231 231 234;
   --color-fg: 24 24 27;
   --color-fg-muted: 82 82 91;
   --color-fg-subtle: 113 113 122;
   --color-overlay: rgb(0 0 0 / 0.6);
   --shadow-panel: 0 2px 11px -4px rgba(0, 0, 0, 0.13);
-  --shadow-section: 0 1px 4px -2px rgba(0, 0, 0, 0.1);
+  /* Inset, not lit from above: no y-offset, even spill on all sides. */
+  --shadow-content: 0 0 12px -3px rgba(0, 0, 0, 0.1);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-sidebar: inset -4px 0 6px -4px rgba(0, 0, 0, 0.04);
   --shadow-popover: 0 4px 20px -4px rgba(0, 0, 0, 0.25);
 }
 
@@ -35,11 +38,11 @@
   --color-chat-input-border: 39 39 42;
   --color-border: 47 47 51;
   --color-border-focus: 82 82 91;
+  --color-edge: 32 32 34;
   --color-fg: 244 244 245;
   --color-fg-muted: 161 161 170;
   --color-fg-subtle: 113 113 122;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sidebar: inset -4px 0 6px -4px rgba(0, 0, 0, 0.22);
 }
 
 /* Set for one frame during a theme switch so color tokens flip instantly. */
@@ -56,8 +59,11 @@
   body {
     @apply h-full overflow-hidden overscroll-none;
   }
+  /* Transparent so the native window effect shows through; the base plate below
+     supplies the tint and the content card stays opaque. */
   body {
-    @apply bg-bg text-fg;
+    @apply text-fg;
+    background: transparent;
   }
   /* Native-app feel: suppress the webview's text-selection popover and the
      touch/force-click callout app-wide so no system context menu can surface
@@ -96,12 +102,17 @@
   #sidebar * {
     -webkit-user-drag: none;
   }
-  /* Slim down all lucide icons. `!important` beats the inline
-     `stroke-width="2"` presentation attribute; per-icon overrides via the
-     `strokeWidth` prop still win because that writes a `style=` rule. */
+  /* Slim down all lucide icons. `!important` beats the `stroke-width`
+     presentation attribute the `strokeWidth` prop writes, so that prop has no
+     effect — override here or with a more specific rule instead. */
   svg.lucide,
   svg[class*="lucide-"] {
     stroke-width: 1.5 !important;
+  }
+  /* At 100% scaling a 1px stroke on an integer coordinate straddles two device
+     pixels and reads soft. Half-pixel offset puts it back on one. */
+  svg.lucide.icon-crisp {
+    transform: translate(0.5px, 0.5px);
   }
 }
 

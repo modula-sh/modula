@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ChatRightSidebar } from "../components/chat/ChatRightSidebar";
 import { RightPanel } from "../components/right-panel/RightPanel";
+import { AsideCardProvider, AsideCardTarget } from "../contexts/AsideCardContext";
 import { ChatSidebarProvider, useChatSidebar } from "../contexts/ChatSidebarContext";
 import { ConversationStreamProvider } from "../contexts/ConversationStreamProvider";
 import { HeaderSlotProvider } from "../contexts/HeaderSlotContext";
@@ -10,7 +11,7 @@ import { PipelineContext } from "../contexts/PipelineContext";
 import { RightPanelProvider } from "../contexts/RightPanelProvider";
 import { SidebarProvider, useSidebarContext } from "../contexts/SidebarContext";
 import { SnapshotProvider, useSnapshot } from "../contexts/SnapshotContext";
-import { ThemeProvider } from "../contexts/ThemeContext";
+import { ThemeProvider, useThemeContext } from "../contexts/ThemeContext";
 import { ToastProvider } from "../contexts/ToastContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useEngineEvents } from "../hooks/useEngineEvents";
@@ -20,9 +21,11 @@ import { useWorkspaceState } from "../hooks/useWorkspaceState";
 import { getPipeline } from "../lib/pipeline";
 import { useLocalStorage } from "../lib/useLocalStorage";
 import { useSnapshotQuery } from "../queries/snapshot";
+import { windowButtons } from "../tauri/window";
 import { Header } from "./Header";
 import { Onboarding } from "./Onboarding";
 import { Sidebar } from "./Sidebar";
+import { Titlebar } from "./Titlebar";
 
 /** Top-level layout route. Owns the long-lived state (workspace + SSE stream)
  * and exposes it to descendants via context. Always renders the Header and
@@ -114,67 +117,69 @@ function RootLayoutBody({
   refreshWorkspaces: () => void;
 }) {
   const { snap } = useSnapshot();
+  const { glass } = useThemeContext();
   const location = useLocation();
   const { notifyRegionWidth } = useSidebarContext();
-  const regionRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Windows acrylic reads more solid than macOS vibrancy, so it needs less tint.
+  let plate = "bg-chrome";
+  if (glass) plate = windowButtons() === "system" ? "bg-chrome/80" : "bg-chrome/70";
 
   // Scroll to top on route change so deep-scrolled pages don't carry over.
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
-  // Auto-collapse the nav off the sidebar+content region. It wraps the nav and
-  // content but not the right drawers, so as a flex-1 sibling of those drawers
-  // its width is exactly window − drawers — and independent of the nav's own
-  // width, so collapsing never feeds back into the measurement.
-  const ready = !!snap;
+  // Nav + content = window minus the drawers and aside card. Summing the two
+  // keeps it constant as the nav animates, so collapsing never feeds back in.
   useEffect(() => {
-    const region = regionRef.current;
-    if (!region) return;
-    const measure = () => notifyRegionWidth(region.offsetWidth);
+    const nav = navRef.current;
+    const content = contentRef.current;
+    if (!nav || !content) return;
+    const measure = () => notifyRegionWidth(nav.offsetWidth + content.offsetWidth);
     const ro = new ResizeObserver(measure);
-    ro.observe(region);
+    ro.observe(nav);
+    ro.observe(content);
     measure();
     return () => ro.disconnect();
-  }, [notifyRegionWidth, ready]);
-
-  if (!snap) {
-    return (
-      <div className="h-screen flex">
-        <Sidebar
-          workspace={workspace}
-          workspaces={workspaces}
-          onSwitchWorkspace={setWorkspace}
-          onRefreshWorkspaces={refreshWorkspaces}
-        />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Header />
-          <div className="flex-1 flex items-center justify-center text-fg-subtle">connecting…</div>
-        </div>
-      </div>
-    );
-  }
+  }, [notifyRegionWidth]);
 
   return (
-    <ModalPortalProvider className="h-screen flex relative">
-      <div ref={regionRef} className="flex-1 flex min-w-0">
-        <Sidebar
-          workspace={workspace}
-          workspaces={workspaces}
-          onSwitchWorkspace={setWorkspace}
-          onRefreshWorkspaces={refreshWorkspaces}
-        />
-        <HeaderSlotProvider>
-          <div className="flex-1 flex flex-col min-w-0">
-            <Header />
-            <div className="flex-1 flex flex-col min-h-0 relative">
-              <Outlet />
-            </div>
+    // Base plate: title bar and sidebar sit flat on it, the content card above it.
+    <ModalPortalProvider className={`h-screen flex flex-col relative ${plate}`}>
+      <Titlebar />
+      <AsideCardProvider>
+        <div className="flex-1 flex min-h-0 pr-2 pb-2">
+          <Sidebar
+            ref={navRef}
+            workspace={workspace}
+            workspaces={workspaces}
+            onSwitchWorkspace={setWorkspace}
+            onRefreshWorkspaces={refreshWorkspaces}
+          />
+          <div className="flex-1 flex min-w-0 rounded-xl border border-edge bg-bg shadow-content overflow-hidden">
+            <HeaderSlotProvider>
+              <div ref={contentRef} className="flex-1 flex flex-col min-w-0">
+                <Header />
+                <div className="flex-1 flex flex-col min-h-0 relative">
+                  {snap ? (
+                    <Outlet />
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-fg-subtle">
+                      connecting…
+                    </div>
+                  )}
+                </div>
+              </div>
+            </HeaderSlotProvider>
+            <ChatRightSidebarHost />
+            <RightPanel />
           </div>
-        </HeaderSlotProvider>
-      </div>
-      <ChatRightSidebarHost />
-      <RightPanel />
+          <AsideCardTarget />
+        </div>
+      </AsideCardProvider>
     </ModalPortalProvider>
   );
 }

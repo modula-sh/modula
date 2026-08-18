@@ -9,9 +9,8 @@ export default {
       },
       boxShadow: {
         panel: "var(--shadow-panel)",
-        section: "var(--shadow-section)",
+        content: "var(--shadow-content)",
         card: "var(--shadow-card)",
-        sidebar: "var(--shadow-sidebar)",
         popover: "var(--shadow-popover)",
       },
       colors: {
@@ -25,6 +24,7 @@ export default {
         "chat-input-border": "rgb(var(--color-chat-input-border) / <alpha-value>)",
         border: "rgb(var(--color-border) / <alpha-value>)",
         "border-focus": "rgb(var(--color-border-focus) / <alpha-value>)",
+        edge: "rgb(var(--color-edge) / <alpha-value>)",
         fg: "rgb(var(--color-fg) / <alpha-value>)",
         "fg-muted": "rgb(var(--color-fg-muted) / <alpha-value>)",
         "fg-subtle": "rgb(var(--color-fg-subtle) / <alpha-value>)",

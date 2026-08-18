@@ -315,8 +315,8 @@ function WikiTree({
   drag: DragState;
 }) {
   return (
-    <aside className="w-64 shrink-0 border-r border-border flex flex-col font-inter">
-      <div className="h-10 shrink-0 px-3 border-b border-border flex items-center justify-center gap-2">
+    <aside className="w-64 shrink-0 border-r border-edge flex flex-col font-inter">
+      <div className="h-10 shrink-0 px-3 border-b border-edge flex items-center justify-center gap-2">
         <button
           onClick={onNewFile}
           title="New file"

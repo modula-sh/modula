@@ -30,6 +30,7 @@ import { SourceIcon, sourceDisplayName } from "../components/SourceIcon";
 import { Spinner } from "../components/Spinner";
 import { TextInput } from "../components/TextInput";
 import { TimeAgo } from "../components/TimeAgo";
+import { AsideCard } from "../contexts/AsideCardContext";
 import { usePipeline } from "../contexts/PipelineContext";
 import { useRightPanel } from "../contexts/RightPanelProvider";
 import { useSnapshot } from "../contexts/SnapshotContext";
@@ -79,9 +80,10 @@ function taskToForm(t: Task): TaskForm {
   };
 }
 
-// Container width below which the metadata aside is hidden so the left pane
-// keeps a usable width (aside ~256px + gap, leaving the rest to the content).
-const ASIDE_MIN_WIDTH = 820;
+// Below this the left pane gets too cramped to keep the metadata card.
+const ASIDE_MIN_WIDTH = 836;
+/** The aside card plus the gap to the content card (w-[272px] + ml-2). */
+const ASIDE_TOTAL_WIDTH = 280;
 
 export function TaskDetail({
   task,
@@ -222,14 +224,15 @@ export function TaskDetail({
 
   const { data: threads } = useThreads(ws, task.id);
 
-  // Drop the metadata aside when the view is too narrow to leave the left pane
-  // a usable width — measured on the container, which the aside doesn't affect.
+  // The card sits outside this container, so add its width back before comparing
+  // — otherwise showing it shrinks the container and immediately hides it again.
   const containerRef = useRef<HTMLDivElement>(null);
   const [showAside, setShowAside] = useState(true);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setShowAside(el.offsetWidth >= ASIDE_MIN_WIDTH);
+    const update = () =>
+      setShowAside((shown) => el.offsetWidth + (shown ? ASIDE_TOTAL_WIDTH : 0) >= ASIDE_MIN_WIDTH);
     const ro = new ResizeObserver(update);
     ro.observe(el);
     update();
@@ -237,9 +240,8 @@ export function TaskDetail({
   }, []);
 
   return (
-    <div ref={containerRef} className="flex gap-3 h-full min-h-0 overflow-hidden">
-      {/* Left pane — fills remaining width */}
-      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8 min-w-0">
+    <>
+      <div ref={containerRef} className="h-full overflow-y-auto px-8 py-6 space-y-8">
         <div>
           {task.external_id && (
             <span className="text-fg-subtle font-medium">{task.external_id}</span>
@@ -360,9 +362,8 @@ export function TaskDetail({
         <TaskActionsMenu taskId={task.id} />
       </div>
 
-      {/* Right metadata pane — fixed width; hidden when the view is too narrow */}
       {showAside && (
-        <aside className="w-64 shrink-0 overflow-y-auto pr-1 space-y-3 min-w-0 mt-6">
+        <AsideCard>
           {/* Section 1 — source / status / synced / created */}
           <CollapsibleSection label="Details">
             <Field label="source" valueClassName="font-inter">
@@ -553,9 +554,9 @@ export function TaskDetail({
           <CollapsibleSection label="Agent settings">
             <AgentSettingsSection taskId={task.id} />
           </CollapsibleSection>
-        </aside>
+        </AsideCard>
       )}
-    </div>
+    </>
   );
 }
 

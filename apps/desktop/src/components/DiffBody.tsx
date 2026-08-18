@@ -19,7 +19,7 @@ export function DiffBody({ text, path }: { text: string; path?: string }) {
   const numCol = `calc(${gutterWidth}ch + 0.875rem)`;
 
   return (
-    <div className="text-[11px] font-mono leading-snug border-t border-border overflow-x-auto bg-bg dark:bg-bg/40">
+    <div className="text-[11px] font-mono leading-snug border-t border-edge overflow-x-auto bg-bg dark:bg-bg/40">
       {/* Grow to the widest line so row backgrounds fill the full scroll width. */}
       <div className="w-max min-w-full">
         {hunks.map((h, i) => (

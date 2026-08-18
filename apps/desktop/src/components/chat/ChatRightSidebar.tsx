@@ -128,8 +128,8 @@ export function ChatRightSidebar({
   if (diffProjects.length === 0 && commitProjects.length === 0 && !isVariantScope) return null;
 
   return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-chrome overflow-hidden">
-      <div className="shrink-0 h-12 flex items-center gap-2 px-3 border-b border-border">
+    <aside className="w-72 shrink-0 flex flex-col border-l border-edge overflow-hidden">
+      <div className="shrink-0 h-12 flex items-center gap-2 px-3 border-b border-edge">
         <span className="text-xs text-fg font-inter font-medium truncate">
           {variantBranch ?? "Changes"}
         </span>
@@ -235,7 +235,7 @@ function PanelSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-border">
+    <div className="border-b border-edge">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

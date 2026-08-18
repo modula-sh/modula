@@ -25,7 +25,7 @@ export function FileSection({
   if (files.length === 0) return null;
   return (
     <section>
-      <h3 className="h-10 flex items-center gap-2 px-3 border-b border-border text-[10px] uppercase tracking-wide text-fg-subtle/70 font-inter">
+      <h3 className="h-10 flex items-center gap-2 px-3 border-b border-edge text-[10px] uppercase tracking-wide text-fg-subtle/70 font-inter">
         <span className="flex-1 min-w-0 truncate">{header}</span>
         {headerExtra && <span className="shrink-0">{headerExtra}</span>}
         {headerAction && (
@@ -39,7 +39,7 @@ export function FileSection({
           </button>
         )}
       </h3>
-      <div className="border-b border-border divide-y divide-border">
+      <div className="border-b border-edge divide-y divide-edge">
         {files.map((f) => (
           <FilePatchRow
             key={f.path}

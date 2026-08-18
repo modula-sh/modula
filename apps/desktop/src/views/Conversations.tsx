@@ -395,7 +395,11 @@ export function ConversationDetailPage() {
           aria-expanded={sidebarOpen}
           title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         >
-          {sidebarOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          {sidebarOpen ? (
+            <PanelRightClose size={16} className="icon-crisp" />
+          ) : (
+            <PanelRightOpen size={16} className="icon-crisp" />
+          )}
         </IconButton>
       </HeaderSlot>
 

@@ -14,14 +14,14 @@
     "windows": [
       {
         "title": "",
-        "backgroundColor": [9, 9, 11],
         "width": 1400,
         "height": 900,
         "minWidth": 900,
         "minHeight": 600,
+        "transparent": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 16, "y": 26 },
+        "trafficLightPosition": { "x": 16, "y": 19.5 },
         "dragDropEnabled": false
       }
     ],

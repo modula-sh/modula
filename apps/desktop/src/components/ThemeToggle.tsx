@@ -2,8 +2,8 @@ import { useThemeContext } from "../contexts/ThemeContext";
 import { Button } from "./Button";
 
 export function ThemeToggle() {
-  const { theme, toggle } = useThemeContext();
-  const next = theme === "dark" ? "light" : "dark";
+  const { mode, toggle } = useThemeContext();
+  const next = mode === "dark" ? "light" : "dark";
   return (
     <Button
       tone="link"
@@ -12,7 +12,7 @@ export function ThemeToggle() {
       title={`Switch to ${next} theme`}
       className="flex items-center p-1 rounded"
     >
-      {theme === "dark" ? <MoonIcon /> : <SunIcon />}
+      {mode === "dark" ? <MoonIcon /> : <SunIcon />}
     </Button>
   );
 }

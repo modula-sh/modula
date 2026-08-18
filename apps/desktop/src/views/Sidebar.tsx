@@ -2,15 +2,12 @@ import {
   BookOpen,
   Bot,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Eye,
   Folder,
   LayoutGrid,
   Loader2,
   Map,
-  PanelLeftClose,
   Pencil,
   PenSquare,
   Server,
@@ -21,7 +18,6 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ContextMenu } from "../components/ContextMenu";
-import { IconButton } from "../components/IconButton";
 import { PromptModal } from "../components/PromptModal";
 import { SnakeDots } from "../components/SnakeDots";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -32,7 +28,6 @@ import { useSidebarContext } from "../contexts/SidebarContext";
 import { useSnapshot } from "../contexts/SnapshotContext";
 import { useAppUpdate } from "../hooks/useAppUpdate";
 import { client } from "../services/client";
-import { safePlatform } from "../tauri/platform";
 import type { ConversationSummary, WorkspaceInfo } from "../types";
 
 export type NavItem = {
@@ -143,7 +138,7 @@ function SidebarItem({
         </div>
       );
     }
-    const rowColor = hasActiveChild ? "text-fg" : "text-fg-subtle hover:text-fg";
+    const rowColor = hasActiveChild ? "text-fg" : "text-fg-muted hover:text-fg";
     return (
       <div>
         {sidebarOpen ? (
@@ -206,9 +201,7 @@ function SidebarItem({
       onContextMenu={item.onContextMenu}
       className={({ isActive }) =>
         `${rowLayout} py-2 rounded transition-colors ` +
-        (isActive
-          ? "bg-surface-2/50 text-fg"
-          : "text-fg-subtle hover:text-fg hover:bg-surface-2/30")
+        (isActive ? "bg-surface-2/50 text-fg" : "text-fg-muted hover:text-fg hover:bg-surface-2/30")
       }
     >
       {item.icon && <span className="shrink-0">{item.icon}</span>}
@@ -236,13 +229,16 @@ export function Sidebar({
   workspaces,
   onSwitchWorkspace,
   onRefreshWorkspaces,
+  ref,
 }: {
   workspace: string;
   workspaces: WorkspaceInfo[];
   onSwitchWorkspace: (ws: string) => void;
   onRefreshWorkspaces: () => void;
+  /** RootLayout measures the nav's live width for the auto-collapse decision. */
+  ref?: React.Ref<HTMLElement>;
 }) {
-  const { open, toggle } = useSidebarContext();
+  const { open } = useSidebarContext();
   const { snap } = useSnapshot();
   const navigate = useNavigate();
   const location = useLocation();
@@ -343,54 +339,15 @@ export function Sidebar({
     title: "New chat",
   };
 
-  // react-router stamps a position index on history.state; use it (plus the
-  // session history length) to know whether back/forward have anywhere to go.
-  // `location` is referenced so this recomputes on every navigation.
-  const historyIdx = (window.history.state?.idx as number | undefined) ?? 0;
-  void location;
-  const canGoBack = historyIdx > 0;
-  const canGoForward = historyIdx < window.history.length - 1;
-
-  const belowTitleBorder = open ? "" : "border-r border-border";
-  const elevation = open ? "shadow-sidebar" : "shadow-none";
-
   return (
     <>
+      {/* Transparent: reads as part of the base plate the content card sits on. */}
       <aside
+        ref={ref}
         id="sidebar"
-        className={
-          "shrink-0 flex flex-col font-inter select-none transition-[width,background-color,box-shadow] duration-200 ease-out overflow-hidden " +
-          elevation +
-          " " +
-          (open ? "w-[264px] bg-chrome border-r border-border" : "w-12 bg-bg")
-        }
+        className={`shrink-0 flex flex-col font-inter select-none transition-[width] duration-200 ease-out overflow-hidden ${open ? "w-[264px]" : "w-12"}`}
       >
-        {/* macOS clusters the buttons right to clear the traffic lights. */}
-        <div
-          className={`shrink-0 h-12 flex items-center ${safePlatform() === "windows" ? "justify-between" : "justify-end"} gap-1 px-2 ${open ? "" : "border-b border-border"}`}
-        >
-          {open && (
-            <>
-              <div className="flex items-center gap-1">
-                <IconButton onClick={() => navigate(-1)} disabled={!canGoBack} title="Back">
-                  <ChevronLeft size={16} />
-                </IconButton>
-                <IconButton onClick={() => navigate(1)} disabled={!canGoForward} title="Forward">
-                  <ChevronRight size={16} />
-                </IconButton>
-              </div>
-              <IconButton
-                onClick={toggle}
-                aria-expanded={open}
-                aria-controls="sidebar"
-                title="Collapse sidebar"
-              >
-                <PanelLeftClose size={16} />
-              </IconButton>
-            </>
-          )}
-        </div>
-        <div className={`shrink-0 p-2 pb-4 ${belowTitleBorder}`}>
+        <div className="shrink-0 p-2 pb-4">
           {open ? (
             <div className="flex items-center gap-2 pl-[7px]">
               <WorkspaceTile workspace={workspace} workspaces={workspaces} />
@@ -409,7 +366,7 @@ export function Sidebar({
             </div>
           )}
         </div>
-        <nav className={`flex-1 flex flex-col min-h-0 p-2 overflow-x-hidden ${belowTitleBorder}`}>
+        <nav className="flex-1 flex flex-col min-h-0 p-2 overflow-x-hidden">
           <div className="shrink-0 space-y-0.5">
             {navItems.map((item) => (
               <SidebarItem key={item.to} item={item} depth={0} sidebarOpen={open} />
@@ -426,7 +383,7 @@ export function Sidebar({
           </div>
         </nav>
         {open && <UpdateCard {...appUpdate} />}
-        <div className={`p-2 ${belowTitleBorder}`}>
+        <div className="p-2">
           {open ? (
             <div className="flex items-center gap-1">
               <div className="flex-1 min-w-0">
