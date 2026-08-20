@@ -2,6 +2,8 @@ import { Button } from "../Button";
 import { DropdownSelect } from "../DropdownMenu";
 import { FieldRow } from "../FieldRow";
 import { FileInput } from "../FileInput";
+import { FormField } from "../FormField";
+import { SegmentedControl } from "../SegmentedControl";
 import { TextInput } from "../TextInput";
 
 export interface ProjectFormState {
@@ -27,39 +29,39 @@ function branchPlaceholder(path: string, b: BranchSelectState): string {
   return "Select a branch";
 }
 
-/** Name / path / base-branch inputs for a project, shared by the in-app editor
- * and onboarding. In create mode the name is editable; in edit mode it's fixed. */
+/** Name / path / base-branch inputs for a project, shared by the edit page ("stacked" variant) and onboarding ("row"). */
 export function ProjectFields({
   state,
   onChange,
   isCreate,
   branches,
   autoFocus = false,
-  className = "",
+  variant = "stacked",
 }: {
   state: ProjectFormState;
   onChange: <K extends keyof ProjectFormState>(key: K, value: ProjectFormState[K]) => void;
   isCreate: boolean;
   branches: BranchSelectState;
   autoFocus?: boolean;
-  className?: string;
+  variant?: "stacked" | "row";
 }) {
+  const Field = variant === "row" ? FieldRow : FormField;
   const clone = isCreate && state.mode === "clone";
   return (
-    <section className={`border border-card-border/50 bg-card rounded-xl px-3 ${className}`.trim()}>
+    <>
       {isCreate && (
-        <FieldRow label="source" description="Use an existing checkout or clone a remote repo.">
-          <div className="flex gap-1">
+        <Field label="Source" description="Use an existing checkout or clone a remote repo.">
+          <SegmentedControl>
             <Button tone="tab" active={!clone} onClick={() => onChange("mode", "existing")}>
               Existing
             </Button>
             <Button tone="tab" active={clone} onClick={() => onChange("mode", "clone")}>
               Clone
             </Button>
-          </div>
-        </FieldRow>
+          </SegmentedControl>
+        </Field>
       )}
-      <FieldRow label="name" description="Display name shown in the dashboard.">
+      <Field label="Name">
         {isCreate ? (
           <TextInput
             value={state.name}
@@ -72,9 +74,9 @@ export function ProjectFields({
         ) : (
           <span className="text-fg">{state.name}</span>
         )}
-      </FieldRow>
+      </Field>
       {clone && (
-        <FieldRow label="git url" description="Remote repo to clone (https or ssh).">
+        <Field label="Git URL" description="Remote repo to clone (https or ssh).">
           <TextInput
             value={state.git_url}
             onChange={(e) => onChange("git_url", e.target.value)}
@@ -83,10 +85,10 @@ export function ProjectFields({
             padded
             className="w-full"
           />
-        </FieldRow>
+        </Field>
       )}
-      <FieldRow
-        label="path"
+      <Field
+        label="Path"
         description={
           clone ? "Absolute path to clone into." : "Absolute filesystem path to the git checkout."
         }
@@ -100,9 +102,9 @@ export function ProjectFields({
           padded
           className="w-full"
         />
-      </FieldRow>
+      </Field>
       {!clone && (
-        <FieldRow label="base branch" description="Branch that variants branch from (e.g. main).">
+        <Field label="Base branch" description="Branch that variants branch from (e.g. main).">
           <DropdownSelect
             variant="field"
             mono
@@ -114,8 +116,8 @@ export function ProjectFields({
             placeholder={branchPlaceholder(state.path, branches)}
             options={branches.options.map((b) => ({ value: b, label: b }))}
           />
-        </FieldRow>
+        </Field>
       )}
-    </section>
+    </>
   );
 }

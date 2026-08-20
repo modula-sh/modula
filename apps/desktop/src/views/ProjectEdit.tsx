@@ -83,8 +83,8 @@ function ProjectForm({ detail }: { detail: Project | null }) {
   const canSave = !busy && valid;
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 pt-8 pb-4 font-inter">
-      <div className="max-w-4xl mx-auto space-y-4">
+    <main className="flex-1 overflow-y-auto px-4 py-8 font-inter">
+      <div className="max-w-4xl mx-auto space-y-8">
         <header className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-lg font-semibold text-fg">
@@ -94,13 +94,15 @@ function ProjectForm({ detail }: { detail: Project | null }) {
           </div>
         </header>
 
-        <ProjectFields
-          state={state}
-          onChange={patch}
-          isCreate={isCreate}
-          branches={branches}
-          autoFocus
-        />
+        <section>
+          <ProjectFields
+            state={state}
+            onChange={patch}
+            isCreate={isCreate}
+            branches={branches}
+            autoFocus
+          />
+        </section>
 
         <EditPageFooter>
           <Button onClick={save} disabled={!canSave}>

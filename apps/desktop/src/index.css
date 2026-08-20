@@ -125,12 +125,6 @@
 }
 
 /* Markdown live-preview styles (paired with MarkdownEditor decorations). */
-/* Nudge the placeholder right so it doesn't sit on top of the caret. */
-.cm-placeholder {
-  color: rgb(var(--color-fg-subtle));
-  padding-left: 4px;
-}
-
 .cm-md-bold {
   font-weight: 700;
 }

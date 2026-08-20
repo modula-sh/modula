@@ -103,14 +103,16 @@ function ProjectFormView({
   return (
     <>
       <OnboardingTitle>{isCreate ? "New project" : project!.name}</OnboardingTitle>
-      <ProjectFields
-        state={state}
-        onChange={patch}
-        isCreate={isCreate}
-        branches={branches}
-        autoFocus
-        className="w-[32rem] font-inter"
-      />
+      <section className="w-[32rem] font-inter border border-card-border/50 bg-card rounded-xl px-3">
+        <ProjectFields
+          state={state}
+          onChange={patch}
+          isCreate={isCreate}
+          branches={branches}
+          autoFocus
+          variant="row"
+        />
+      </section>
       <OnboardingActions onBack={onBack} className="mt-4">
         <LargeButton onClick={submit} disabled={!valid || busy}>
           {busy ? "Saving…" : isCreate ? "Add" : "Save"}

@@ -6,13 +6,14 @@ import { ContextPicker } from "../components/ContextPicker";
 import { DropdownSelect } from "../components/DropdownMenu";
 import { EditPageFooter } from "../components/EditPageFooter";
 import { FeedbackText } from "../components/FeedbackText";
-import { FieldRow } from "../components/FieldRow";
+import { FormField } from "../components/FormField";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { Pill } from "../components/Pill";
 import { RuleBuilder } from "../components/RuleBuilder";
 import { ScheduleEditor } from "../components/ScheduleEditor";
-import { SectionLabel } from "../components/SectionLabel";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { SkillCard } from "../components/SkillCard";
+import { Switch } from "../components/Switch";
 import { type ScheduleFields, scheduleToWire } from "../components/scheduleHelpers";
 import { TextInput } from "../components/TextInput";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
@@ -233,8 +234,8 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
     (!state.schedule.enabled || !!state.schedule.cron.trim());
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 pt-8 pb-4 font-inter">
-      <div className="max-w-4xl mx-auto space-y-4">
+    <main className="flex-1 overflow-y-auto px-4 py-8 font-inter">
+      <div className="max-w-4xl mx-auto space-y-8">
         <header className="space-y-1">
           <div className="flex items-center gap-3 flex-wrap">
             {!isCreate && (
@@ -250,10 +251,9 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
         </header>
 
         {/* Identity + provider */}
-        <section className="border border-card-border/50 bg-card rounded-xl px-3">
-          <FieldRow
-            label="name"
-            description="Display name shown in the dashboard."
+        <section>
+          <FormField
+            label="Name"
             labelAccessory={
               isCreate ? (
                 <span className="inline-flex items-center justify-center w-11 h-11 rounded-md bg-surface-2 text-fg border border-border shrink-0">
@@ -274,8 +274,8 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
             ) : (
               <span className="text-fg">{detail!.name}</span>
             )}
-          </FieldRow>
-          <FieldRow label="description" description="One-line summary shown in the dashboard.">
+          </FormField>
+          <FormField label="Description">
             <TextInput
               value={state.description}
               onChange={(e) => patch("description", e.target.value)}
@@ -283,8 +283,48 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
               padded
               className="w-full"
             />
-          </FieldRow>
-          <FieldRow label="provider" description="Which configured provider this agent talks to.">
+          </FormField>
+          <FormField label="Prompt">
+            <MarkdownEditor
+              value={state.prompt}
+              onChange={(v) => patch("prompt", v)}
+              onSave={() => {
+                if (canSave) void save();
+              }}
+              placeholder="Describe what the agent should do in each session"
+              fontSize="12px"
+              padding="0"
+              autoGrow
+              className="text-fg font-inter bg-surface border border-border rounded px-2 py-1.5 min-h-[14rem] focus-within:border-border-focus"
+            />
+          </FormField>
+          <FormField label={`Context (${state.args.length})`}>
+            <div className="flex flex-wrap items-center gap-1">
+              {state.args.map((a) => (
+                <Pill key={a.flag} variant="flat">
+                  {contextLabel(a.flag)}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      patch(
+                        "args",
+                        state.args.filter((x) => x.flag !== a.flag),
+                      )
+                    }
+                    className="text-fg-subtle hover:text-fg"
+                    aria-label={`Remove ${contextLabel(a.flag)}`}
+                  >
+                    ×
+                  </button>
+                </Pill>
+              ))}
+              <ContextPicker
+                selected={state.args.map((a) => a.flag)}
+                onAdd={(flag) => patch("args", [...state.args, { flag, required: false }])}
+              />
+            </div>
+          </FormField>
+          <FormField label="Provider" description="Which configured provider this agent talks to.">
             <DropdownSelect
               variant="field"
               padded
@@ -296,9 +336,9 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
                 ...providers.map((p) => ({ value: p.id, label: p.name })),
               ]}
             />
-          </FieldRow>
-          <FieldRow
-            label="model"
+          </FormField>
+          <FormField
+            label="Model"
             description="Override the provider's default model. Leave as Default to inherit."
           >
             {(() => {
@@ -312,7 +352,6 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
               return (
                 <DropdownSelect
                   variant="field"
-                  mono
                   padded
                   className="w-full"
                   value={state.model}
@@ -325,149 +364,99 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
                 />
               );
             })()}
-          </FieldRow>
-          <FieldRow
-            label="manual"
-            description='Show a "Run" button on the dashboard so the agent can be invoked by hand.'
-          >
-            <input
-              type="checkbox"
-              checked={state.manual}
-              onChange={(e) => patch("manual", e.target.checked)}
-            />
-          </FieldRow>
-          <FieldRow
-            label="per variant"
-            description="Fan task-scoped events out into one spawn per variant."
-          >
-            <input
-              type="checkbox"
-              checked={state.spawn_per_variant}
-              onChange={(e) => patch("spawn_per_variant", e.target.checked)}
-            />
-          </FieldRow>
-        </section>
+          </FormField>
 
-        <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2.5">
-          <div className="flex items-start justify-between gap-4">
-            <SectionLabel
-              className="min-w-0 flex-1"
-              description="Conditions in a row are AND-ed; the agent fires when any row is true. Builder and Raw edit the same rules."
+          {skillCatalog.length > 0 && (
+            <FormField
+              label="Skills"
+              description="Toggled skill prompts are prepended to the base prompt at spawn time. Agent Essentials are injected for every agent."
             >
-              rules
-            </SectionLabel>
-            <div className="flex items-center gap-1 shrink-0">
-              <Button
-                tone="tab"
-                active={rulesMode === "builder"}
-                onClick={() => setRulesMode("builder")}
-              >
-                Builder
-              </Button>
-              <Button tone="tab" active={rulesMode === "raw"} onClick={() => setRulesMode("raw")}>
-                Raw
-              </Button>
-            </div>
-          </div>
-          {rulesMode === "builder" ? (
-            <RuleBuilder
-              value={parseRules(linesToRules(state.rules))}
-              onChange={(model) => patch("rules", serializeRules(model).join("\n"))}
-            />
-          ) : (
-            <textarea
-              value={state.rules}
-              onChange={(e) => patch("rules", e.target.value)}
-              placeholder={
-                "event.type == 'task.update' and event.data.pipeline_status == 'ready_for_research'"
-              }
-              className="w-full h-32 px-2 py-1.5 bg-surface border border-border rounded text-xs text-fg placeholder-fg-subtle focus:outline-none focus:border-border-focus font-mono leading-relaxed"
-              spellCheck={false}
-            />
-          )}
-        </section>
-
-        <ScheduleEditor
-          value={state.schedule}
-          onChange={(s) => patch("schedule", s)}
-          cronPlaceholder="0 9 * * 1-5"
-        />
-
-        {skillCatalog.length > 0 && (
-          <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2.5">
-            <SectionLabel description="Toggled skill prompts are prepended to the base prompt at spawn time. Agent Essentials are injected for every agent.">
-              skills
-            </SectionLabel>
-            <div className="grid grid-cols-2 gap-2">
-              {/* The always-on (hidden) skills are consolidated into a single
+              <div className="grid grid-cols-2 gap-2">
+                {/* The always-on (hidden) skills are consolidated into a single
                   non-toggleable card. Later this card will toggle them all at once. */}
-              {essentialSkills.length > 0 && (
-                <SkillCard
-                  name="Agent Essentials"
-                  description={`Core skills always available to every agent: ${essentialSkills
-                    .map((s) => s.name)
-                    .join(", ")}.`}
-                  active
-                  locked
-                />
-              )}
-              {optionalSkills.map((skill) => (
-                <SkillCard
-                  key={skill.slug}
-                  name={skill.name}
-                  description={skill.description}
-                  active={state.skills.includes(skill.slug)}
-                  onToggle={() => toggleSkill(skill.slug)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Context */}
-        <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2.5">
-          <SectionLabel>context ({state.args.length})</SectionLabel>
-          <div className="flex flex-wrap items-center gap-1">
-            {state.args.map((a) => (
-              <Pill key={a.flag} variant="flat">
-                {contextLabel(a.flag)}
-                <button
-                  type="button"
-                  onClick={() =>
-                    patch(
-                      "args",
-                      state.args.filter((x) => x.flag !== a.flag),
-                    )
-                  }
-                  className="text-fg-subtle hover:text-fg"
-                  aria-label={`Remove ${contextLabel(a.flag)}`}
-                >
-                  ×
-                </button>
-              </Pill>
-            ))}
-            <ContextPicker
-              selected={state.args.map((a) => a.flag)}
-              onAdd={(flag) => patch("args", [...state.args, { flag, required: false }])}
+                {essentialSkills.length > 0 && (
+                  <SkillCard
+                    name="Agent Essentials"
+                    description={`Core skills always available to every agent: ${essentialSkills
+                      .map((s) => s.name)
+                      .join(", ")}.`}
+                    active
+                    locked
+                  />
+                )}
+                {optionalSkills.map((skill) => (
+                  <SkillCard
+                    key={skill.slug}
+                    name={skill.name}
+                    description={skill.description}
+                    active={state.skills.includes(skill.slug)}
+                    onToggle={() => toggleSkill(skill.slug)}
+                  />
+                ))}
+              </div>
+            </FormField>
+          )}
+          <FormField
+            label="Manual"
+            description='Show a "Run" button on the dashboard so the agent can be invoked by hand.'
+            horizontal
+          >
+            <Switch checked={state.manual} onChange={(v) => patch("manual", v)} label="Manual" />
+          </FormField>
+          <FormField
+            label="Per variant"
+            description="Fan task-scoped events out into one spawn per variant."
+            horizontal
+          >
+            <Switch
+              checked={state.spawn_per_variant}
+              onChange={(v) => patch("spawn_per_variant", v)}
+              label="Per variant"
             />
-          </div>
-        </section>
+          </FormField>
 
-        {/* Prompt */}
-        <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2">
-          <SectionLabel>prompt</SectionLabel>
-          <MarkdownEditor
-            value={state.prompt}
-            onChange={(v) => patch("prompt", v)}
-            onSave={() => {
-              if (canSave) void save();
-            }}
-            padding="0"
-            autoGrow
-            className="text-fg font-inter"
+          <FormField
+            label="Rules"
+            description="Conditions in a row are AND-ed; the agent fires when any row is true. Builder and Raw edit the same rules."
+            headerAccessory={
+              <SegmentedControl>
+                <Button
+                  tone="tab"
+                  active={rulesMode === "builder"}
+                  onClick={() => setRulesMode("builder")}
+                >
+                  Builder
+                </Button>
+                <Button tone="tab" active={rulesMode === "raw"} onClick={() => setRulesMode("raw")}>
+                  Raw
+                </Button>
+              </SegmentedControl>
+            }
+          >
+            {rulesMode === "builder" ? (
+              <RuleBuilder
+                value={parseRules(linesToRules(state.rules))}
+                onChange={(model) => patch("rules", serializeRules(model).join("\n"))}
+              />
+            ) : (
+              <textarea
+                value={state.rules}
+                onChange={(e) => patch("rules", e.target.value)}
+                placeholder={
+                  "event.type == 'task.update' and event.data.pipeline_status == 'ready_for_research'"
+                }
+                className="w-full h-32 px-2 py-1.5 bg-surface border border-border rounded text-xs text-fg placeholder-fg-subtle focus:outline-none focus:border-border-focus font-mono leading-relaxed"
+                spellCheck={false}
+              />
+            )}
+          </FormField>
+
+          <ScheduleEditor
+            value={state.schedule}
+            onChange={(s) => patch("schedule", s)}
+            cronPlaceholder="0 9 * * 1-5"
           />
         </section>
-
         <EditPageFooter>
           <Button onClick={save} disabled={!canSave}>
             {busy ? "saving…" : isCreate ? "Create" : "Save"}

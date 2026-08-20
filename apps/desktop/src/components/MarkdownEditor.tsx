@@ -7,6 +7,7 @@ import {
   type DecorationSet,
   EditorView,
   keymap,
+  placeholder as placeholderExt,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -783,6 +784,8 @@ function buildTheme(padding: string, fontSize: string, height: string, overflowY
       caretColor: "rgb(var(--color-fg))",
     },
     ".cm-line": { padding: 0 },
+    // Beats @codemirror/view's base-theme `#888`.
+    ".cm-placeholder": { color: "rgb(var(--color-fg-subtle))" },
   });
 }
 
@@ -794,6 +797,7 @@ export function MarkdownEditor({
   vimMode = false,
   padding = WIKI_PADDING,
   fontSize = "14px",
+  placeholder,
   autoGrow = false,
 }: {
   value: string;
@@ -803,6 +807,7 @@ export function MarkdownEditor({
   vimMode?: boolean;
   padding?: string;
   fontSize?: string;
+  placeholder?: string;
   autoGrow?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -834,6 +839,7 @@ export function MarkdownEditor({
           },
         ]),
         markdown({ base: markdownLanguage }),
+        ...(placeholder ? [placeholderExt(placeholder)] : []),
         livePreview,
         tableOverlay,
         frontmatterOverlay,
