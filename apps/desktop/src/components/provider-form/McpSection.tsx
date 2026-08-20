@@ -7,9 +7,9 @@ import {
   matchIntegrations,
 } from "../../lib/mcpIntegrations";
 import { DropdownMenu } from "../DropdownMenu";
+import { FormField } from "../FormField";
 import { IconButton } from "../IconButton";
 import { GenericProviderIcon } from "../icons/GenericProviderIcon";
-import { SectionLabel } from "../SectionLabel";
 import { TextInput } from "../TextInput";
 import type { McpRowState } from "./ProviderFields";
 import { nextRid } from "./useProviderForm";
@@ -52,11 +52,10 @@ export function McpSection({
   }
 
   return (
-    <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <SectionLabel description="HTTP MCP servers written to this provider's config on save.">
-          mcp servers
-        </SectionLabel>
+    <FormField
+      label="MCP servers"
+      description="HTTP MCP servers written to this provider's config on save."
+      headerAccessory={
         <DropdownMenu
           panelClassName="w-44"
           trigger={({ toggle: t }) => (
@@ -106,8 +105,8 @@ export function McpSection({
             </div>
           )}
         </DropdownMenu>
-      </div>
-
+      }
+    >
       {rows.length === 0 ? (
         <div className="text-fg-subtle text-xs italic">
           No MCP servers. Use "Add MCP" to add one.
@@ -126,7 +125,7 @@ export function McpSection({
           ))}
         </div>
       )}
-    </section>
+    </FormField>
   );
 }
 
@@ -198,7 +197,7 @@ function McpRow({
               className="w-full disabled:opacity-60"
             />
           </McpField>
-          <McpField label="Auth Token">
+          <McpField label="Auth token">
             <TextInput
               value={row.auth_token}
               onChange={(e) => onUpdate("auth_token", e.target.value)}

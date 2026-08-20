@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { buildCron, defaultModelFor, parseCron } from "../lib/cronSchedule";
 import { Button } from "./Button";
 import { DropdownSelect } from "./DropdownMenu";
-import { FieldRow } from "./FieldRow";
+import { FormField } from "./FormField";
 import { ScheduleBuilder } from "./ScheduleBuilder";
-import { SectionLabel } from "./SectionLabel";
+import { SegmentedControl } from "./SegmentedControl";
+import { Switch } from "./Switch";
 import type { ScheduleFields } from "./scheduleHelpers";
 import { timezoneOptions } from "./scheduleHelpers";
 import { TextInput } from "./TextInput";
@@ -50,34 +51,41 @@ export function ScheduleEditor({
   }
 
   return (
-    <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2.5">
-      <div className="flex items-start justify-between gap-4">
-        <SectionLabel className="min-w-0 flex-1">schedule</SectionLabel>
-        {value.enabled && (
-          <div className="flex items-center gap-1 shrink-0">
-            <Button tone="tab" active={mode === "builder"} onClick={showBuilder}>
-              Builder
-            </Button>
-            <Button tone="tab" active={mode === "raw"} onClick={() => setMode("raw")}>
-              Raw
-            </Button>
-          </div>
-        )}
-      </div>
-      <label className="flex items-center gap-2 text-[11px] text-fg">
-        <input
-          type="checkbox"
+    <>
+      <FormField
+        label="Schedule"
+        description="Run this agent automatically on a cron schedule."
+        horizontal
+      >
+        <Switch
           checked={value.enabled}
-          onChange={(e) => patch("enabled", e.target.checked)}
+          onChange={(v) => patch("enabled", v)}
+          label="Has a schedule"
         />
-        <span>Has a schedule</span>
-      </label>
+      </FormField>
       {value.enabled && (
         <>
-          {mode === "builder" ? (
-            <ScheduleBuilder value={model} onChange={(next) => patch("cron", buildCron(next))} />
-          ) : (
-            <FieldRow label="cron" description="Standard 5-field cron expression.">
+          <FormField
+            label="Cron"
+            description={
+              mode === "builder"
+                ? "Builder and Raw edit the same cron expression."
+                : "Standard 5-field cron expression."
+            }
+            headerAccessory={
+              <SegmentedControl>
+                <Button tone="tab" active={mode === "builder"} onClick={showBuilder}>
+                  Builder
+                </Button>
+                <Button tone="tab" active={mode === "raw"} onClick={() => setMode("raw")}>
+                  Raw
+                </Button>
+              </SegmentedControl>
+            }
+          >
+            {mode === "builder" ? (
+              <ScheduleBuilder value={model} onChange={(next) => patch("cron", buildCron(next))} />
+            ) : (
               <TextInput
                 value={value.cron}
                 onChange={(e) => patch("cron", e.target.value)}
@@ -86,9 +94,9 @@ export function ScheduleEditor({
                 padded
                 className="w-full"
               />
-            </FieldRow>
-          )}
-          <FieldRow label="timezone" description="IANA timezone identifier.">
+            )}
+          </FormField>
+          <FormField label="Timezone" description="IANA timezone identifier.">
             <DropdownSelect
               variant="field"
               mono
@@ -99,19 +107,16 @@ export function ScheduleEditor({
               onChange={(v) => patch("timezone", v)}
               options={timezoneOptions(value.timezone.trim() || "UTC")}
             />
-          </FieldRow>
-          <FieldRow
-            label="enabled"
-            description="When checked, the cron fires while the backend is running."
+          </FormField>
+          <FormField
+            label="Active"
+            description="When on, the cron fires while the backend is running."
+            horizontal
           >
-            <input
-              type="checkbox"
-              checked={value.active}
-              onChange={(e) => patch("active", e.target.checked)}
-            />
-          </FieldRow>
+            <Switch checked={value.active} onChange={(v) => patch("active", v)} label="Active" />
+          </FormField>
         </>
       )}
-    </section>
+    </>
   );
 }

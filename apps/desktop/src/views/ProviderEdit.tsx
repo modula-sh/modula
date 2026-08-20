@@ -5,6 +5,7 @@ import { AgentIdenticon } from "../components/AgentIdenticon";
 import { Button } from "../components/Button";
 import { EditPageFooter } from "../components/EditPageFooter";
 import { FeedbackText } from "../components/FeedbackText";
+import { FormField } from "../components/FormField";
 import { Pill } from "../components/Pill";
 import { McpSection } from "../components/provider-form/McpSection";
 import { ProviderFields } from "../components/provider-form/ProviderFields";
@@ -13,7 +14,6 @@ import {
   updateProvider,
   useProviderForm,
 } from "../components/provider-form/useProviderForm";
-import { SectionLabel } from "../components/SectionLabel";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useFeedback } from "../hooks/useFeedback";
 import { ProviderTypeIcon } from "../lib/providerTypes";
@@ -88,8 +88,8 @@ function ProviderForm({ detail }: { detail: ProviderDetail | null }) {
   const canSave = !busy && valid;
 
   return (
-    <main className="flex-1 overflow-y-auto px-4 pt-8 pb-4 font-inter">
-      <div className="max-w-4xl mx-auto space-y-4">
+    <main className="flex-1 overflow-y-auto px-4 py-8 font-inter">
+      <div className="max-w-4xl mx-auto space-y-8">
         <header className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             <ProviderTypeIcon type={state.type} />
@@ -100,12 +100,12 @@ function ProviderForm({ detail }: { detail: ProviderDetail | null }) {
           </div>
         </header>
 
-        <ProviderFields state={state} onChange={patch} autoFocus={isCreate} />
-
-        <McpSection rows={state.mcp_servers} onChange={(r) => patch("mcp_servers", r)} />
-        {detail && <ExternalServersNote detail={detail} />}
-
-        {detail && <AgentsUsingSection agents={detail.agents_using} />}
+        <section>
+          <ProviderFields state={state} onChange={patch} autoFocus={isCreate} />
+          <McpSection rows={state.mcp_servers} onChange={(r) => patch("mcp_servers", r)} />
+          {detail && <ExternalServersNote detail={detail} />}
+          {detail && <AgentsUsingSection agents={detail.agents_using} />}
+        </section>
 
         <EditPageFooter>
           <Button onClick={save} disabled={!canSave}>
@@ -136,8 +136,7 @@ function ProviderForm({ detail }: { detail: ProviderDetail | null }) {
 
 function AgentsUsingSection({ agents }: { agents: string[] }) {
   return (
-    <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2">
-      <SectionLabel>agents using ({agents.length})</SectionLabel>
+    <FormField label={`Agents using (${agents.length})`}>
       {agents.length === 0 ? (
         <div className="text-xs text-fg-subtle italic">none</div>
       ) : (
@@ -152,7 +151,7 @@ function AgentsUsingSection({ agents }: { agents: string[] }) {
           ))}
         </ul>
       )}
-    </section>
+    </FormField>
   );
 }
 
@@ -172,10 +171,10 @@ function ExternalServersNote({ detail }: { detail: ProviderDetail }) {
   if (servers.length === 0) return null;
 
   return (
-    <section className="border border-card-border/50 bg-card rounded-xl p-3 space-y-2">
-      <SectionLabel description="Project-scoped or command-based servers configured outside modula. Read-only here.">
-        external mcp servers
-      </SectionLabel>
+    <FormField
+      label="External MCP servers"
+      description="Project-scoped or command-based servers configured outside modula. Read-only here."
+    >
       <ul className="space-y-1">
         {servers.map((s) => (
           <li
@@ -189,6 +188,6 @@ function ExternalServersNote({ detail }: { detail: ProviderDetail }) {
           </li>
         ))}
       </ul>
-    </section>
+    </FormField>
   );
 }

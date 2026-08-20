@@ -2,6 +2,7 @@ import { PROVIDER_TYPES } from "../../lib/providerTypes";
 import { DropdownSelect } from "../DropdownMenu";
 import { FieldRow } from "../FieldRow";
 import { FileInput } from "../FileInput";
+import { FormField } from "../FormField";
 import { TextInput } from "../TextInput";
 import { defaultConfigDir } from "./useProviderForm";
 
@@ -24,23 +25,22 @@ export interface ProviderFormState {
   mcp_servers: McpRowState[];
 }
 
-/** Name / type / config-dir / description inputs for a provider, shared by the
- * in-app editor and onboarding. Selecting a type resets config dir to that
- * type's default. */
+/** Name / type / config-dir / description inputs for a provider, shared by the edit page ("stacked" variant) and onboarding ("row"). Selecting a type resets config dir to that type's default. */
 export function ProviderFields({
   state,
   onChange,
   autoFocus = false,
-  className = "",
+  variant = "stacked",
 }: {
   state: ProviderFormState;
   onChange: <K extends keyof ProviderFormState>(key: K, value: ProviderFormState[K]) => void;
   autoFocus?: boolean;
-  className?: string;
+  variant?: "stacked" | "row";
 }) {
+  const Field = variant === "row" ? FieldRow : FormField;
   return (
-    <section className={`border border-card-border/50 bg-card rounded-xl px-3 ${className}`.trim()}>
-      <FieldRow label="name" description="Display name shown throughout the dashboard.">
+    <>
+      <Field label="Name">
         <TextInput
           value={state.name}
           onChange={(e) => onChange("name", e.target.value)}
@@ -49,9 +49,9 @@ export function ProviderFields({
           className="w-full"
           autoFocus={autoFocus}
         />
-      </FieldRow>
-      <FieldRow
-        label="type"
+      </Field>
+      <Field
+        label="Type"
         description="Which CLI tool this provider drives (claude, codex, opencode)."
       >
         <DropdownSelect
@@ -65,9 +65,9 @@ export function ProviderFields({
           }}
           options={PROVIDER_TYPES.map((t) => ({ value: t.id, label: t.label }))}
         />
-      </FieldRow>
-      <FieldRow
-        label="config dir"
+      </Field>
+      <Field
+        label="Config dir"
         description="Directory the provider reads its config and credentials from."
       >
         <FileInput
@@ -79,11 +79,8 @@ export function ProviderFields({
           padded
           className="w-full"
         />
-      </FieldRow>
-      <FieldRow
-        label="description"
-        description="Optional short summary, surfaced on the providers list."
-      >
+      </Field>
+      <Field label="Description">
         <TextInput
           value={state.description}
           onChange={(e) => onChange("description", e.target.value)}
@@ -91,7 +88,7 @@ export function ProviderFields({
           padded
           className="w-full"
         />
-      </FieldRow>
-    </section>
+      </Field>
+    </>
   );
 }

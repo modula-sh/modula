@@ -103,7 +103,9 @@ function ProviderFormView({
   return (
     <>
       <OnboardingTitle>{isCreate ? "New provider" : provider!.name}</OnboardingTitle>
-      <ProviderFields state={state} onChange={patch} autoFocus className="w-[32rem] font-inter" />
+      <section className="w-[32rem] font-inter border border-card-border/50 bg-card rounded-xl px-3">
+        <ProviderFields state={state} onChange={patch} autoFocus variant="row" />
+      </section>
       <OnboardingActions onBack={onBack} className="mt-4">
         <LargeButton onClick={submit} disabled={!valid || busy}>
           {busy ? "Saving…" : isCreate ? "Add" : "Save"}
