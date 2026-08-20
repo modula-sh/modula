@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ChatRightSidebar } from "../components/chat/ChatRightSidebar";
-import { RightPanel } from "../components/right-panel/RightPanel";
+import { RightPanel, RightPanelCard } from "../components/right-panel/RightPanel";
 import { AsideCardProvider, AsideCardTarget } from "../contexts/AsideCardContext";
 import { ChatSidebarProvider, useChatSidebar } from "../contexts/ChatSidebarContext";
 import { ConversationStreamProvider } from "../contexts/ConversationStreamProvider";
@@ -178,6 +178,7 @@ function RootLayoutBody({
             <RightPanel />
           </div>
           <AsideCardTarget />
+          <RightPanelCard />
         </div>
       </AsideCardProvider>
     </ModalPortalProvider>

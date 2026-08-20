@@ -1,5 +1,9 @@
 import { X } from "lucide-react";
-import { type RightPanelContent, useRightPanel } from "../../contexts/RightPanelProvider";
+import {
+  type RightPanelContent,
+  type RightPanelPlacement,
+  useRightPanel,
+} from "../../contexts/RightPanelProvider";
 import { IconButton } from "../IconButton";
 import { BranchDiffPanel } from "./BranchDiffPanel";
 import { DiffPanel } from "./DiffPanel";
@@ -8,21 +12,33 @@ import { DiffPanel } from "./DiffPanel";
 // instead of crushing the content column.
 const PANEL_WIDTH = "w-[min(640px,55vw)]";
 
+/** Panel inside the main content card, split off by a divider. */
 export function RightPanel() {
-  const { state, close } = useRightPanel();
-  if (!state.open || !state.content) return null;
+  return <Panel placement="inline" className="border-l border-edge" />;
+}
+
+/** Panel as its own card beside the main one, separated by the window's gap. */
+export function RightPanelCard() {
   return (
-    <aside className={`${PANEL_WIDTH} shrink-0 flex flex-col border-l border-edge`}>
+    <Panel
+      placement="card"
+      className="ml-2 rounded-xl border border-edge bg-bg shadow-content overflow-hidden"
+    />
+  );
+}
+
+function Panel({ placement, className }: { placement: RightPanelPlacement; className: string }) {
+  const { state, close } = useRightPanel();
+  if (!state.open || !state.content || state.placement !== placement) return null;
+  return (
+    <aside className={`${PANEL_WIDTH} shrink-0 flex flex-col ${className}`}>
       <div className="shrink-0 h-12 flex items-center justify-between gap-2 px-3 border-b border-edge">
         <span className="text-xs text-fg font-inter font-medium truncate">
           {state.title ?? <PanelTitle content={state.content} />}
         </span>
-        <span className="flex items-center gap-2 ml-auto shrink-0">
-          {state.action}
-          <IconButton onClick={close} title="Close panel">
-            <X size={16} />
-          </IconButton>
-        </span>
+        <IconButton onClick={close} title="Close panel" className="ml-auto">
+          <X size={16} />
+        </IconButton>
       </div>
       <div className="flex-1 overflow-y-auto">
         <PanelBody content={state.content} />

@@ -19,23 +19,24 @@ export type RightPanelContent =
       variant: string;
     };
 
+export type RightPanelPlacement = "inline" | "card";
+
 export interface RightPanelState {
   open: boolean;
   content: RightPanelContent | null;
+  /** Whether the shell renders inside the content card or as its own card beside it. */
+  placement: RightPanelPlacement;
   /** Panels can override the shell title via `setTitle` once their data lands. */
   title?: React.ReactNode;
-  /** Optional control rendered next to the close button (e.g. a PR link). */
-  action?: React.ReactNode;
 }
 
-const EMPTY: RightPanelState = { open: false, content: null };
+const EMPTY: RightPanelState = { open: false, content: null, placement: "inline" };
 
 interface CtxValue {
   state: RightPanelState;
-  open: (content: RightPanelContent) => void;
+  open: (content: RightPanelContent, placement?: RightPanelPlacement) => void;
   close: () => void;
   setTitle: (title: React.ReactNode) => void;
-  setAction: (action: React.ReactNode) => void;
 }
 
 const Ctx = createContext<CtxValue | null>(null);
@@ -51,8 +52,8 @@ export function RightPanelProvider({ children }: { children: React.ReactNode }) 
   const state = byPath[location.pathname] ?? EMPTY;
 
   const open = useCallback(
-    (content: RightPanelContent) =>
-      setByPath((prev) => ({ ...prev, [location.pathname]: { open: true, content } })),
+    (content: RightPanelContent, placement: RightPanelPlacement = "inline") =>
+      setByPath((prev) => ({ ...prev, [location.pathname]: { open: true, content, placement } })),
     [location.pathname],
   );
   const close = useCallback(
@@ -71,18 +72,10 @@ export function RightPanelProvider({ children }: { children: React.ReactNode }) 
       })),
     [location.pathname],
   );
-  const setAction = useCallback(
-    (action: React.ReactNode) =>
-      setByPath((prev) => ({
-        ...prev,
-        [location.pathname]: { ...(prev[location.pathname] ?? EMPTY), action },
-      })),
-    [location.pathname],
-  );
 
   const value = useMemo<CtxValue>(
-    () => ({ state, open, close, setTitle, setAction }),
-    [state, open, close, setTitle, setAction],
+    () => ({ state, open, close, setTitle }),
+    [state, open, close, setTitle],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
