@@ -84,6 +84,8 @@ function taskToForm(t: Task): TaskForm {
 const ASIDE_MIN_WIDTH = 836;
 /** The aside card plus the gap to the content card (w-[272px] + ml-2). */
 const ASIDE_TOTAL_WIDTH = 280;
+/** Debounce before remeasuring, so the card does not toggle during a resize. */
+const SETTLE_MS = 100;
 
 export function TaskDetail({
   task,
@@ -231,12 +233,21 @@ export function TaskDetail({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () =>
+    const measure = () =>
       setShowAside((shown) => el.offsetWidth + (shown ? ASIDE_TOTAL_WIDTH : 0) >= ASIDE_MIN_WIDTH);
-    const ro = new ResizeObserver(update);
+    // Opening a drawer also collapses the nav, whose width transition retriggers
+    // this every frame; debounce so a resize is acted on once, not per frame.
+    let timer: ReturnType<typeof setTimeout>;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(measure, SETTLE_MS);
+    });
     ro.observe(el);
-    update();
-    return () => ro.disconnect();
+    measure();
+    return () => {
+      clearTimeout(timer);
+      ro.disconnect();
+    };
   }, []);
 
   return (
@@ -366,7 +377,7 @@ export function TaskDetail({
         <AsideCard>
           {/* Section 1 — source / status / synced / created */}
           <CollapsibleSection label="Details">
-            <Field label="source" valueClassName="font-inter">
+            <Field label="source">
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-fg-muted capitalize leading-none">
                   <SourceIcon source={task.source} className="w-3.5 h-3.5 shrink-0" />
@@ -385,16 +396,16 @@ export function TaskDetail({
               </div>
             </Field>
             {task.source !== "internal" && task.status && (
-              <Field label="status" valueClassName="font-inter">
+              <Field label="status">
                 <span className={externalStatusTextClass(task.status)}>{task.status}</span>
               </Field>
             )}
             {task.source !== "internal" && (
-              <Field label="synced" valueClassName="font-inter">
+              <Field label="synced">
                 <TimeAgo iso={task.synced_at} className="inline-block first-letter:uppercase" />
               </Field>
             )}
-            <Field label="created" valueClassName="font-inter">
+            <Field label="created">
               <TimeAgo iso={task.created_at} className="inline-block first-letter:uppercase" />
             </Field>
           </CollapsibleSection>
@@ -427,7 +438,7 @@ export function TaskDetail({
           <CollapsibleSection label="Labels">
             <div className="flex flex-wrap items-center gap-1">
               {(task.labels ?? []).map((l) => (
-                <Pill key={l.id} variant="flat" className="font-inter">
+                <Pill key={l.id} variant="flat">
                   {l.name}
                   <button
                     type="button"
@@ -862,19 +873,11 @@ const VARIANT_STATUSES: VariantStatus[] = [
   "accepted",
 ];
 
-function Field({
-  label,
-  children,
-  valueClassName = "",
-}: {
-  label: string;
-  children: React.ReactNode;
-  valueClassName?: string;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wide text-fg-subtle">{label}</div>
-      <div className={`text-fg text-xs ${valueClassName}`}>{children}</div>
+      <div className="text-fg text-xs">{children}</div>
     </div>
   );
 }
@@ -914,7 +917,9 @@ function VariantActions({
   return (
     <span className="flex items-center gap-1 ml-auto">
       <Button
-        onClick={() => openPanel({ type: "branch-diff", workspace: ws, task: taskId, variant })}
+        onClick={() =>
+          openPanel({ type: "branch-diff", workspace: ws, task: taskId, variant }, "card")
+        }
         className="!py-0.5 !text-[10px]"
       >
         <FileDiff size={12} />
