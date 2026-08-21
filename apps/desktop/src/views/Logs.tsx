@@ -1,6 +1,7 @@
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import { useContext, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AgentName } from "../components/AgentName";
 import { DropdownMenu } from "../components/DropdownMenu";
 import { FeedbackText } from "../components/FeedbackText";
 import { Pill } from "../components/Pill";
@@ -121,7 +122,7 @@ function RunRow({
         className="flex items-center gap-2 text-left flex-1 min-w-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <RunStatusIcon status={run.status} />
-        <Pill>{run.agent_name}</Pill>
+        <AgentName name={run.agent_name} className="text-xs mx-1.5" />
         {taskLabel && (
           <Pill>
             <LayoutGrid size={12} />
@@ -137,7 +138,7 @@ function RunRow({
         {fallback && <span className="text-[11px] text-fg-subtle">{fallback}</span>}
       </button>
       <FeedbackText feedback={fb.feedback} />
-      <TimeAgo iso={ts} className="text-[11px] text-fg-subtle whitespace-nowrap" />
+      <TimeAgo iso={ts} className="font-inter text-[11px] text-fg-subtle whitespace-nowrap" />
       {pid != null && (
         <DropdownMenu
           panelClassName="w-40"

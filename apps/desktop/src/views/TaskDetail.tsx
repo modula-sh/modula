@@ -12,6 +12,7 @@ import {
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AgentIdenticon } from "../components/AgentIdenticon";
+import { AgentName } from "../components/AgentName";
 import { Button } from "../components/Button";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -354,13 +355,13 @@ export function TaskDetail({
                       className="w-full flex items-center gap-2 p-1.5 hover:bg-surface/50 text-left disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <RunStatusIcon status={r.status} size={12} />
-                      <Pill size="sm">{r.agent_name}</Pill>
+                      <AgentName name={r.agent_name} iconSize="2xs" className="text-xs mx-1" />
                       {r.variant && (
                         <Pill size="sm">{variantLabelById.get(r.variant) ?? r.variant}</Pill>
                       )}
                       <TimeAgo
                         iso={ts}
-                        className="ml-auto text-[11px] text-fg-subtle whitespace-nowrap"
+                        className="ml-auto font-inter text-[11px] text-fg-subtle whitespace-nowrap"
                       />
                     </button>
                   </li>

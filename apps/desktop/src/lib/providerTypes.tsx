@@ -37,23 +37,28 @@ export function providerType(id: string | null | undefined): ProviderType {
   return BY_ID[key] ?? FALLBACK;
 }
 
+const DIMS = { "2xs": "w-4 h-4", xs: "w-5 h-5", sm: "w-6 h-6", md: "w-7 h-7" };
+const INNER = { "2xs": "w-2.5 h-2.5", xs: "w-3 h-3", sm: "w-3.5 h-3.5", md: "w-4 h-4" };
+
 export function ProviderTypeIcon({
   type,
   size = "md",
+  title,
 }: {
   type: string | null | undefined;
-  size?: "xs" | "sm" | "md";
+  /** `2xs` for dense row contexts (run lists). */
+  size?: keyof typeof DIMS;
+  /** Overrides the type label as the tooltip — e.g. the provider's own name. */
+  title?: string;
 }) {
   const t = providerType(type);
-  const dims = size === "xs" ? "w-5 h-5" : size === "sm" ? "w-6 h-6" : "w-7 h-7";
-  const inner = size === "xs" ? "w-3 h-3" : size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
   return (
     <span
-      title={t.label}
+      title={title ?? t.label}
       style={{ backgroundColor: t.color }}
-      className={`inline-flex items-center justify-center ${dims} rounded-md text-white shadow-sm ring-1 ring-black/5 shrink-0`}
+      className={`inline-flex items-center justify-center ${DIMS[size]} rounded-md text-white shadow-sm ring-1 ring-black/5 shrink-0`}
     >
-      <t.Icon className={inner} />
+      <t.Icon className={INNER[size]} />
     </span>
   );
 }
