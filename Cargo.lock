@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "modula-client"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "modula-engine-transport",
  "modula-rpc",
@@ -2543,7 +2543,7 @@ dependencies = [
 
 [[package]]
 name = "modula-db"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2560,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "modula-desktop"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "modula-client",
@@ -2583,7 +2583,7 @@ dependencies = [
 
 [[package]]
 name = "modula-e2e"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -2598,7 +2598,7 @@ dependencies = [
 
 [[package]]
 name = "modula-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2642,7 +2642,7 @@ dependencies = [
 
 [[package]]
 name = "modula-engine-transport"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-stream",
  "hyper-util",
@@ -2659,7 +2659,7 @@ dependencies = [
 
 [[package]]
 name = "modula-integrations"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2671,7 +2671,7 @@ dependencies = [
 
 [[package]]
 name = "modula-mock-claude"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -2680,7 +2680,7 @@ dependencies = [
 
 [[package]]
 name = "modula-platform"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "dirs",
  "nix 0.29.0",
@@ -2692,7 +2692,7 @@ dependencies = [
 
 [[package]]
 name = "modula-rpc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "prost",
@@ -2706,7 +2706,7 @@ dependencies = [
 
 [[package]]
 name = "modula-test-support"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "modula-engine-transport",
@@ -2719,7 +2719,7 @@ dependencies = [
 
 [[package]]
 name = "modula-types"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "modula-rpc",
  "serde",
