@@ -41,10 +41,6 @@ export function LogsView() {
     <div className="flex-1 flex flex-col overflow-hidden">
       <TabsNav />
       <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="h-10 shrink-0 flex items-center gap-2 px-4 border-b border-edge">
-          <span className="text-fg-muted text-xs uppercase tracking-wide">Runs</span>
-          <span className="text-fg-subtle text-xs">({runs.length})</span>
-        </div>
         <div className="divide-y divide-edge overflow-y-auto flex-1">
           {runs.length === 0 && <div className="px-4 py-4 text-fg-subtle text-xs">no runs</div>}
           {runs.map((r) => (
