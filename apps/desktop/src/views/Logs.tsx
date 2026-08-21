@@ -1,6 +1,7 @@
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import { useContext, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AgentName } from "../components/AgentName";
 import { DropdownMenu } from "../components/DropdownMenu";
 import { FeedbackText } from "../components/FeedbackText";
 import { Pill } from "../components/Pill";
@@ -40,10 +41,6 @@ export function LogsView() {
     <div className="flex-1 flex flex-col overflow-hidden">
       <TabsNav />
       <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="h-10 shrink-0 flex items-center gap-2 px-4 border-b border-edge">
-          <span className="text-fg-muted text-xs uppercase tracking-wide">Runs</span>
-          <span className="text-fg-subtle text-xs">({runs.length})</span>
-        </div>
         <div className="divide-y divide-edge overflow-y-auto flex-1">
           {runs.length === 0 && <div className="px-4 py-4 text-fg-subtle text-xs">no runs</div>}
           {runs.map((r) => (
@@ -121,7 +118,7 @@ function RunRow({
         className="flex items-center gap-2 text-left flex-1 min-w-0 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <RunStatusIcon status={run.status} />
-        <Pill>{run.agent_name}</Pill>
+        <AgentName name={run.agent_name} className="text-xs mx-1.5" />
         {taskLabel && (
           <Pill>
             <LayoutGrid size={12} />
@@ -137,7 +134,7 @@ function RunRow({
         {fallback && <span className="text-[11px] text-fg-subtle">{fallback}</span>}
       </button>
       <FeedbackText feedback={fb.feedback} />
-      <TimeAgo iso={ts} className="text-[11px] text-fg-subtle whitespace-nowrap" />
+      <TimeAgo iso={ts} className="font-inter text-[11px] text-fg-subtle whitespace-nowrap" />
       {pid != null && (
         <DropdownMenu
           panelClassName="w-40"

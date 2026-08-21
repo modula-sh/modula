@@ -8,7 +8,6 @@ export function AgentsView() {
   const navigate = useNavigate();
   const { snap } = useSnapshot();
   const running = snap?.agents ?? [];
-  const runs = snap?.runs ?? [];
   const agents = snap?.config.agents ?? [];
 
   return (
@@ -36,15 +35,11 @@ export function AgentsView() {
 
                 const renderCard = (a: (typeof agents)[number]) => {
                   const isRunning = running.some((r) => r.name === a.name);
-                  const recent = runs.find((r) => r.agent_name === a.name);
-                  const lastTs =
-                    recent?.finished_at ?? recent?.started_at ?? recent?.created_at ?? null;
                   return (
                     <AgentCard
                       key={a.name}
                       agent={a}
                       isRunning={isRunning}
-                      lastLog={lastTs}
                       onOpen={() => navigate(`/agents/edit/${a.id}`)}
                     />
                   );
@@ -56,7 +51,7 @@ export function AgentsView() {
                       <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle font-inter">
                         {title}
                       </h2>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                         {list.map(renderCard)}
                       </div>
                     </section>
