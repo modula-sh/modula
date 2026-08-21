@@ -5,6 +5,8 @@ import { AgentIdenticon } from "./AgentIdenticon";
 /** Identicon frame + glyph, sized to sit level with the provider icon beside it. */
 const FRAME = { "2xs": "w-4 h-4", xs: "w-5 h-5" };
 const GLYPH = { "2xs": 11, xs: 14 };
+/** Pulls the provider icon back under the identicon by half its width. */
+const OVERLAP = { "2xs": "-ml-2", xs: "-ml-2.5" };
 
 /** An agent's identicon, provider icon, and name — the run-list echo of the
  *  agent tile's header. Rows only carry `agent_name`, so the provider is looked
@@ -27,19 +29,22 @@ export function AgentName({
 
   return (
     <span className={`inline-flex items-center gap-1.5 min-w-0 font-inter text-fg ${className}`}>
-      <span
-        className={`inline-flex items-center justify-center ${FRAME[iconSize]} rounded-[3px] bg-surface-2 text-fg border border-border shrink-0`}
-        aria-hidden
-      >
-        <AgentIdenticon id={name} size={GLYPH[iconSize]} />
+      <span className="inline-flex items-center shrink-0">
+        <span
+          className={`relative z-10 inline-flex items-center justify-center ${FRAME[iconSize]} rounded-[3px] bg-surface-2 text-fg border border-border shrink-0`}
+          aria-hidden
+        >
+          <AgentIdenticon id={name} size={GLYPH[iconSize]} />
+        </span>
+        {agent?.provider_id && (
+          <ProviderTypeIcon
+            type={provider?.type}
+            size={iconSize}
+            title={provider?.name ?? agent.provider_id}
+            className={OVERLAP[iconSize]}
+          />
+        )}
       </span>
-      {agent?.provider_id && (
-        <ProviderTypeIcon
-          type={provider?.type}
-          size={iconSize}
-          title={provider?.name ?? agent.provider_id}
-        />
-      )}
       <span className="min-w-0 truncate">{name}</span>
     </span>
   );

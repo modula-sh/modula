@@ -44,19 +44,21 @@ export function ProviderTypeIcon({
   type,
   size = "md",
   title,
+  className = "",
 }: {
   type: string | null | undefined;
   /** `2xs` for dense row contexts (run lists). */
   size?: keyof typeof DIMS;
   /** Overrides the type label as the tooltip — e.g. the provider's own name. */
   title?: string;
+  className?: string;
 }) {
   const t = providerType(type);
   return (
     <span
       title={title ?? t.label}
       style={{ backgroundColor: t.color }}
-      className={`inline-flex items-center justify-center ${DIMS[size]} rounded-md text-white shadow-sm ring-1 ring-black/5 shrink-0`}
+      className={`inline-flex items-center justify-center ${DIMS[size]} rounded-md text-white shadow-sm ring-1 ring-black/5 shrink-0 ${className}`}
     >
       <t.Icon className={INNER[size]} />
     </span>
