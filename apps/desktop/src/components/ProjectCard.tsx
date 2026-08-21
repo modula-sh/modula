@@ -18,7 +18,7 @@ export function ProjectCard({ project, onOpen }: { project: Project; onOpen: () 
         </span>
 
         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="font-inter font-medium text-fg truncate">{project.name}</span>
+          <span className="font-inter text-fg min-w-0 truncate">{project.name}</span>
           {project.base_branch && (
             <Pill variant="flat">
               <GitBranch size={11} className="shrink-0 text-fg-subtle" />

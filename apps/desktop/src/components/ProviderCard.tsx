@@ -22,7 +22,7 @@ export function ProviderCard({
       <div className="flex items-center gap-3">
         <ProviderTypeIcon type={provider.type} />
         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="font-inter font-medium text-fg truncate">{provider.name}</span>
+          <span className="font-inter text-fg min-w-0 truncate">{provider.name}</span>
           {!provider.config_dir_exists && <Pill tone="red">config dir missing</Pill>}
         </div>
         <IntegrationIconRow integrations={integrations} />
