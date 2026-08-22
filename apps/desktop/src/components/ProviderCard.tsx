@@ -33,7 +33,7 @@ export function ProviderCard({
       )}
 
       {(provider.mcp_server_count > 0 || agents.length > 0) && (
-        <div className="mt-3 space-y-1.5 text-[11px]">
+        <div className="mt-3 space-y-3 text-[11px]">
           {provider.mcp_server_count > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <Pill size="sm">MCP {provider.mcp_server_count}</Pill>
