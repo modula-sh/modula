@@ -422,7 +422,7 @@ export function ConversationDetailPage() {
           />
 
           <div className="absolute bottom-4 left-0 right-[8px] px-[50px]">
-            <div className="max-w-[1100px] mx-auto">
+            <div className="max-w-[800px] mx-auto">
               <ChatInput
                 onSend={handleSend}
                 onCancel={cancel}

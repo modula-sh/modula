@@ -32,13 +32,7 @@ export default {
       },
       fontFamily: {
         inter: ['"Inter Variable"', "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        hanken: [
-          '"Hanken Grotesk Variable"',
-          '"Hanken Grotesk"',
-          "ui-sans-serif",
-          "system-ui",
-          "sans-serif",
-        ],
+        geist: ['"Geist Variable"', "Geist", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: [
           '"IBM Plex Mono"',
           "ui-monospace",

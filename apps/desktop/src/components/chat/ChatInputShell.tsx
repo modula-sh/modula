@@ -34,7 +34,7 @@ export function ChatInputShell({
     <div className="flex flex-col gap-1 p-2 bg-chat-input border border-chat-input-border/50 rounded-3xl shadow-panel">
       <textarea
         ref={taRef}
-        className="bg-transparent rounded p-2 text-[14px] text-fg placeholder-fg-subtle font-hanken focus:outline-none resize-none overflow-y-auto"
+        className="bg-transparent rounded p-2 text-[14px] text-fg placeholder-fg-subtle font-geist focus:outline-none resize-none overflow-y-auto"
         rows={2}
         style={{ maxHeight: MAX_HEIGHT }}
         placeholder={placeholder}

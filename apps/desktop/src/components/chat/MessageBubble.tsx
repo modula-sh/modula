@@ -11,7 +11,7 @@ export function MessageBubble({ msg }: { msg: ConversationMessage }) {
       <div className="flex justify-end">
         <div className="group flex flex-col items-end gap-1 min-w-0 max-w-[70%]">
           <div className="bg-surface rounded-2xl px-3.5 py-2 min-w-0">
-            <p className="selectable text-[14px] text-fg font-hanken whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <p className="selectable text-[14px] text-fg font-geist whitespace-pre-wrap [overflow-wrap:anywhere]">
               {msg.content}
             </p>
           </div>
@@ -28,7 +28,7 @@ export function MessageBubble({ msg }: { msg: ConversationMessage }) {
       {msg.content && (
         <MarkdownContent
           value={msg.content}
-          fontClass="font-hanken"
+          fontClass="font-geist"
           bodyClass="text-[14px]"
           className="selectable"
         />
