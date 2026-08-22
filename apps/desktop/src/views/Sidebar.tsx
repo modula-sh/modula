@@ -107,7 +107,7 @@ function SidebarItem({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="flex-1 flex items-center gap-2 pl-3 py-2 text-fg-subtle/70 hover:text-fg-subtle transition-colors"
+              className="flex-1 flex items-center gap-2 pl-3 py-1.5 text-fg-subtle/70 hover:text-fg-subtle transition-colors"
             >
               <span className="text-xs uppercase tracking-wider font-medium">{item.label}</span>
               <span className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -126,7 +126,7 @@ function SidebarItem({
             )}
           </div>
           {expanded && item.children.length === 0 && item.emptyLabel && (
-            <div className="px-3 py-2 text-xs text-fg-subtle/70">{item.emptyLabel}</div>
+            <div className="px-3 py-1.5 text-xs text-fg-subtle/70">{item.emptyLabel}</div>
           )}
           {expanded && item.children.length > 0 && (
             <div className="space-y-1 overflow-y-auto overflow-x-hidden min-h-0 flex-1 no-scrollbar">
@@ -148,7 +148,7 @@ function SidebarItem({
               type="button"
               onClick={() => setExpanded((v) => !v)}
               className={
-                `flex-1 flex items-center gap-2 pl-3 py-2 rounded transition-colors hover:bg-surface-2/50 ` +
+                `flex-1 flex items-center gap-2 pl-3 py-1.5 rounded transition-colors hover:bg-surface-2/50 ` +
                 rowColor
               }
             >
@@ -173,7 +173,7 @@ function SidebarItem({
             type="button"
             onClick={() => setExpanded((v) => !v)}
             title={item.label}
-            className={`w-full flex items-center justify-center py-2 rounded transition-colors ${rowColor}`}
+            className={`w-full flex items-center justify-center py-1.5 rounded transition-colors ${rowColor}`}
           >
             <span className="shrink-0">{item.icon}</span>
             <span className="sr-only">{item.label}</span>
@@ -200,7 +200,7 @@ function SidebarItem({
       title={!sidebarOpen ? item.label : undefined}
       onContextMenu={item.onContextMenu}
       className={({ isActive }) =>
-        `${rowLayout} py-2 rounded transition-colors ` +
+        `${rowLayout} py-1.5 rounded transition-colors ` +
         (isActive ? "bg-surface-2/50 text-fg" : "text-fg-muted hover:text-fg hover:bg-surface-2/30")
       }
     >
