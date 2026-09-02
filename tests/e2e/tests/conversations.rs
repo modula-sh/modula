@@ -390,13 +390,15 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
     assert_eq!(queued.len(), 1);
     let doomed = queued[0].id.clone();
 
-    h.conversations()
-        .enqueue(EnqueueMessageRequest {
-            workspace_id: ws.clone(),
-            conversation_id: conv_id.clone(),
-            message: "keep me".to_string(),
-        })
-        .await?;
+    for message in ["keep me", "and me"] {
+        h.conversations()
+            .enqueue(EnqueueMessageRequest {
+                workspace_id: ws.clone(),
+                conversation_id: conv_id.clone(),
+                message: message.to_string(),
+            })
+            .await?;
+    }
 
     let detail = h
         .conversations()
@@ -406,7 +408,11 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
         })
         .await?
         .into_inner();
-    assert_eq!(detail.queued.len(), 2, "both messages should be queued");
+    assert_eq!(
+        detail.queued.len(),
+        3,
+        "all three messages should be queued"
+    );
     assert!(detail.running, "Get should report the in-flight run");
 
     let left = h
@@ -419,14 +425,14 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
         .await?
         .into_inner()
         .queued;
-    assert_eq!(left.len(), 1);
-    assert_eq!(left[0].content, "keep me");
+    let left: Vec<_> = left.iter().map(|m| m.content.clone()).collect();
+    assert_eq!(left, ["keep me", "and me"]);
 
     drain(stream).await?;
 
-    // The survivor auto-sends as its own turn; wait for it to land.
-    let mut sent = false;
-    for _ in 0..40 {
+    // The survivors auto-send as their own turns, one after the other.
+    let mut users = Vec::new();
+    for _ in 0..80 {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         let detail = h
             .conversations()
@@ -436,17 +442,23 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
             })
             .await?
             .into_inner();
-        if detail.queued.is_empty()
-            && detail
+        if detail.queued.is_empty() {
+            users = detail
                 .messages
                 .iter()
-                .any(|m| m.role == "user" && m.content == "keep me")
-        {
-            sent = true;
-            break;
+                .filter(|m| m.role == "user")
+                .map(|m| m.content.clone())
+                .collect();
+            if users.len() == 3 {
+                break;
+            }
         }
     }
-    assert!(sent, "queued message never auto-sent when the run ended");
+    assert_eq!(
+        users,
+        ["Begin.", "keep me", "and me"],
+        "queued messages must auto-send in enqueue order"
+    );
 
     Ok(())
 }

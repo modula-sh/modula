@@ -309,20 +309,32 @@ export function ConversationDetailPage() {
     if (ws && id) queryClient.invalidateQueries({ queryKey: conversationKeys.detail(ws, id) });
   }, [queryClient, ws, id]);
 
+  // ChatInput clears the box before the RPC resolves, so a failure has to be shown
+  // or the message is gone with no signal.
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const settleQueue = useCallback(
+    (p: Promise<unknown>) => {
+      p.then(() => setQueueError(null))
+        .catch((e) => setQueueError(errorMessage(e)))
+        .finally(refetchQueue);
+    },
+    [refetchQueue],
+  );
+
   const handleQueue = useCallback(
     (text: string) => {
       if (!id) return;
-      client.conversation.enqueue(ws, id, text).then(refetchQueue).catch(refetchQueue);
+      settleQueue(client.conversation.enqueue(ws, id, text));
     },
-    [ws, id, refetchQueue],
+    [ws, id, settleQueue],
   );
 
   const handleDequeue = useCallback(
     (queuedId: string) => {
       if (!id) return;
-      client.conversation.dequeue(ws, id, queuedId).then(refetchQueue).catch(refetchQueue);
+      settleQueue(client.conversation.dequeue(ws, id, queuedId));
     },
-    [ws, id, refetchQueue],
+    [ws, id, settleQueue],
   );
 
   useEffect(() => {
@@ -437,7 +449,7 @@ export function ConversationDetailPage() {
             inFlightText={inFlightText}
             inFlightTools={inFlightTools}
             streaming={streaming}
-            error={error}
+            error={error ?? queueError}
             bottomRef={bottomRef}
             scrollContainerRef={scrollContainerRef}
             onScroll={handleScroll}

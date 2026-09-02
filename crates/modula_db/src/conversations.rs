@@ -275,3 +275,55 @@ impl ConversationRepository {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{providers::ProviderRepository, workspaces::WorkspaceRepository};
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn queued_round_trips_through_the_column() {
+        let dir = tempdir().unwrap();
+        let pool = crate::open(&dir.path().join("t.sqlite")).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        let ws = WorkspaceRepository::new()
+            .create(&mut conn, "Modula", None)
+            .await
+            .unwrap();
+        drop(conn);
+        let provider_id = ProviderRepository::new()
+            .create(&pool, &ws, "Claude", "claude", "/tmp", None)
+            .await
+            .unwrap();
+        let convs = ConversationRepository::new();
+        convs
+            .create(
+                &pool,
+                &ws,
+                &ConversationCreate {
+                    id: "c1".into(),
+                    title: None,
+                    provider_id,
+                    model: None,
+                    context: json!({}),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert!(convs.get(&pool, &ws, "c1").await.unwrap().queued.is_empty());
+
+        let queued = vec![QueuedMessage {
+            id: "q1".into(),
+            content: "next".into(),
+        }];
+        convs.set_queued(&pool, &ws, "c1", &queued).await.unwrap();
+        assert_eq!(convs.get(&pool, &ws, "c1").await.unwrap().queued, queued);
+
+        assert!(matches!(
+            convs.set_queued(&pool, &ws, "nope", &queued).await,
+            Err(Error::NotFound(_))
+        ));
+    }
+}

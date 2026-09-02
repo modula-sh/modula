@@ -249,6 +249,14 @@ impl ConversationService {
         Ok(())
     }
 
+    /// Cheap pre-check so the common empty-queue drain never claims the run slot.
+    async fn queue_is_empty(&self, ws: &str, id: &str) -> bool {
+        self.conversations
+            .get(&self.pool, ws, id)
+            .await
+            .is_ok_and(|c| c.queued.is_empty())
+    }
+
     async fn clear_queued(&self, ws: &str, id: &str) -> ApiResult<()> {
         self.edit_queue(ws, id, |q| q.clear()).await?;
         Ok(())
@@ -551,10 +559,11 @@ pub async fn cancel(rt: ConvRuntime, ws_id: String, conv_id: String) -> ApiResul
     Ok(())
 }
 
-/// Start the next queued turn, if any. The run slot is claimed before the head
-/// is popped, so two drains racing (a run ending as an idle `Enqueue` drains)
-/// cannot start the queue's messages out of order — the loser leaves the queue
-/// to the winner's own end-of-run drain. A failed send puts the head back.
+/// Start the next queued turn, if any. The empty check is an early-out only;
+/// the run slot is still claimed before the head is popped, so two drains racing
+/// (a run ending as an idle `Enqueue` drains) cannot start the queue's messages
+/// out of order — the loser leaves the queue to the winner's own end-of-run
+/// drain. A failed send puts the head back.
 ///
 /// `open_send` recurses back into this through the task it spawns, so the
 /// returned future is boxed rather than opaque — otherwise the two hidden types
@@ -566,6 +575,9 @@ pub fn drain_queue(
 ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     Box::pin(async move {
         let key = (ws_id, conv_id);
+        if rt.conversations.queue_is_empty(&key.0, &key.1).await {
+            return;
+        }
         let Some(slot) = claim_run(&rt, &key).await else {
             return;
         };
