@@ -283,9 +283,15 @@ export interface ConversationMessage {
   ts: string;
 }
 
+export interface QueuedMessage {
+  id: string;
+  content: string;
+}
+
 export interface ConversationDetail extends ConversationSummary {
   session_id: string | null;
   messages: ConversationMessage[];
+  queued: QueuedMessage[];
   created_at: string;
 }
 

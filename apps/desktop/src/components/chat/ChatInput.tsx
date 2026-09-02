@@ -6,6 +6,7 @@ import { SendButton } from "./SendButton";
 
 export function ChatInput({
   onSend,
+  onQueue,
   onCancel,
   streaming,
   models,
@@ -14,6 +15,7 @@ export function ChatInput({
   draftKey,
 }: {
   onSend: (text: string) => void;
+  onQueue: (text: string) => void;
   onCancel: () => void;
   streaming: boolean;
   models: ProviderModel[];
@@ -24,16 +26,18 @@ export function ChatInput({
   const [text, setText] = useLocalStorage(draftKey, "");
 
   function submit() {
-    if (streaming) {
+    const trimmed = text.trim();
+    if (streaming && !trimmed) {
       onCancel();
       return;
     }
-    if (!text.trim()) return;
-    onSend(text.trim());
+    if (!trimmed) return;
+    if (streaming) onQueue(trimmed);
+    else onSend(trimmed);
     setText("");
   }
 
-  const buttonDisabled = streaming ? false : !text.trim();
+  const buttonDisabled = !streaming && !text.trim();
 
   return (
     <ChatInputShell
@@ -54,7 +58,11 @@ export function ChatInput({
             title="Model. Changes apply to the next message"
           />
           <div className="ml-auto">
-            <SendButton onClick={submit} disabled={buttonDisabled} busy={streaming} />
+            <SendButton
+              onClick={submit}
+              disabled={buttonDisabled}
+              busy={streaming && !text.trim()}
+            />
           </div>
         </>
       }

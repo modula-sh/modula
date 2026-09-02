@@ -1,4 +1,4 @@
-import type { ConversationDetail } from "../../../types";
+import type { ConversationDetail, QueuedMessage } from "../../../types";
 import { call } from "../invoke";
 import type { CreateConversationBody } from "../types";
 
@@ -23,5 +23,21 @@ export class ConversationResource {
 
   delete(ws: string, id: string) {
     return call<void>("conversation_delete", { workspaceId: ws, conversationId: id });
+  }
+
+  enqueue(ws: string, id: string, message: string) {
+    return call<QueuedMessage[]>("conversation_enqueue", {
+      workspaceId: ws,
+      conversationId: id,
+      message,
+    });
+  }
+
+  dequeue(ws: string, id: string, queuedId: string) {
+    return call<QueuedMessage[]>("conversation_dequeue", {
+      workspaceId: ws,
+      conversationId: id,
+      queuedId,
+    });
   }
 }

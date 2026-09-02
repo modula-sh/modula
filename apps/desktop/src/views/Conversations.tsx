@@ -7,6 +7,7 @@ import { ChatInput } from "../components/chat/ChatInput";
 import { ChatInputShell } from "../components/chat/ChatInputShell";
 import { ContextPills } from "../components/chat/ContextPills";
 import { MessageList } from "../components/chat/MessageList";
+import { QueuedMessages } from "../components/chat/QueuedMessages";
 import { SendButton } from "../components/chat/SendButton";
 import { DropdownSelect } from "../components/DropdownMenu";
 import { HeaderSlot } from "../components/HeaderSlot";
@@ -298,6 +299,28 @@ export function ConversationDetailPage() {
     [send, selectedModel],
   );
 
+  // The queue lives engine-side; refetch so a change made here or on the phone
+  // lands the same way.
+  const refetchQueue = useCallback(() => {
+    if (ws && id) queryClient.invalidateQueries({ queryKey: conversationKeys.detail(ws, id) });
+  }, [queryClient, ws, id]);
+
+  const handleQueue = useCallback(
+    (text: string) => {
+      if (!id) return;
+      client.conversation.enqueue(ws, id, text).then(refetchQueue).catch(refetchQueue);
+    },
+    [ws, id, refetchQueue],
+  );
+
+  const handleDequeue = useCallback(
+    (queuedId: string) => {
+      if (!id) return;
+      client.conversation.dequeue(ws, id, queuedId).then(refetchQueue).catch(refetchQueue);
+    },
+    [ws, id, refetchQueue],
+  );
+
   useEffect(() => {
     if (conv && initialMsg && !initialFiredRef.current) {
       initialFiredRef.current = true;
@@ -423,8 +446,10 @@ export function ConversationDetailPage() {
 
           <div className="absolute bottom-4 left-0 right-[8px] px-[50px]">
             <div className="max-w-[800px] mx-auto">
+              <QueuedMessages queued={conv?.queued ?? []} onRemove={handleDequeue} />
               <ChatInput
                 onSend={handleSend}
+                onQueue={handleQueue}
                 onCancel={cancel}
                 streaming={streaming}
                 models={availableModels}

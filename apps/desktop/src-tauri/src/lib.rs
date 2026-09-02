@@ -83,6 +83,8 @@ pub fn run() {
             grpc::conversation::conversation_rename,
             grpc::conversation::conversation_delete,
             grpc::conversation::conversation_cancel,
+            grpc::conversation::conversation_enqueue,
+            grpc::conversation::conversation_dequeue,
             grpc::conversation::conversation_send,
             grpc::conversation::conversation_attach,
             grpc::event::event_watch,
