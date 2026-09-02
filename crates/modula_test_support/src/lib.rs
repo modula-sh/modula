@@ -24,10 +24,11 @@ use modula_rpc::v1::{
     event_service_client::EventServiceClient, health_service_client::HealthServiceClient,
     label_service_client::LabelServiceClient, project_service_client::ProjectServiceClient,
     provider_service_client::ProviderServiceClient, roadmap_service_client::RoadmapServiceClient,
-    run_service_client::RunServiceClient, snapshot_service_client::SnapshotServiceClient,
-    task_service_client::TaskServiceClient, thread_service_client::ThreadServiceClient,
-    variant_service_client::VariantServiceClient, workspace_service_client::WorkspaceServiceClient,
-    CreateWorkspaceRequest, HealthCheckRequest, HealthStatus,
+    run_service_client::RunServiceClient, search_service_client::SearchServiceClient,
+    snapshot_service_client::SnapshotServiceClient, task_service_client::TaskServiceClient,
+    thread_service_client::ThreadServiceClient, variant_service_client::VariantServiceClient,
+    workspace_service_client::WorkspaceServiceClient, CreateWorkspaceRequest, HealthCheckRequest,
+    HealthStatus,
 };
 use serde_json::Value as Json;
 use tempfile::TempDir;
@@ -195,6 +196,10 @@ impl Harness {
 
     pub fn projects(&self) -> ProjectServiceClient<Channel> {
         ProjectServiceClient::new(self.channel.clone())
+    }
+
+    pub fn search(&self) -> SearchServiceClient<Channel> {
+        SearchServiceClient::new(self.channel.clone())
     }
 
     /// Create a workspace and record its on-disk dir (the engine returns the

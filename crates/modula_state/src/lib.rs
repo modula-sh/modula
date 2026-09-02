@@ -23,6 +23,7 @@ use modula_services::projects::ProjectService;
 use modula_services::providers::ProviderService;
 use modula_services::runs::RunService;
 use modula_services::scheduler::SchedulerHandle;
+use modula_services::search::SearchService;
 use modula_services::snapshot::SnapshotService;
 use modula_services::workspaces::WorkspaceService;
 
@@ -72,6 +73,9 @@ pub struct AppState {
     pub snapshot: SnapshotService,
     /// Log-path resolution service (DIs `WorkspaceService`); `tail_lines` streams.
     pub logs: LogsService,
+    /// Workspace-wide search. A read-only cross-domain aggregator: it owns no
+    /// transaction, writes nothing, and publishes no event.
+    pub search: SearchService,
     pub scheduler: SchedulerHandle,
     pub loops: LoopRegistry,
     /// In-flight conversation runs; outlives any individual SSE response so
@@ -210,6 +214,7 @@ impl AppState {
             processes.clone(),
             workspaces.clone(),
         );
+        let search = SearchService::new(workspaces.clone(), &repos);
         // Plugins own their state; the engine keeps no field per plugin.
         let ctx = PluginContext {
             db: db.clone(),
@@ -255,6 +260,7 @@ impl AppState {
             processes,
             snapshot,
             logs,
+            search,
             scheduler,
             loops,
             conv,

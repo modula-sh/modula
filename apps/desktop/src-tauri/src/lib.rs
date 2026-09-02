@@ -126,6 +126,7 @@ pub fn run() {
             grpc::project::project_repo_branches,
             grpc::diff::variant_diff,
             grpc::diff::variant_pr,
+            grpc::search::search_query,
         ])
         .setup(move |app| {
             // In dev (`bash scripts/dev.sh`) the engine is already running under
