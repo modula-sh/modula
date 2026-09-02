@@ -69,6 +69,8 @@ pub struct Conversation {
     pub queued: Vec<QueuedMessage>,
     pub created_at: String,
     pub updated_at: String,
+    /// A provider run is in flight right now; filled by the gRPC layer.
+    pub running: bool,
 }
 
 impl From<pb::Conversation> for Conversation {
@@ -84,6 +86,7 @@ impl From<pb::Conversation> for Conversation {
             queued: c.queued.into_iter().map(QueuedMessage::from).collect(),
             created_at: c.created_at,
             updated_at: c.updated_at,
+            running: c.running,
         }
     }
 }
@@ -101,6 +104,7 @@ impl From<Conversation> for pb::Conversation {
             queued: c.queued.into_iter().map(pb::QueuedMessage::from).collect(),
             created_at: c.created_at,
             updated_at: c.updated_at,
+            running: c.running,
         }
     }
 }
@@ -184,6 +188,7 @@ mod tests {
             }],
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
+            running: true,
         }
     }
 
@@ -201,6 +206,7 @@ mod tests {
             "messages": [{"role": "user", "content": "hi", "ts": "2026-01-01T00:00:00Z"}],
             "queued": [{"id": "q1", "content": "next"}],
             "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+            "running": true,
         });
         assert_eq!(serde_json::to_value(conversation()).unwrap(), want);
     }

@@ -62,6 +62,7 @@ impl From<ConversationRecord> for Conversation {
             queued: serde_json::from_str(&r.queued).unwrap_or_default(),
             created_at: r.created_at,
             updated_at: r.updated_at,
+            running: false,
         }
     }
 }

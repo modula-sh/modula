@@ -57,6 +57,8 @@ message Conversation {
   string created_at = 8;
   string updated_at = 9;
   repeated QueuedMessage queued = 10;
+  // Runtime state read from the run registry, not a stored column.
+  bool running = 11;
 }
 
 // Server-streaming event. oneof mirrors the existing WireEvent variants.

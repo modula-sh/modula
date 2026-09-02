@@ -286,6 +286,10 @@ export function ConversationDetailPage() {
     ? (catalog.find((c) => c.id === providerType)?.models ?? [])
     : [];
 
+  // The local stream only turns on once a delta lands, so a run this window
+  // joined mid-tool-use needs the engine's own view to route to the queue.
+  const inFlight = streaming || !!conv?.running;
+
   const handleSend = useCallback(
     (text: string) => {
       // Optimistic — show the user message immediately; the refetch on stream-end
@@ -451,7 +455,7 @@ export function ConversationDetailPage() {
                 onSend={handleSend}
                 onQueue={handleQueue}
                 onCancel={cancel}
-                streaming={streaming}
+                streaming={inFlight}
                 models={availableModels}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}

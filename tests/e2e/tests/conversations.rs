@@ -407,6 +407,7 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
         .await?
         .into_inner();
     assert_eq!(detail.queued.len(), 2, "both messages should be queued");
+    assert!(detail.running, "Get should report the in-flight run");
 
     let left = h
         .conversations()

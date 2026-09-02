@@ -117,7 +117,14 @@ impl ConversationService for ConversationHandler {
             .get(&body.workspace_id, &body.conversation_id)
             .await
             .map_err(to_status)?;
-        Ok(Response::new(Conversation::from(conv)))
+        let mut out = Conversation::from(conv);
+        out.running = self
+            .state
+            .conv_runs
+            .running(&body.workspace_id)
+            .await
+            .contains(&out.id);
+        Ok(Response::new(out))
     }
 
     async fn create(
