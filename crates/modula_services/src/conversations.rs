@@ -8,6 +8,8 @@
 //! `cancel` (signal the task to kill the child, persist what it has, and exit).
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -28,7 +30,7 @@ use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
 use modula_db::conversations::{ConversationCreate, ConversationRepository};
 use modula_db::Database;
-use modula_types::Conversation;
+use modula_types::{Conversation, QueuedMessage};
 
 pub type ConvKey = (String, String);
 
@@ -178,6 +180,88 @@ impl ConversationService {
         Ok(())
     }
 
+    /// Queue `message` behind the in-flight run. Returns the resulting queue.
+    pub async fn enqueue(
+        &self,
+        ws: &str,
+        id: &str,
+        message: &str,
+    ) -> ApiResult<Vec<QueuedMessage>> {
+        let content = message.trim();
+        if content.is_empty() {
+            return Err(ApiError::BadRequest("message is required".into()));
+        }
+        let mut tx = self.pool.begin().await?;
+        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
+        queued.push(QueuedMessage {
+            id: Uuid::new_v4().to_string(),
+            content: content.to_string(),
+        });
+        self.conversations
+            .set_queued(&mut *tx, ws, id, &queued)
+            .await?;
+        tx.commit().await?;
+        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        Ok(queued)
+    }
+
+    /// Drop a queued message. An unknown `queued_id` is a no-op so two clients
+    /// can tap the same x.
+    pub async fn dequeue(
+        &self,
+        ws: &str,
+        id: &str,
+        queued_id: &str,
+    ) -> ApiResult<Vec<QueuedMessage>> {
+        let mut tx = self.pool.begin().await?;
+        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
+        queued.retain(|q| q.id != queued_id);
+        self.conversations
+            .set_queued(&mut *tx, ws, id, &queued)
+            .await?;
+        tx.commit().await?;
+        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        Ok(queued)
+    }
+
+    /// Atomically take the head of the queue. SQLite serializes the write
+    /// transaction, so two concurrent drains cannot claim the same message.
+    async fn pop_queued(&self, ws: &str, id: &str) -> ApiResult<Option<QueuedMessage>> {
+        let mut tx = self.pool.begin().await?;
+        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
+        if queued.is_empty() {
+            return Ok(None);
+        }
+        let head = queued.remove(0);
+        self.conversations
+            .set_queued(&mut *tx, ws, id, &queued)
+            .await?;
+        tx.commit().await?;
+        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        Ok(Some(head))
+    }
+
+    /// Put a popped message back at the head after a failed auto-send.
+    async fn requeue(&self, ws: &str, id: &str, msg: QueuedMessage) -> ApiResult<()> {
+        let mut tx = self.pool.begin().await?;
+        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
+        queued.insert(0, msg);
+        self.conversations
+            .set_queued(&mut *tx, ws, id, &queued)
+            .await?;
+        tx.commit().await?;
+        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        Ok(())
+    }
+
+    async fn clear_queued(&self, ws: &str, id: &str) -> ApiResult<()> {
+        self.conversations
+            .set_queued(&self.pool, ws, id, &[])
+            .await?;
+        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        Ok(())
+    }
+
     async fn publish(&self, ws: &str, kind: &str, id: &str) {
         self.events.publish(ws, kind, json!({ "id": id })).await;
     }
@@ -264,6 +348,7 @@ pub async fn open_send(
     // `run_to_completion` consumes one; the transition still has to be announced
     // after it returns.
     let ended = events.clone();
+    let drain_rt = rt.clone();
     tokio::spawn(async move {
         run_to_completion(
             slot.clone(),
@@ -281,6 +366,7 @@ pub async fn open_send(
         .await;
         runs.remove(&key).await;
         publish_run(&ended, &ws_id, &conv_id, false).await;
+        drain_queue(drain_rt, ws_id, conv_id).await;
     });
 
     Ok((replay, rx))
@@ -454,8 +540,51 @@ pub async fn cancel(rt: ConvRuntime, ws_id: String, conv_id: String) -> ApiResul
         .get(&key)
         .await
         .ok_or_else(|| ApiError::NotFound("no in-flight run for this conversation".into()))?;
+    // Clear before signalling: the run task drains the queue as it exits, so a
+    // queue emptied afterwards would let the interrupt auto-send a discarded
+    // message.
+    let _ = rt.conversations.clear_queued(&key.0, &key.1).await;
     slot.cancel.notify_one();
     Ok(())
+}
+
+/// Start the next queued turn, if any. The head is taken before the send so a
+/// run that ends faster than this commits cannot re-send it; a failed send puts
+/// it back.
+///
+/// `open_send` recurses back into this through the task it spawns, so the
+/// returned future is boxed rather than opaque — otherwise the two hidden types
+/// depend on each other and neither can be proven `Send`.
+pub fn drain_queue(
+    rt: ConvRuntime,
+    ws_id: String,
+    conv_id: String,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        if rt
+            .conv_runs
+            .get(&(ws_id.clone(), conv_id.clone()))
+            .await
+            .is_some()
+        {
+            return;
+        }
+        let Ok(Some(head)) = rt.conversations.pop_queued(&ws_id, &conv_id).await else {
+            return;
+        };
+        if let Err(e) = open_send(
+            rt.clone(),
+            ws_id.clone(),
+            conv_id.clone(),
+            head.content.clone(),
+            None,
+        )
+        .await
+        {
+            tracing::warn!(ws = %ws_id, conv = %conv_id, error = %e, "queued message not sent");
+            let _ = rt.conversations.requeue(&ws_id, &conv_id, head).await;
+        }
+    })
 }
 
 /// Max bytes of stderr to retain for an error fallback message.

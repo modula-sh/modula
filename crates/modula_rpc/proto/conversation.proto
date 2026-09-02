@@ -16,6 +16,14 @@ service ConversationService {
   // Dropping the stream detaches; the run continues.
   rpc Attach(AttachConversationRequest) returns (stream ConvEvent);
   rpc Cancel(CancelConversationRequest) returns (CancelConversationResponse);
+  // Queue a message for after the in-flight run; sends immediately if idle.
+  rpc Enqueue(EnqueueMessageRequest) returns (QueuedMessagesResponse);
+  rpc Dequeue(DequeueMessageRequest) returns (QueuedMessagesResponse);
+}
+
+message QueuedMessage {
+  string id = 1;
+  string content = 2;
 }
 
 message ChatMessage {
@@ -32,6 +40,7 @@ message ConversationSummary {
   // Schemaless context (workspace_id, task_id, variant_id, etc.).
   google.protobuf.Struct context = 5;
   string updated_at = 6;
+  repeated QueuedMessage queued = 8;
   // A provider run is in flight for this conversation right now. Runtime state
   // read from the run registry, not a stored column.
   bool running = 7;
@@ -47,6 +56,7 @@ message Conversation {
   repeated ChatMessage messages = 7;
   string created_at = 8;
   string updated_at = 9;
+  repeated QueuedMessage queued = 10;
 }
 
 // Server-streaming event. oneof mirrors the existing WireEvent variants.
@@ -139,4 +149,20 @@ message CancelConversationRequest {
 }
 message CancelConversationResponse {
   bool ok = 1;
+}
+
+message EnqueueMessageRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  string message = 3;
+}
+
+message DequeueMessageRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  string queued_id = 3;
+}
+
+message QueuedMessagesResponse {
+  repeated QueuedMessage queued = 1;
 }

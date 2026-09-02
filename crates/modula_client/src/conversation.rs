@@ -6,10 +6,10 @@
 use modula_rpc::json::json_to_struct;
 use modula_rpc::v1::{
     AttachConversationRequest, CancelConversationRequest, ConvEvent as PbConvEvent,
-    CreateConversationRequest, DeleteConversationRequest, GetConversationRequest,
-    SendMessageRequest, UpdateConversationRequest,
+    CreateConversationRequest, DeleteConversationRequest, DequeueMessageRequest,
+    EnqueueMessageRequest, GetConversationRequest, SendMessageRequest, UpdateConversationRequest,
 };
-use modula_types::{ConvEvent, Conversation};
+use modula_types::{ConvEvent, Conversation, QueuedMessage};
 use serde_json::Value;
 use tokio_stream::{Stream, StreamExt};
 
@@ -118,6 +118,48 @@ impl ModulaClient {
             .await
             .map_err(rpc)?;
         Ok(())
+    }
+
+    /// Queue a message behind the in-flight run; returns the resulting queue.
+    pub async fn enqueue_message(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        message: &str,
+    ) -> Result<Vec<QueuedMessage>, ClientError> {
+        let resp = self
+            .conversations()
+            .await?
+            .enqueue(EnqueueMessageRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                message: message.to_string(),
+            })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(resp.queued.into_iter().map(QueuedMessage::from).collect())
+    }
+
+    /// Drop a queued message; returns the resulting queue.
+    pub async fn dequeue_message(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        queued_id: &str,
+    ) -> Result<Vec<QueuedMessage>, ClientError> {
+        let resp = self
+            .conversations()
+            .await?
+            .dequeue(DequeueMessageRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                queued_id: queued_id.to_string(),
+            })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(resp.queued.into_iter().map(QueuedMessage::from).collect())
     }
 
     /// Send a message and stream the run's [`ConvEvent`]s. Dropping the stream

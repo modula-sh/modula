@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{json, Value as Json};
 use sqlx::{Executor, Sqlite};
 
-use modula_types::{ChatMessage, Conversation};
+use modula_types::{ChatMessage, Conversation, QueuedMessage};
 
 use crate::{Error, Result};
 
@@ -23,6 +23,7 @@ struct ConversationRecord {
     context: String,
     session_id: Option<String>,
     data: String,
+    queued: String,
     created_at: String,
     updated_at: String,
 }
@@ -58,6 +59,7 @@ impl From<ConversationRecord> for Conversation {
             context,
             session_id: r.session_id,
             messages,
+            queued: serde_json::from_str(&r.queued).unwrap_or_default(),
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -65,7 +67,7 @@ impl From<ConversationRecord> for Conversation {
 }
 
 const SELECT_COLS: &str =
-    "id, title, provider_id, model, context, session_id, data, created_at, updated_at";
+    "id, title, provider_id, model, context, session_id, data, queued, created_at, updated_at";
 
 #[derive(Debug, Deserialize)]
 pub struct ConversationCreate {
@@ -232,6 +234,30 @@ impl ConversationRepository {
             .bind(id)
             .execute(exec)
             .await?;
+        Ok(())
+    }
+
+    pub async fn set_queued<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        id: &str,
+        queued: &[QueuedMessage],
+    ) -> Result<()>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let json = serde_json::to_string(queued).unwrap_or_else(|_| "[]".to_string());
+        let res =
+            sqlx::query("UPDATE conversations SET queued = ? WHERE workspace_id = ? AND id = ?")
+                .bind(json)
+                .bind(ws_id)
+                .bind(id)
+                .execute(exec)
+                .await?;
+        if res.rows_affected() == 0 {
+            return Err(Error::NotFound(format!("unknown conversation: {id}")));
+        }
         Ok(())
     }
 
