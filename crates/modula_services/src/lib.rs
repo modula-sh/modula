@@ -17,6 +17,7 @@ pub mod projects;
 pub mod providers;
 pub mod runs;
 pub mod scheduler;
+pub mod search;
 pub mod snapshot;
 pub mod spawn;
 pub mod tasks;
