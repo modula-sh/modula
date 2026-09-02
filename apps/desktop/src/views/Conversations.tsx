@@ -312,6 +312,8 @@ export function ConversationDetailPage() {
   // ChatInput clears the box before the RPC resolves, so a failure has to be shown
   // or the message is gone with no signal.
   const [queueError, setQueueError] = useState<string | null>(null);
+  // Stream errors are held per conversation id; this one is not, so drop it on navigation.
+  useEffect(() => setQueueError(null), [id]);
   const settleQueue = useCallback(
     (p: Promise<unknown>) => {
       p.then(() => setQueueError(null))
