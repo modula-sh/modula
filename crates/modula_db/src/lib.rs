@@ -61,7 +61,11 @@ pub async fn open(path: &Path) -> anyhow::Result<Database> {
         .connect_with(opts)
         .await?;
 
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    // Plugins add their own migrations to the same `_sqlx_migrations` table, so
+    // this migrator must tolerate applied versions it does not own.
+    let mut migrator = sqlx::migrate!("./migrations");
+    migrator.set_ignore_missing(true);
+    migrator.run(&pool).await?;
     let mut tx = pool.begin().await?;
     agent_skills::AgentSkillRepository::new()
         .sync_all(&mut tx)

@@ -6,7 +6,7 @@ use modula_rpc::v1::{ListRoadmapRequest, SetRoadmapStatusRequest};
 use modula_test_support::Harness;
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 #[tokio::test]
 async fn roadmap_upsert_inserts_then_updates() -> Result<()> {

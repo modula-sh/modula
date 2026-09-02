@@ -10,7 +10,7 @@ use modula_rpc::v1::{
 use modula_test_support::Harness;
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 /// Drain a `Send`/`Attach` stream to its terminal event, returning which event
 /// kinds were seen. The stream ends on its own at `Done`/`Error`, so dropping

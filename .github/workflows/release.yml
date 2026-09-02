@@ -1,25 +1,35 @@
 name: Release
 
-# Builds the Tauri desktop app for each desktop OS/arch on a tag push and
+# Builds the Tauri desktop app for each desktop OS/arch at a chosen tag and
 # publishes every bundle to a single GitHub Release under a stable,
 # version-less asset name (Modula-<arch>.<ext>). That stable name is what makes
 # https://github.com/<owner>/<repo>/releases/latest/download/Modula-<arch>.<ext>
 # resolve across releases.
 #
 # Repo-agnostic: the only repo references are the github.* contexts, which
-# resolve at runtime to whichever repo this lives in — so moving from the
-# private repo to modula-sh/modula needs no edits here.
+# resolve at runtime to whichever repo this lives in — so a fork can run this
+# against its own tags and releases with no edits.
+#
+# This builds the open-source variant: plugins/remote is the NotImplemented
+# stub, so the result has no Modula Remote. Official signed builds are cut by
+# modula-sh/modula-release, which swaps the proprietary plugins in first.
+#
+# Manual rather than tag-triggered: the official release publishes to this
+# repo's tags, and two workflows racing to attach assets to one tag would
+# clobber each other.
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (e.g. v0.3.0)"
+        required: true
 
 permissions:
   contents: write
 
 env:
-  TAG: ${{ github.ref_name }}
+  TAG: ${{ inputs.tag }}
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
 

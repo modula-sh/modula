@@ -36,6 +36,10 @@ impl EventRecord {
 
 const SELECT_COLS: &str = "id, type, data, processed, created_at";
 
+/// How long the event log is retained, bounding the range any consumer can
+/// replay from. The dispatcher prunes to this window.
+pub const EVENT_RETENTION_DAYS: i64 = 30;
+
 #[derive(Clone, Default)]
 pub struct EventRepository;
 
@@ -78,6 +82,42 @@ impl EventRepository {
         .await?)
     }
 
+    /// Lowest and highest retained event id for the workspace; `None` when the
+    /// log is empty. Bounds the sync feed's resumable range.
+    pub async fn id_range<'e, E>(&self, exec: E, ws_id: &str) -> Result<Option<(i64, i64)>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let row: (Option<i64>, Option<i64>) =
+            sqlx::query_as("SELECT MIN(id), MAX(id) FROM events WHERE workspace_id = ?")
+                .bind(ws_id)
+                .fetch_one(exec)
+                .await?;
+        Ok(row.0.zip(row.1))
+    }
+
+    /// Events with `id > after`, oldest first.
+    pub async fn list_after<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        after: i64,
+        limit: i64,
+    ) -> Result<Vec<EventRecord>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query_as::<_, EventRecord>(&format!(
+            "SELECT {SELECT_COLS} FROM events WHERE workspace_id = ? AND id > ? \
+             ORDER BY id ASC LIMIT ?"
+        ))
+        .bind(ws_id)
+        .bind(after)
+        .bind(limit)
+        .fetch_all(exec)
+        .await?)
+    }
+
     /// Unprocessed events, oldest first, within the freshness window.
     pub async fn list_unprocessed<'e, E>(
         &self,
@@ -100,6 +140,20 @@ impl EventRepository {
         .bind(limit)
         .fetch_all(exec)
         .await?)
+    }
+
+    /// Drop events created before `cutoff` (an RFC3339 string, compared
+    /// lexicographically like the rest of the engine's timestamps), across all
+    /// workspaces. Returns the number of rows removed.
+    pub async fn prune_before<'e, E>(&self, exec: E, cutoff: &str) -> Result<u64>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query("DELETE FROM events WHERE created_at < ?")
+            .bind(cutoff)
+            .execute(exec)
+            .await?
+            .rows_affected())
     }
 
     pub async fn mark_processed<'e, E>(&self, exec: E, id: i64) -> Result<()>

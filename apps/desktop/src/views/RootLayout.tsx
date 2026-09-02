@@ -71,10 +71,16 @@ export function RootLayout() {
   );
 }
 
+/** The engine watch, mounted inside `ConversationStreamProvider` because it
+ * attaches a conversation stream when a run starts somewhere else. */
+function EngineEvents({ workspace }: { workspace: string }) {
+  useEngineEvents(workspace);
+  return null;
+}
+
 function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> }) {
   const { workspace, workspaces, setWorkspace, refreshWorkspaces } = wsState;
   const snap = useSnapshotQuery(workspace).data ?? null;
-  useEngineEvents(workspace);
   const pipeline = useMemo(() => getPipeline(snap), [snap]);
 
   return (
@@ -84,6 +90,7 @@ function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> })
           <PipelineContext.Provider value={pipeline}>
             <SnapshotProvider value={{ snap }}>
               <ConversationStreamProvider>
+                <EngineEvents workspace={workspace} />
                 <RightPanelProvider>
                   <ChatSidebarProvider>
                     <RootLayoutBody

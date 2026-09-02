@@ -98,7 +98,7 @@ impl ModulaClient {
                 r#type: req.r#type,
                 config_dir: req.config_dir,
                 description: req.description,
-                clear_description: req.clear_description,
+                reset_description: req.clear_description,
                 mcp_servers: req
                     .mcp_servers
                     .unwrap_or_default()

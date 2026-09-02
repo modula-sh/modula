@@ -32,6 +32,9 @@ message ConversationSummary {
   // Schemaless context (workspace_id, task_id, variant_id, etc.).
   google.protobuf.Struct context = 5;
   string updated_at = 6;
+  // A provider run is in flight for this conversation right now. Runtime state
+  // read from the run registry, not a stored column.
+  bool running = 7;
 }
 
 message Conversation {

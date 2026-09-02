@@ -13,6 +13,8 @@ export function PromptModal({
   confirmLabel = "Save",
   busy = false,
   autoFocus = true,
+  type = "text",
+  error,
   onConfirm,
   onCancel,
 }: {
@@ -24,6 +26,9 @@ export function PromptModal({
   confirmLabel?: string;
   busy?: boolean;
   autoFocus?: boolean;
+  type?: "text" | "password";
+  /** Shown inline so the modal can stay open on a rejected submit. */
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -33,6 +38,7 @@ export function PromptModal({
       <div className="text-sm font-semibold text-fg">{title}</div>
       <TextInput
         autoFocus={autoFocus}
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -53,6 +59,7 @@ export function PromptModal({
           Cancel
         </Button>
       </div>
+      {error && <div className="text-[11px] text-red-400">{error}</div>}
     </BaseModal>
   );
 }

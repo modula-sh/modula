@@ -3,12 +3,16 @@ use std::path::PathBuf;
 
 use modula_engine_transport::{EngineEndpoint, LocalIpcEndpoint, LocalListener};
 
-use crate::grpc;
-use crate::services::dispatcher::Dispatcher;
-use crate::state::AppState;
+use modula_plugin::PluginRegistry;
+
+use modula_grpc as grpc;
+use modula_services::dispatcher::Dispatcher;
+use modula_state::AppState;
 
 /// How the `modula engine` subcommand should bind its gRPC server.
 pub struct ServeOptions {
+    /// The plugins this binary composed.
+    pub registry: PluginRegistry,
     /// Override the IPC socket/pipe path (`--socket`). Falls back to
     /// `MODULA_ENGINE_SOCKET` then the default per-user runtime path.
     pub socket: Option<PathBuf>,
@@ -21,6 +25,7 @@ pub struct ServeOptions {
 }
 
 pub async fn serve(opts: ServeOptions) -> anyhow::Result<()> {
+    let registry = opts.registry.clone();
     let endpoint = EngineEndpoint::LocalIpc(LocalIpcEndpoint::resolve(opts.socket)?);
 
     if let Some(addr) = opts.grpc_tcp {
@@ -30,9 +35,9 @@ pub async fn serve(opts: ServeOptions) -> anyhow::Result<()> {
             );
         }
         write_pidfile();
-        let state = start_state(endpoint).await?;
+        let state = start_state(endpoint, &registry).await?;
         tracing::warn!("INSECURE dev gRPC over TCP on {addr} — no auth/TLS, local dev only");
-        grpc::make_router(state)
+        grpc::make_router(state, &registry)
             .serve_with_shutdown(addr, shutdown_signal())
             .await?;
         return Ok(());
@@ -45,15 +50,19 @@ pub async fn serve(opts: ServeOptions) -> anyhow::Result<()> {
     // live engine *before* the pidfile is touched or any DB/scheduler is opened.
     let listener = LocalListener::bind(ipc).await?;
     write_pidfile();
-    let result = serve_ipc(endpoint.clone(), listener).await;
+    let result = serve_ipc(endpoint.clone(), listener, &registry).await;
     cleanup_endpoint(ipc);
     result
 }
 
-async fn serve_ipc(endpoint: EngineEndpoint, listener: LocalListener) -> anyhow::Result<()> {
-    let state = start_state(endpoint.clone()).await?;
+async fn serve_ipc(
+    endpoint: EngineEndpoint,
+    listener: LocalListener,
+    registry: &PluginRegistry,
+) -> anyhow::Result<()> {
+    let state = start_state(endpoint.clone(), registry).await?;
     tracing::info!("engine listening on {endpoint}");
-    grpc::make_router(state)
+    grpc::make_router(state, registry)
         .serve_with_incoming_shutdown(listener.incoming(), shutdown_signal())
         .await?;
     Ok(())
@@ -61,8 +70,11 @@ async fn serve_ipc(endpoint: EngineEndpoint, listener: LocalListener) -> anyhow:
 
 /// Build `AppState` and start the event-driven dispatcher (services-direct; no
 /// self-RPC). Shared by the IPC and dev-TCP paths.
-async fn start_state(endpoint: EngineEndpoint) -> anyhow::Result<AppState> {
-    let state = AppState::new(endpoint).await?;
+async fn start_state(
+    endpoint: EngineEndpoint,
+    registry: &PluginRegistry,
+) -> anyhow::Result<AppState> {
+    let state = AppState::new(endpoint, registry).await?;
     Dispatcher::new(
         state.repos.clone(),
         state.workspaces.clone(),
@@ -71,6 +83,13 @@ async fn start_state(endpoint: EngineEndpoint) -> anyhow::Result<AppState> {
         std::sync::Arc::new(state.events.clone()),
     )
     .spawn();
+    // `serve_ipc` binds the listener before this runs, so a plugin that calls
+    // back into the engine over IPC can never race the socket's existence.
+    for service in registry.services() {
+        if let Err(e) = service.start().await {
+            tracing::warn!("[plugin] a service failed to start: {e}");
+        }
+    }
     Ok(state)
 }
 
@@ -97,7 +116,7 @@ async fn shutdown_signal() {
 
         let notify = Arc::new(Notify::new());
         let cb = Arc::clone(&notify);
-        if let Err(e) = crate::platform::ctrl_handler::set_ctrl_handler(move || cb.notify_one()) {
+        if let Err(e) = modula_platform::ctrl_handler::set_ctrl_handler(move || cb.notify_one()) {
             tracing::warn!("console-ctrl handler unavailable ({e}); using ctrl_c fallback");
             let _ = tokio::signal::ctrl_c().await;
             return;
@@ -124,7 +143,7 @@ fn cleanup_endpoint(_ipc: &LocalIpcEndpoint) {}
 /// Record this process's pid so the desktop shell can stop the engine on quit.
 /// Best-effort — a write failure just leaves the engine running.
 fn write_pidfile() {
-    let Some(path) = crate::platform::engine_pid_file() else {
+    let Some(path) = modula_platform::engine_pid_file() else {
         return;
     };
     if let Some(parent) = path.parent() {

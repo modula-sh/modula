@@ -9,7 +9,7 @@ use modula_test_support::Harness;
 use serde_json::{json, Value as Json};
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 fn mcp(key: &str, url: &str, token: Option<&str>) -> McpServer {
     McpServer {

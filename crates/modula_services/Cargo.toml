@@ -1,0 +1,44 @@
+[package]
+name = "modula-services"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+modula-core.workspace = true
+modula-db.workspace = true
+modula-types.workspace = true
+modula-platform.workspace = true
+modula-integrations.workspace = true
+modula-plugin.workspace = true
+modula-rpc = { path = "../modula_rpc" }
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+regex.workspace = true
+once_cell.workspace = true
+tokio-cron-scheduler.workspace = true
+cron.workspace = true
+uuid = { version = "1", features = ["v4"] }
+include_dir.workspace = true
+futures.workspace = true
+async-stream.workspace = true
+tokio-stream.workspace = true
+parking_lot.workspace = true
+walkdir.workspace = true
+sqlx.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+jsonc-parser.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -12,6 +12,7 @@ import { IntegrationResource } from "./resources/integration";
 import { LabelResource } from "./resources/label";
 import { ProjectResource } from "./resources/project";
 import { ProviderResource } from "./resources/provider";
+import { RemoteResource } from "./resources/remote";
 import { RoadmapResource } from "./resources/roadmap";
 import { SnapshotResource } from "./resources/snapshot";
 import { SystemResource } from "./resources/system";
@@ -29,6 +30,7 @@ export const client = Object.freeze({
   integration: new IntegrationResource(),
   variant: new VariantResource(),
   roadmap: new RoadmapResource(),
+  remote: new RemoteResource(),
   snapshot: new SnapshotResource(),
   thread: new ThreadResource(),
   agent: new AgentResource(),

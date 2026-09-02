@@ -7,8 +7,14 @@
 //! The channel is dialed lazily and cached, reconnecting itself after a
 //! transient drop, so the long-lived desktop and the short-lived CLI share the
 //! same construction path.
+//!
+//! [`ModulaClient::call_raw`] and [`ModulaClient::stream_raw`] are the one
+//! intentional exception to "methods return `modula_types`": they pass encoded
+//! bytes through by gRPC path for a plugin that tunnels calls; only the remote
+//! plugin's dispatcher should use them.
 
 mod agent;
+mod codec;
 mod config;
 mod conversation;
 mod diff;
@@ -20,6 +26,7 @@ mod label;
 mod log;
 mod project;
 mod provider;
+mod raw;
 mod request;
 mod roadmap;
 mod run;
@@ -31,7 +38,7 @@ mod wiki;
 mod workspace;
 
 pub use agent::{CreatedAgent, KillOutcome, TriggeredAgent};
-pub use error::ClientError;
+pub use error::{rpc as rpc_error, ClientError};
 pub use project::CreatedProject;
 pub use provider::CreatedProvider;
 pub use request::{
@@ -90,8 +97,9 @@ impl ModulaClient {
     }
 
     /// A connected channel, dialing and caching on first use. A failed dial is
-    /// not cached, so a later call retries once the engine is up.
-    async fn channel(&self) -> Result<Channel, ClientError> {
+    /// not cached, so a later call retries once the engine is up. Public so a
+    /// plugin can build a client for its own services on the same connection.
+    pub async fn channel(&self) -> Result<Channel, ClientError> {
         if let Some(channel) = self.0.channel.lock().unwrap().clone() {
             return Ok(channel);
         }

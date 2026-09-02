@@ -75,6 +75,7 @@ message WorkspaceEvent {
     ProviderCreatedEvent provider_created = 19;
     ProviderUpdatedEvent provider_updated = 20;
     ProviderDeletedEvent provider_deleted = 21;
+    ConversationRunEvent conversation_run = 22;
   }
 }
 
@@ -111,6 +112,14 @@ message ConversationCreatedEvent {
 }
 message ConversationUpdatedEvent {
   string conversation_id = 1;
+}
+// A conversation's provider run starting or finishing. Purely a transition
+// signal: it carries no content, and the messages it produces arrive by
+// `ConversationService.Attach`. It exists so a client that is not already
+// attached learns that it should be.
+message ConversationRunEvent {
+  string conversation_id = 1;
+  bool running = 2;
 }
 message ConversationDeletedEvent {
   string conversation_id = 1;

@@ -2,7 +2,7 @@
 
 Operations reference for Modula: how to build it from source, run it for development, package the desktop app, run the tests, and configure it.
 
-See also: [`CLI.md`](CLI.md) for the `modula` command reference, and [`overview.md`](../apps/engine/templates/overview.md) / [`workflow.md`](../apps/engine/templates/workflow.md) for the operating model.
+See also: [`CLI.md`](CLI.md) for the `modula` command reference, [`PLUGINS.md`](PLUGINS.md) for the plugin seam and the crate layout, and [`overview.md`](../crates/modula_services/templates/overview.md) / [`workflow.md`](../crates/modula_services/templates/workflow.md) for the operating model.
 
 ## Requirements
 
@@ -59,4 +59,4 @@ Workspace state lives in `~/.modula/db.sqlite` and `~/.modula/<workspace-id>/` (
 | `MODULA_DISPATCH_INTERVAL_SECS` | `5` | Dispatcher tick interval |
 | `MODULA_FRONTEND_PORT` | `9100` | Vite dev port |
 
-For the operating model — agents, events, state transitions, worktree convention — read [`overview.md`](../apps/engine/templates/overview.md). The pseudo-code form of each agent's behavior lives in [`workflow.md`](../apps/engine/templates/workflow.md).
+For the operating model — agents, events, state transitions, worktree convention — read [`overview.md`](../crates/modula_services/templates/overview.md). The pseudo-code form of each agent's behavior lives in [`workflow.md`](../crates/modula_services/templates/workflow.md).

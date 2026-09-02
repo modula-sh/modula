@@ -5,7 +5,7 @@ use modula_rpc::v1::{CreateAgentRequest, GetAgentRequest, ListSkillsRequest, Upd
 use modula_test_support::Harness;
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 #[tokio::test]
 async fn agent_skills_catalog_and_roundtrip() -> Result<()> {

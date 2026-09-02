@@ -20,6 +20,7 @@ pub(crate) mod label;
 pub(crate) mod log;
 pub(crate) mod project;
 pub(crate) mod provider;
+pub(crate) mod remote;
 pub(crate) mod roadmap;
 pub(crate) mod run;
 pub(crate) mod snapshot;

@@ -11,7 +11,7 @@ use std::process::Output;
 use anyhow::Result;
 use modula_test_support::{modula_bin, Harness};
 
-mod common;
+use modula_test_support::fixtures as common;
 
 /// Run `modula <args…>` against the harness engine + workspace, capturing the
 /// output. Mirrors how `spawn.rs` invokes the CLI: env-resolved IPC socket +

@@ -34,14 +34,15 @@ trap cleanup INT TERM EXIT
 
 echo "[engine  ] building"
 cargo build --release -p modula-engine
+ENGINE="$ROOT/target/release/modula"
 
 # Put the freshly built CLI on PATH every dev launch (production links itself
 # only on update). Best-effort: a link failure must not block the engine.
 echo "[cli     ] linking modula onto PATH"
-"$ROOT/target/release/modula" link-cli || echo "[cli     ] warning: could not link modula onto PATH" >&2
+"$ENGINE" link-cli || echo "[cli     ] warning: could not link modula onto PATH" >&2
 
 echo "[engine  ] starting on ${MODULA_ENGINE_SOCKET:-$HOME/.modula/engine.sock}"
-( exec "$ROOT/target/release/modula" engine ) &
+( exec "$ENGINE" engine ) &
 
 echo "[tauri   ] starting native shell (Vite on ${FRONTEND_PORT} via beforeDevCommand)"
 ( cd "$DESKTOP" && MODULA_DEV=1 exec $JS exec tauri dev ) &

@@ -7,7 +7,7 @@ use modula_rpc::v1::{CreateTaskRequest, StreamSnapshotRequest};
 use modula_test_support::Harness;
 use serde_json::Value as Json;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 /// Reassemble the chunked snapshot stream into JSON.
 async fn snapshot_stream(h: &Harness, ws: &str) -> Result<Json> {

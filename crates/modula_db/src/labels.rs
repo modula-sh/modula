@@ -140,6 +140,27 @@ impl LabelRepository {
         Ok(())
     }
 
+    /// One task's label ids, for the sync feed's folded task row.
+    pub async fn ids_for_task<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        task_id: &str,
+    ) -> Result<Vec<String>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query_scalar(
+            "SELECT l.id FROM task_labels tl \
+             JOIN labels l ON l.workspace_id = tl.workspace_id AND l.id = tl.label_id \
+             WHERE tl.workspace_id = ? AND tl.task_id = ? ORDER BY l.name",
+        )
+        .bind(ws_id)
+        .bind(task_id)
+        .fetch_all(exec)
+        .await?)
+    }
+
     /// Every task's labels in one query, grouped by task id. Mirrors
     /// `variants::list_all` — used by the snapshot and task list. Yields the
     /// `{id, name}` [`TaskLabel`] subset the task shape carries.

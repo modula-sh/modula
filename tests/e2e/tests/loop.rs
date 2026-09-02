@@ -17,7 +17,7 @@ use modula_test_support::Harness;
 use serde_json::json;
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 /// Returns (ws_uuid, provider_uuid).
 async fn workspace_with_provider(h: &Harness) -> Result<(String, String)> {
