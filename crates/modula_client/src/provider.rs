@@ -1,12 +1,12 @@
 use modula_rpc::v1::{
-    CreateProviderRequest, DeleteProviderRequest, GetProviderCatalogRequest, GetProviderRequest,
-    ListProvidersRequest, UpdateProviderRequest,
+    CreateProviderRequest, DeleteProviderRequest, GenerateTextRequest, GetProviderCatalogRequest,
+    GetProviderRequest, ListProvidersRequest, UpdateProviderRequest,
 };
 use modula_types::{CatalogProvider, Provider};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{rpc, ClientError};
-use crate::request::{CreateProvider, UpdateProvider};
+use crate::request::{CreateProvider, GenerateText, UpdateProvider};
 use crate::ModulaClient;
 
 /// Result of `create_provider` — the new provider's id and name.
@@ -110,6 +110,24 @@ impl ModulaClient {
             .await
             .map_err(rpc)?;
         Ok(())
+    }
+
+    pub async fn generate_text(&self, req: GenerateText) -> Result<String, ClientError> {
+        let resp = self
+            .providers()
+            .await?
+            .generate(GenerateTextRequest {
+                workspace_id: req.workspace_id,
+                provider_id: req.provider_id,
+                model: req.model,
+                instruction: req.instruction,
+                current_text: req.current_text,
+                field_label: req.field_label,
+            })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(resp.text)
     }
 
     pub async fn delete_provider(

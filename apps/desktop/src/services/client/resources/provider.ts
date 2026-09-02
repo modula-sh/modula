@@ -1,6 +1,6 @@
 import type { ProviderDetail, ProviderSummary } from "../../../types";
 import { call } from "../invoke";
-import type { ProviderWriteBody } from "../types";
+import type { GenerateTextBody, ProviderWriteBody } from "../types";
 
 export class ProviderResource {
   all(ws: string) {
@@ -32,6 +32,17 @@ export class ProviderResource {
       description: body.description ?? undefined,
       clearDescription: body.description === null,
       mcpServers: body.mcp_servers,
+    });
+  }
+
+  generate(ws: string, body: GenerateTextBody) {
+    return call<string>("provider_generate", {
+      workspaceId: ws,
+      providerId: body.provider_id,
+      model: body.model,
+      instruction: body.instruction,
+      currentText: body.current_text,
+      fieldLabel: body.field_label,
     });
   }
 
