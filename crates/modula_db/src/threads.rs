@@ -52,6 +52,19 @@ impl From<ThreadEntryRecord> for ThreadEntry {
 const SELECT_COLS: &str =
     "id, variant_id, ts, author, kind, round, content, verdict, affected_variants";
 
+/// A thread entry that matched a search, carrying its owning task's display
+/// fields — a comment hit is shown (and navigated to) as its task. See
+/// [`ThreadRepository::search`].
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ThreadMatch {
+    pub task_id: String,
+    pub task_title: String,
+    pub task_external_id: Option<String>,
+    pub author: String,
+    pub kind: String,
+    pub content: String,
+}
+
 #[derive(Clone, Default)]
 pub struct ThreadRepository;
 
@@ -224,5 +237,33 @@ impl ThreadRepository {
         .execute(exec)
         .await?;
         Ok(res.rows_affected() > 0)
+    }
+    /// Thread entries whose content matches `query`, joined to their task for
+    /// the display fields. Entries outlive their task's soft delete, so the
+    /// join filters those out.
+    pub async fn search<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<ThreadMatch>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query_as::<_, ThreadMatch>(
+            "SELECT te.task_id, t.title AS task_title, t.external_id AS task_external_id, \
+                    te.author, te.kind, te.content \
+             FROM thread_entries te \
+             JOIN tasks t ON t.workspace_id = te.workspace_id AND t.id = te.task_id \
+             WHERE te.workspace_id = ? AND t.deleted_at IS NULL \
+               AND te.content LIKE ? ESCAPE '\\' \
+             ORDER BY te.id DESC LIMIT ?",
+        )
+        .bind(ws_id)
+        .bind(crate::search::like_pattern(query))
+        .bind(limit)
+        .fetch_all(exec)
+        .await?)
     }
 }

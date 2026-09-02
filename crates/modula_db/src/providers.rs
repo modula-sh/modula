@@ -66,6 +66,14 @@ impl From<ProviderRecord> for Provider {
     }
 }
 
+/// A provider row that matched a search. See [`ProviderRepository::search`].
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ProviderMatch {
+    pub id: String,
+    pub name: String,
+    pub r#type: String,
+}
+
 #[derive(Clone, Default)]
 pub struct ProviderRepository;
 
@@ -208,6 +216,31 @@ impl ProviderRepository {
         )
         .bind(ws_id)
         .bind(provider_id)
+        .fetch_all(exec)
+        .await?)
+    }
+    /// Providers whose name or type matches `query`.
+    pub async fn search<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<ProviderMatch>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let pattern = crate::search::like_pattern(query);
+        Ok(sqlx::query_as::<_, ProviderMatch>(
+            "SELECT id, name, type FROM providers \
+             WHERE workspace_id = ? \
+               AND (name LIKE ? ESCAPE '\\' OR type LIKE ? ESCAPE '\\') \
+             ORDER BY name LIMIT ?",
+        )
+        .bind(ws_id)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(limit)
         .fetch_all(exec)
         .await?)
     }

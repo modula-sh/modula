@@ -17,6 +17,7 @@ use sqlx::sqlite::{
 pub use modula_rpc::status::DomainError as Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
+mod search;
 mod slug;
 
 pub mod agent_processes;
