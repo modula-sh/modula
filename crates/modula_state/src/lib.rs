@@ -14,6 +14,7 @@ use modula_services::config::ConfigService;
 use modula_services::conversations::{ConvRunRegistry, ConvRuntime, ConversationService};
 use modula_services::diffs::DiffService;
 use modula_services::events::{Bus, EventService, EventSink};
+use modula_services::generate::GenerationService;
 use modula_services::integrations::IntegrationsService;
 use modula_services::logs::LogsService;
 use modula_services::loop_registry::LoopRegistry;
@@ -62,6 +63,9 @@ pub struct AppState {
     /// Conversation CRUD business service. Distinct from `conv_runs`, which is
     /// the in-flight streaming registry (runtime), not durable state.
     pub conversations: ConversationService,
+    /// One-off provider text generation for the "Use AI" field assist. Holds no
+    /// state of its own — nothing about a generation is persisted.
+    pub generation: GenerationService,
     /// Variant diff aggregation service (owns repos + DIs `WorkspaceService`).
     pub diffs: DiffService,
     /// Variant PR-link resolution service.
@@ -189,6 +193,8 @@ impl AppState {
         let runs = RunService::new(db.clone(), repos.agent_runs.clone(), workspaces.clone());
         let conversations =
             ConversationService::new(db.clone(), repos.conversations.clone(), event_sink);
+        let generation =
+            GenerationService::new(db.clone(), repos.providers.clone(), workspaces.clone());
         let diffs = DiffService::new(
             db.clone(),
             repos.tasks.clone(),
@@ -250,6 +256,7 @@ impl AppState {
             events,
             runs,
             conversations,
+            generation,
             diffs,
             pr,
             processes,

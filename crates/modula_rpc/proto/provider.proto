@@ -10,6 +10,7 @@ service ProviderService {
   rpc Create(CreateProviderRequest) returns (CreateProviderResponse);
   rpc Update(UpdateProviderRequest) returns (UpdateProviderResponse);
   rpc Delete(DeleteProviderRequest) returns (DeleteProviderResponse);
+  rpc Generate(GenerateTextRequest) returns (GenerateTextResponse);
 }
 
 message CatalogModel {
@@ -101,4 +102,19 @@ message DeleteProviderRequest {
 }
 message DeleteProviderResponse {
   string id = 1;
+}
+
+message GenerateTextRequest {
+  string workspace_id = 1;
+  string provider_id = 2;
+  optional string model = 3;
+  // What the user wants written.
+  string instruction = 4;
+  // The field's current content, empty when the field is blank.
+  string current_text = 5;
+  // Human name of the field being filled, used to steer tone and length.
+  optional string field_label = 6;
+}
+message GenerateTextResponse {
+  string text = 1;
 }

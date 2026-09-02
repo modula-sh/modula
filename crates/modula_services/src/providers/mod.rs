@@ -138,6 +138,33 @@ pub trait ProviderRuntime: Send + Sync {
     }
 }
 
+/// Max bytes of stderr to retain for an error fallback message.
+const STDERR_CAPTURE_CAP: usize = 4096;
+
+/// Read a provider child's stderr to EOF, keeping only the first
+/// [`STDERR_CAPTURE_CAP`] bytes. Draining past the cap matters: a full stderr
+/// pipe blocks the child.
+pub(crate) async fn drain_stderr(stderr: tokio::process::ChildStderr) -> String {
+    use tokio::io::AsyncReadExt;
+    let mut buf = Vec::with_capacity(STDERR_CAPTURE_CAP.min(1024));
+    let mut reader = tokio::io::BufReader::new(stderr);
+    let mut chunk = [0u8; 1024];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(n) => {
+                let remaining = STDERR_CAPTURE_CAP.saturating_sub(buf.len());
+                let take = n.min(remaining);
+                if take > 0 {
+                    buf.extend_from_slice(&chunk[..take]);
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
 /// Hydrate a runtime instance for a provider type. The type→struct mapping
 /// lives here beside the instance structs; [`ProviderService`] is the public
 /// owner of hydration (`runtime_for_type` / `runtime_from_provider` wrap this).

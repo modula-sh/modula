@@ -1,13 +1,14 @@
 use modula_rpc::v1::{
     provider_service_server::ProviderService, CatalogModel, CatalogProvider, CreateProviderRequest,
-    CreateProviderResponse, DeleteProviderRequest, DeleteProviderResponse,
-    GetProviderCatalogRequest, GetProviderCatalogResponse, GetProviderRequest,
-    ListProvidersRequest, ListProvidersResponse, McpServer, Provider, UpdateProviderRequest,
-    UpdateProviderResponse,
+    CreateProviderResponse, DeleteProviderRequest, DeleteProviderResponse, GenerateTextRequest,
+    GenerateTextResponse, GetProviderCatalogRequest, GetProviderCatalogResponse,
+    GetProviderRequest, ListProvidersRequest, ListProvidersResponse, McpServer, Provider,
+    UpdateProviderRequest, UpdateProviderResponse,
 };
 use tonic::{Request, Response, Status};
 
 use super::error::to_status;
+use modula_services::generate::GenerateParams;
 use modula_services::mcp_config::McpServer as McpServerModel;
 use modula_services::providers::{CreateParams, UpdateParams};
 use modula_state::AppState;
@@ -140,6 +141,29 @@ impl ProviderService for ProviderHandler {
         Ok(Response::new(DeleteProviderResponse {
             id: body.provider_id,
         }))
+    }
+
+    async fn generate(
+        &self,
+        req: Request<GenerateTextRequest>,
+    ) -> Result<Response<GenerateTextResponse>, Status> {
+        let body = req.into_inner();
+        let text = self
+            .state
+            .generation
+            .generate(
+                &body.workspace_id,
+                GenerateParams {
+                    provider_id: body.provider_id,
+                    model: body.model,
+                    instruction: body.instruction,
+                    current_text: body.current_text,
+                    field_label: body.field_label,
+                },
+            )
+            .await
+            .map_err(to_status)?;
+        Ok(Response::new(GenerateTextResponse { text }))
     }
 }
 
