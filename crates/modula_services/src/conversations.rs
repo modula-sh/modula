@@ -180,6 +180,28 @@ impl ConversationService {
         Ok(())
     }
 
+    /// Read-modify-write the queue in one transaction, then publish. An edit
+    /// that leaves the queue unchanged neither writes nor publishes.
+    async fn edit_queue<R>(
+        &self,
+        ws: &str,
+        id: &str,
+        edit: impl FnOnce(&mut Vec<QueuedMessage>) -> R,
+    ) -> ApiResult<(R, Vec<QueuedMessage>)> {
+        let mut tx = self.pool.begin().await?;
+        let before = self.conversations.get(&mut *tx, ws, id).await?.queued;
+        let mut queued = before.clone();
+        let out = edit(&mut queued);
+        if queued != before {
+            self.conversations
+                .set_queued(&mut *tx, ws, id, &queued)
+                .await?;
+            tx.commit().await?;
+            self.publish(ws, CONVERSATION_UPDATE, id).await;
+        }
+        Ok((out, queued))
+    }
+
     /// Queue `message` behind the in-flight run. Returns the resulting queue.
     pub async fn enqueue(
         &self,
@@ -191,18 +213,11 @@ impl ConversationService {
         if content.is_empty() {
             return Err(ApiError::BadRequest("message is required".into()));
         }
-        let mut tx = self.pool.begin().await?;
-        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
-        queued.push(QueuedMessage {
+        let msg = QueuedMessage {
             id: Uuid::new_v4().to_string(),
             content: content.to_string(),
-        });
-        self.conversations
-            .set_queued(&mut *tx, ws, id, &queued)
-            .await?;
-        tx.commit().await?;
-        self.publish(ws, CONVERSATION_UPDATE, id).await;
-        Ok(queued)
+        };
+        Ok(self.edit_queue(ws, id, |q| q.push(msg)).await?.1)
     }
 
     /// Drop a queued message. An unknown `queued_id` is a no-op so two clients
@@ -213,52 +228,29 @@ impl ConversationService {
         id: &str,
         queued_id: &str,
     ) -> ApiResult<Vec<QueuedMessage>> {
-        let mut tx = self.pool.begin().await?;
-        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
-        queued.retain(|q| q.id != queued_id);
-        self.conversations
-            .set_queued(&mut *tx, ws, id, &queued)
-            .await?;
-        tx.commit().await?;
-        self.publish(ws, CONVERSATION_UPDATE, id).await;
-        Ok(queued)
+        Ok(self
+            .edit_queue(ws, id, |q| q.retain(|m| m.id != queued_id))
+            .await?
+            .1)
     }
 
-    /// Atomically take the head of the queue. SQLite serializes the write
-    /// transaction, so two concurrent drains cannot claim the same message.
+    /// Take the head of the queue. The caller must already hold the run slot,
+    /// which is what keeps two drains from starting messages out of order.
     async fn pop_queued(&self, ws: &str, id: &str) -> ApiResult<Option<QueuedMessage>> {
-        let mut tx = self.pool.begin().await?;
-        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
-        if queued.is_empty() {
-            return Ok(None);
-        }
-        let head = queued.remove(0);
-        self.conversations
-            .set_queued(&mut *tx, ws, id, &queued)
-            .await?;
-        tx.commit().await?;
-        self.publish(ws, CONVERSATION_UPDATE, id).await;
-        Ok(Some(head))
+        Ok(self
+            .edit_queue(ws, id, |q| (!q.is_empty()).then(|| q.remove(0)))
+            .await?
+            .0)
     }
 
     /// Put a popped message back at the head after a failed auto-send.
     async fn requeue(&self, ws: &str, id: &str, msg: QueuedMessage) -> ApiResult<()> {
-        let mut tx = self.pool.begin().await?;
-        let mut queued = self.conversations.get(&mut *tx, ws, id).await?.queued;
-        queued.insert(0, msg);
-        self.conversations
-            .set_queued(&mut *tx, ws, id, &queued)
-            .await?;
-        tx.commit().await?;
-        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        self.edit_queue(ws, id, |q| q.insert(0, msg)).await?;
         Ok(())
     }
 
     async fn clear_queued(&self, ws: &str, id: &str) -> ApiResult<()> {
-        self.conversations
-            .set_queued(&self.pool, ws, id, &[])
-            .await?;
-        self.publish(ws, CONVERSATION_UPDATE, id).await;
+        self.edit_queue(ws, id, |q| q.clear()).await?;
         Ok(())
     }
 
@@ -302,26 +294,37 @@ pub async fn open_send(
     user_msg: String,
     model_override: Option<String>,
 ) -> ApiResult<ConvStream> {
-    let key = (ws_id.clone(), conv_id.clone());
+    let key = (ws_id, conv_id);
+    let slot = claim_run(&rt, &key).await.ok_or_else(|| {
+        ApiError::Conflict("a turn is already in flight for this conversation".into())
+    })?;
+    run_claimed(rt, key, slot, user_msg, model_override).await
+}
 
+/// Claim the conversation's run slot atomically before any provider work.
+/// `None` means a turn is already in flight.
+async fn claim_run(rt: &ConvRuntime, key: &ConvKey) -> Option<RunSlot> {
     let (tx, _) = broadcast::channel::<WireEvent>(256);
     let slot = RunSlot {
         tx,
         buffer: Arc::new(Mutex::new(Vec::new())),
         cancel: Arc::new(Notify::new()),
     };
-
-    // Claim the conversation slot atomically before any provider work. If a turn
-    // is already in flight this rejects without spawning a second child.
-    if !rt
-        .conv_runs
+    rt.conv_runs
         .insert_if_absent(key.clone(), slot.clone())
         .await
-    {
-        return Err(ApiError::Conflict(
-            "a turn is already in flight for this conversation".into(),
-        ));
-    }
+        .then_some(slot)
+}
+
+/// Run a turn in a slot the caller has already claimed.
+async fn run_claimed(
+    rt: ConvRuntime,
+    key: ConvKey,
+    slot: RunSlot,
+    user_msg: String,
+    model_override: Option<String>,
+) -> ApiResult<ConvStream> {
+    let (ws_id, conv_id) = key.clone();
 
     // Fallible setup runs after the claim, so every error path must release the
     // slot. Do it once here rather than threading cleanup through each `?`.
@@ -543,14 +546,15 @@ pub async fn cancel(rt: ConvRuntime, ws_id: String, conv_id: String) -> ApiResul
     // Clear before signalling: the run task drains the queue as it exits, so a
     // queue emptied afterwards would let the interrupt auto-send a discarded
     // message.
-    let _ = rt.conversations.clear_queued(&key.0, &key.1).await;
+    rt.conversations.clear_queued(&key.0, &key.1).await?;
     slot.cancel.notify_one();
     Ok(())
 }
 
-/// Start the next queued turn, if any. The head is taken before the send so a
-/// run that ends faster than this commits cannot re-send it; a failed send puts
-/// it back.
+/// Start the next queued turn, if any. The run slot is claimed before the head
+/// is popped, so two drains racing (a run ending as an idle `Enqueue` drains)
+/// cannot start the queue's messages out of order — the loser leaves the queue
+/// to the winner's own end-of-run drain. A failed send puts the head back.
 ///
 /// `open_send` recurses back into this through the task it spawns, so the
 /// returned future is boxed rather than opaque — otherwise the two hidden types
@@ -561,28 +565,18 @@ pub fn drain_queue(
     conv_id: String,
 ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     Box::pin(async move {
-        if rt
-            .conv_runs
-            .get(&(ws_id.clone(), conv_id.clone()))
-            .await
-            .is_some()
-        {
-            return;
-        }
-        let Ok(Some(head)) = rt.conversations.pop_queued(&ws_id, &conv_id).await else {
+        let key = (ws_id, conv_id);
+        let Some(slot) = claim_run(&rt, &key).await else {
             return;
         };
-        if let Err(e) = open_send(
-            rt.clone(),
-            ws_id.clone(),
-            conv_id.clone(),
-            head.content.clone(),
-            None,
-        )
-        .await
+        let Ok(Some(head)) = rt.conversations.pop_queued(&key.0, &key.1).await else {
+            rt.conv_runs.remove(&key).await;
+            return;
+        };
+        if let Err(e) = run_claimed(rt.clone(), key.clone(), slot, head.content.clone(), None).await
         {
-            tracing::warn!(ws = %ws_id, conv = %conv_id, error = %e, "queued message not sent");
-            let _ = rt.conversations.requeue(&ws_id, &conv_id, head).await;
+            tracing::warn!(ws = %key.0, conv = %key.1, error = %e, "queued message not sent");
+            let _ = rt.conversations.requeue(&key.0, &key.1, head).await;
         }
     })
 }
