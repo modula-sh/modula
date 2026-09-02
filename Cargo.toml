@@ -4,6 +4,7 @@ members = [
     "apps/engine",
     "apps/desktop/src-tauri",
     "crates/modula_platform",
+    "crates/modula_plugin",
     "crates/modula_rpc",
     "crates/modula_types",
     "crates/modula_client",
@@ -13,12 +14,19 @@ members = [
     "crates/modula_mock_claude",
     "crates/modula_test_support",
     "tests/e2e",
+    "plugins/remote",
+    "apps/cli",
+    "crates/modula_core",
+    "crates/modula_services",
+    "crates/modula_state",
+    "crates/modula_grpc",
 ]
+
 
 [workspace.package]
 version = "0.3.0"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.92"
 license = "Elastic-2.0"
 
 [workspace.dependencies]
@@ -54,12 +62,19 @@ prost-types = "0.13"
 tonic-build = "0.12"
 hyper-util = { version = "0.1", features = ["tokio"] }
 modula-platform = { path = "crates/modula_platform" }
+modula-plugin = { path = "crates/modula_plugin" }
 modula-rpc = { path = "crates/modula_rpc" }
 modula-types = { path = "crates/modula_types" }
 modula-client = { path = "crates/modula_client" }
 modula-db = { path = "crates/modula_db" }
 modula-engine-transport = { path = "crates/modula_engine_transport" }
 modula-integrations = { path = "crates/modula_integrations" }
+modula-core = { path = "crates/modula_core" }
+modula-services = { path = "crates/modula_services" }
+modula-state = { path = "crates/modula_state" }
+modula-grpc = { path = "crates/modula_grpc" }
+modula-cli = { path = "apps/cli" }
+bytes = "1"
 reqwest = { version = "0.13", features = ["json", "query"] }
 tokio-cron-scheduler = "0.13"
 cron = "0.12"

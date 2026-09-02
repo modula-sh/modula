@@ -7,6 +7,8 @@
 //! its own socket and tempdir, so they can run in parallel with zero TCP
 //! listeners — the default engine transport.
 
+pub mod fixtures;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -20,12 +22,12 @@ use modula_rpc::v1::{
     agent_service_client::AgentServiceClient, config_service_client::ConfigServiceClient,
     conversation_service_client::ConversationServiceClient,
     event_service_client::EventServiceClient, health_service_client::HealthServiceClient,
-    label_service_client::LabelServiceClient, provider_service_client::ProviderServiceClient,
-    roadmap_service_client::RoadmapServiceClient, run_service_client::RunServiceClient,
-    snapshot_service_client::SnapshotServiceClient, task_service_client::TaskServiceClient,
-    thread_service_client::ThreadServiceClient, variant_service_client::VariantServiceClient,
-    workspace_service_client::WorkspaceServiceClient, CreateWorkspaceRequest, HealthCheckRequest,
-    HealthStatus,
+    label_service_client::LabelServiceClient, project_service_client::ProjectServiceClient,
+    provider_service_client::ProviderServiceClient, roadmap_service_client::RoadmapServiceClient,
+    run_service_client::RunServiceClient, snapshot_service_client::SnapshotServiceClient,
+    task_service_client::TaskServiceClient, thread_service_client::ThreadServiceClient,
+    variant_service_client::VariantServiceClient, workspace_service_client::WorkspaceServiceClient,
+    CreateWorkspaceRequest, HealthCheckRequest, HealthStatus,
 };
 use serde_json::Value as Json;
 use tempfile::TempDir;
@@ -191,6 +193,10 @@ impl Harness {
             .max_decoding_message_size(MAX_LARGE_MESSAGE_SIZE)
     }
 
+    pub fn projects(&self) -> ProjectServiceClient<Channel> {
+        ProjectServiceClient::new(self.channel.clone())
+    }
+
     /// Create a workspace and record its on-disk dir (the engine returns the
     /// slug-based `path`). Returns the workspace UUID for subsequent calls.
     pub async fn create_workspace(&self, name: &str) -> Result<String> {
@@ -299,10 +305,9 @@ static BUILD_RESULT: OnceLock<std::result::Result<(), String>> = OnceLock::new()
 fn ensure_binaries_built() -> Result<()> {
     let res = BUILD_RESULT.get_or_init(|| {
         let manifest = workspace_root().join("Cargo.toml");
-        let status = Command::new(env!("CARGO"))
-            .arg("build")
-            .arg("--manifest-path")
-            .arg(&manifest)
+        let mut cmd = Command::new(env!("CARGO"));
+        cmd.arg("build").arg("--manifest-path").arg(&manifest);
+        let status = cmd
             .arg("-p")
             .arg("modula-engine")
             .arg("-p")

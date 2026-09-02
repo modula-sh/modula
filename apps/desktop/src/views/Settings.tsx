@@ -3,10 +3,13 @@ import { DropdownSelect } from "../components/DropdownMenu";
 import { FieldRow } from "../components/FieldRow";
 import { IntegrationsList } from "../components/integrations/IntegrationsList";
 import { RecommendedToolsList } from "../components/recommended-tools/RecommendedToolsList";
+import { RemoteAccessPanel } from "../components/remote/RemoteAccessPanel";
 import { useThemeContext } from "../contexts/ThemeContext";
 import { THEMES, type Theme } from "../hooks/useTheme";
+import { useRemoteAvailable } from "../queries/remote";
 
 export function SettingsView() {
+  const { data: remoteAvailable } = useRemoteAvailable();
   return (
     <main className="flex-1 overflow-y-auto px-4 pt-8 pb-4 font-inter">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -37,6 +40,13 @@ export function SettingsView() {
           <h2 className="text-lg font-semibold text-fg">Integrations</h2>
           <IntegrationsList />
         </section>
+
+        {remoteAvailable && (
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold text-fg">Remote access</h2>
+            <RemoteAccessPanel />
+          </section>
+        )}
 
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-fg">Debug</h2>

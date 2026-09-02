@@ -13,7 +13,7 @@ use modula_test_support::Harness;
 use serde_json::{json, Value as Json};
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 /// A task-scope `comment` from `human` — the common case; tests override the
 /// fields they exercise.

@@ -26,7 +26,9 @@ impl From<ClientError> for String {
 
 /// Map a `tonic::Status` to a [`ClientError::Rpc`] using its detail message, or
 /// the status code when the server left the message empty.
-pub(crate) fn rpc(status: tonic::Status) -> ClientError {
+/// Map a gRPC status to a client error, preferring its detail message. Public
+/// for plugin-side clients.
+pub fn rpc(status: tonic::Status) -> ClientError {
     let msg = status.message().trim();
     if msg.is_empty() {
         ClientError::Rpc(status.code().to_string())

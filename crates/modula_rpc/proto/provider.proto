@@ -82,9 +82,11 @@ message UpdateProviderRequest {
   optional string name = 3;
   optional string type = 4;
   optional string config_dir = 5;
-  // Use google.protobuf.StringValue pattern: pass null_description=true to clear.
+  // Use google.protobuf.StringValue pattern: pass reset_description=true to clear.
+  // Not `clear_description`: swift-protobuf renames `description` around
+  // `CustomStringConvertible` and the two fields then generate the same accessor.
   optional string description = 6;
-  bool clear_description = 7;
+  bool reset_description = 7;
   // When set, reconciles MCP servers in the config file.
   repeated McpServer mcp_servers = 8;
   bool update_mcp_servers = 9;

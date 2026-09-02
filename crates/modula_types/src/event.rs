@@ -16,10 +16,16 @@ pub mod event_types {
     pub const TASK_UPDATE: &str = "task.update";
     pub const TASK_DELETE: &str = "task.delete";
     pub const TASK_RESET: &str = "task.reset";
+    pub const VARIANT_CREATE: &str = "variant.create";
     pub const VARIANT_UPDATE: &str = "variant.update";
     pub const CONVERSATION_CREATE: &str = "conversation.create";
     pub const CONVERSATION_UPDATE: &str = "conversation.update";
     pub const CONVERSATION_DELETE: &str = "conversation.delete";
+    /// A provider run for a conversation starting or finishing. A transition
+    /// signal, not content: it exists so a client that is not already attached
+    /// learns that it should be.
+    pub const CONVERSATION_RUN_STARTED: &str = "conversation.run.started";
+    pub const CONVERSATION_RUN_ENDED: &str = "conversation.run.ended";
     pub const THREAD_APPEND: &str = "thread.append";
     pub const THREAD_UPDATE: &str = "thread.update";
     pub const THREAD_DELETE: &str = "thread.delete";
@@ -30,9 +36,50 @@ pub mod event_types {
     pub const PROVIDER_UPDATE: &str = "provider.update";
     pub const PROVIDER_DELETE: &str = "provider.delete";
 
+    /// Catalog rows the desktop never watches, but the sync feed replicates:
+    /// they exist so a replica learns of the row, and have no
+    /// [`WorkspaceEventKind`] arm.
+    ///
+    /// [`WorkspaceEventKind`]: crate::WorkspaceEventKind
+    pub const PROJECT_CREATE: &str = "project.create";
+    pub const PROJECT_UPDATE: &str = "project.update";
+    pub const PROJECT_DELETE: &str = "project.delete";
+    pub const LABEL_CREATE: &str = "label.create";
+
     /// Run lifecycle events.
     pub const RUN_SPAWNED: &str = "run.spawned";
     pub const RUN_EXITED: &str = "run.exited";
+
+    /// Every constant above. Consumers that must handle the whole vocabulary
+    /// (the sync feed's change capture) assert their coverage against this.
+    pub const ALL: &[&str] = &[
+        TASK_CREATE,
+        TASK_UPDATE,
+        TASK_DELETE,
+        TASK_RESET,
+        VARIANT_CREATE,
+        VARIANT_UPDATE,
+        CONVERSATION_CREATE,
+        CONVERSATION_UPDATE,
+        CONVERSATION_DELETE,
+        CONVERSATION_RUN_STARTED,
+        CONVERSATION_RUN_ENDED,
+        THREAD_APPEND,
+        THREAD_UPDATE,
+        THREAD_DELETE,
+        AGENT_CREATE,
+        AGENT_UPDATE,
+        AGENT_DELETE,
+        PROVIDER_CREATE,
+        PROVIDER_UPDATE,
+        PROVIDER_DELETE,
+        PROJECT_CREATE,
+        PROJECT_UPDATE,
+        PROJECT_DELETE,
+        LABEL_CREATE,
+        RUN_SPAWNED,
+        RUN_EXITED,
+    ];
 }
 
 pub(crate) fn str_at(data: &Value, key: &str) -> String {
@@ -96,6 +143,11 @@ pub enum WorkspaceEventKind {
     ConversationUpdated { conversation_id: String },
     #[serde(rename = "conversation_deleted")]
     ConversationDeleted { conversation_id: String },
+    #[serde(rename = "conversation_run")]
+    ConversationRun {
+        conversation_id: String,
+        running: bool,
+    },
     #[serde(rename = "thread_appended")]
     ThreadAppended {
         task_id: String,
@@ -202,6 +254,12 @@ impl WorkspaceEvent {
             t::CONVERSATION_DELETE => WorkspaceEventKind::ConversationDeleted {
                 conversation_id: str_at(data, "id"),
             },
+            t::CONVERSATION_RUN_STARTED | t::CONVERSATION_RUN_ENDED => {
+                WorkspaceEventKind::ConversationRun {
+                    conversation_id: str_at(data, "id"),
+                    running: type_ == t::CONVERSATION_RUN_STARTED,
+                }
+            }
             t::THREAD_APPEND => WorkspaceEventKind::ThreadAppended {
                 task_id: str_at(data, "task_id"),
                 variant_id: opt_str(data, "variant_id"),
@@ -295,6 +353,10 @@ impl From<pb::WorkspaceEvent> for WorkspaceEvent {
             },
             Some(Event::ConversationDeleted(c)) => WorkspaceEventKind::ConversationDeleted {
                 conversation_id: c.conversation_id,
+            },
+            Some(Event::ConversationRun(c)) => WorkspaceEventKind::ConversationRun {
+                conversation_id: c.conversation_id,
+                running: c.running,
             },
             Some(Event::ThreadAppended(t)) => WorkspaceEventKind::ThreadAppended {
                 task_id: t.task_id,
@@ -402,6 +464,13 @@ impl From<WorkspaceEvent> for pb::WorkspaceEvent {
                     conversation_id,
                 }))
             }
+            WorkspaceEventKind::ConversationRun {
+                conversation_id,
+                running,
+            } => Some(Event::ConversationRun(pb::ConversationRunEvent {
+                conversation_id,
+                running,
+            })),
             WorkspaceEventKind::ThreadAppended {
                 task_id,
                 variant_id,
@@ -719,6 +788,22 @@ mod tests {
                 json!({"provider_id": "p1"}),
                 WorkspaceEventKind::ProviderDeleted {
                     provider_id: "p1".into(),
+                },
+            ),
+            (
+                t::CONVERSATION_RUN_STARTED,
+                json!({"id": "c1"}),
+                WorkspaceEventKind::ConversationRun {
+                    conversation_id: "c1".into(),
+                    running: true,
+                },
+            ),
+            (
+                t::CONVERSATION_RUN_ENDED,
+                json!({"id": "c1"}),
+                WorkspaceEventKind::ConversationRun {
+                    conversation_id: "c1".into(),
+                    running: false,
                 },
             ),
         ];

@@ -421,3 +421,31 @@ export interface Project {
   exists: boolean;
   worktrees: string[];
 }
+
+/** Modula Remote host state. Host-global — nothing here is workspace-scoped.
+ * `enabled && !running` means the endpoint failed to bind; `last_error` says why. */
+export interface RemoteStatus {
+  enabled: boolean;
+  running: boolean;
+  password_set: boolean;
+  node_id: string;
+  direct_addresses: string[];
+  connected_devices: number;
+  last_error: string;
+}
+
+export interface RemoteDevice {
+  id: string;
+  name: string;
+  platform: string;
+  scope: string;
+  created_at: string;
+  last_seen_at: string | null;
+  connected: boolean;
+}
+
+/** `expires_at` is unix epoch seconds. */
+export interface PairingCode {
+  qr_payload: string;
+  expires_at: number;
+}

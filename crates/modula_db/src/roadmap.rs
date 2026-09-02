@@ -63,6 +63,27 @@ impl RoadmapRepository {
         .collect())
     }
 
+    /// One task's roadmap row, or `None` when the task has never been placed.
+    pub async fn get<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        task_id: &str,
+    ) -> Result<Option<RoadmapEntry>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query_as::<_, RoadmapRecord>(
+            "SELECT task_id, status, depends_on, notes, position \
+             FROM roadmap_rows WHERE workspace_id = ? AND task_id = ?",
+        )
+        .bind(ws_id)
+        .bind(task_id)
+        .fetch_optional(exec)
+        .await?
+        .map(RoadmapEntry::from))
+    }
+
     pub async fn set_status<'e, E>(
         &self,
         exec: E,

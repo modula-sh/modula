@@ -7,7 +7,7 @@ use modula_test_support::Harness;
 use serde_json::json;
 use std::time::{Duration, Instant};
 
-mod common;
+use modula_test_support::fixtures as common;
 
 #[tokio::test]
 async fn rule_match_triggers_dispatch_and_marks_event_processed() -> Result<()> {

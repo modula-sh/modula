@@ -49,6 +49,7 @@ modula-platform = { path = "../../../crates/modula_platform" }
 # webview.
 modula-client.workspace = true
 modula-types.workspace = true
+modula-plugin-remote = { path = "../../../plugins/remote" }
 # Consume the client's domain-item streams (event/run/log/conversation watch)
 # and forward each item onto a Tauri `Channel`.
 tokio-stream.workspace = true

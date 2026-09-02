@@ -8,7 +8,7 @@ use modula_rpc::v1::{
 use modula_test_support::Harness;
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 #[tokio::test]
 async fn label_lifecycle_create_attach_detach() -> Result<()> {

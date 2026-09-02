@@ -16,7 +16,7 @@ use modula_rpc::v1::{
 use modula_test_support::Harness;
 use tokio::time::timeout;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 /// `EventService.Watch` pushes a typed event the moment a mutation lands on
 /// another client — without the subscriber polling.

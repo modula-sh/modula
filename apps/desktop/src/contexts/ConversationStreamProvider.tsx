@@ -167,6 +167,13 @@ export function ConversationStreamProvider({ children }: { children: React.React
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/** The imperative half of the context, for callers that drive streams from
+ * outside a conversation view — chiefly the engine event stream, which attaches
+ * when a run starts somewhere else. */
+export function useStreamApi(): StreamApi | null {
+  return useContext(Ctx)?.api ?? null;
+}
+
 export function useStreamingConvIds(): string[] {
   const ctx = useContext(Ctx);
   if (!ctx) return [];

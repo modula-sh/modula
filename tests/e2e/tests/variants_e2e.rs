@@ -7,7 +7,7 @@ use modula_test_support::Harness;
 use serde_json::json;
 use tonic::Code;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 fn create_variants_req(ws: &str, task: &str, count: u32) -> CreateVariantsRequest {
     CreateVariantsRequest {

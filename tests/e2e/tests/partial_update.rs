@@ -12,7 +12,7 @@ use modula_rpc::v1::{
 };
 use modula_test_support::Harness;
 
-mod common;
+use modula_test_support::fixtures as common;
 
 // ─── agents ──────────────────────────────────────────────────────────────
 
@@ -202,7 +202,7 @@ async fn provider_partial_update_clears_description() -> Result<()> {
         .update(UpdateProviderRequest {
             workspace_id: ws.clone(),
             provider_id: p_id.clone(),
-            clear_description: true,
+            reset_description: true,
             ..Default::default()
         })
         .await?;

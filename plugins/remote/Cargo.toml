@@ -1,0 +1,14 @@
+# `NotImplemented` stand-in for the proprietary plugin in ../modula-plugins.
+# `scripts/swap-plugins.sh` overwrites this crate with the real one.
+[package]
+name = "modula-plugin-remote"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+modula-plugin = { path = "../../crates/modula_plugin" }
+modula-client = { path = "../../crates/modula_client" }
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
