@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { AiAssist } from "../components/AiAssist";
 import { Button } from "../components/Button";
 import { ChatInput } from "../components/chat/ChatInput";
 import { ChatInputShell } from "../components/chat/ChatInputShell";
@@ -110,79 +111,84 @@ export function ConversationsView() {
         {(currentContext.project || currentContext.task || currentContext.variant) && (
           <ContextPills context={currentContext} />
         )}
-        <ChatInputShell
-          value={message}
-          onChange={setMessage}
-          onSubmit={handleSubmit}
-          placeholder="Ask anything about this workspace…"
-          autoFocus
-          bottomRow={
-            <>
-              <DropdownSelect
-                value={providerId}
-                onChange={setProviderId}
-                options={providers.map((p) => ({ value: p.id, label: p.name }))}
-                disabled={busy}
-              />
-              <DropdownSelect
-                value={model ?? ""}
-                onChange={(v) => setModel(v === "" ? null : v)}
-                options={[
-                  { value: "", label: "Default Model" },
-                  ...availableModels.map((m) => ({ value: m.id, label: m.label })),
-                ]}
-                disabled={busy}
-                title="Model, applies to the first message"
-              />
-              <DropdownSelect
-                value={scopeProject}
-                onChange={setScopeProject}
-                placeholder="No project"
-                options={[
-                  { value: "", label: "No project" },
-                  ...projects.map((p) => ({ value: p.id, label: p.name })),
-                ]}
-                disabled={busy}
-              />
-              <DropdownSelect
-                value={scopeTask}
-                onChange={(v) => {
-                  setScopeTask(v);
-                  setScopeVariant("");
-                }}
-                placeholder="No task"
-                options={[
-                  { value: "", label: "No task" },
-                  ...tasks.map((t) => ({
-                    value: t.id,
-                    label: t.external_id
-                      ? `${t.external_id}: ${t.title.slice(0, 28)}`
-                      : t.title.slice(0, 40),
-                  })),
-                ]}
-                disabled={busy}
-              />
-              {scopeTask && (
+        <AiAssist value={message} onChange={setMessage} fieldLabel="chat message">
+          <ChatInputShell
+            value={message}
+            onChange={setMessage}
+            onSubmit={handleSubmit}
+            placeholder="Ask anything about this workspace…"
+            autoFocus
+            bottomRow={
+              <>
                 <DropdownSelect
-                  value={scopeVariant}
-                  onChange={setScopeVariant}
-                  placeholder="No variant"
+                  value={providerId}
+                  onChange={setProviderId}
+                  options={providers.map((p) => ({ value: p.id, label: p.name }))}
+                  disabled={busy}
+                />
+                <DropdownSelect
+                  value={model ?? ""}
+                  onChange={(v) => setModel(v === "" ? null : v)}
                   options={[
-                    { value: "", label: "No variant" },
-                    ...variantOptions.map((v) => ({ value: v.id, label: `Variant ${v.position}` })),
+                    { value: "", label: "Default Model" },
+                    ...availableModels.map((m) => ({ value: m.id, label: m.label })),
+                  ]}
+                  disabled={busy}
+                  title="Model, applies to the first message"
+                />
+                <DropdownSelect
+                  value={scopeProject}
+                  onChange={setScopeProject}
+                  placeholder="No project"
+                  options={[
+                    { value: "", label: "No project" },
+                    ...projects.map((p) => ({ value: p.id, label: p.name })),
                   ]}
                   disabled={busy}
                 />
-              )}
-              <div className="ml-auto">
-                <SendButton
-                  onClick={handleSubmit}
-                  disabled={!message.trim() || !providerId || busy}
+                <DropdownSelect
+                  value={scopeTask}
+                  onChange={(v) => {
+                    setScopeTask(v);
+                    setScopeVariant("");
+                  }}
+                  placeholder="No task"
+                  options={[
+                    { value: "", label: "No task" },
+                    ...tasks.map((t) => ({
+                      value: t.id,
+                      label: t.external_id
+                        ? `${t.external_id}: ${t.title.slice(0, 28)}`
+                        : t.title.slice(0, 40),
+                    })),
+                  ]}
+                  disabled={busy}
                 />
-              </div>
-            </>
-          }
-        />
+                {scopeTask && (
+                  <DropdownSelect
+                    value={scopeVariant}
+                    onChange={setScopeVariant}
+                    placeholder="No variant"
+                    options={[
+                      { value: "", label: "No variant" },
+                      ...variantOptions.map((v) => ({
+                        value: v.id,
+                        label: `Variant ${v.position}`,
+                      })),
+                    ]}
+                    disabled={busy}
+                  />
+                )}
+                <div className="ml-auto">
+                  <SendButton
+                    onClick={handleSubmit}
+                    disabled={!message.trim() || !providerId || busy}
+                  />
+                </div>
+              </>
+            }
+          />
+        </AiAssist>
         {error && <p className="text-red-400 text-xs">{error}</p>}
       </div>
     </main>

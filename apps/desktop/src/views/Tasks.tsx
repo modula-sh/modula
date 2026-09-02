@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Download, Plus } from "lucide-react";
 import { useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AiAssist } from "../components/AiAssist";
 import { BaseModal } from "../components/BaseModal";
 import { Button } from "../components/Button";
 import { HeaderSlot } from "../components/HeaderSlot";
@@ -360,21 +361,28 @@ function NewTaskForm({
         }}
         className="w-full bg-transparent text-fg placeholder-fg-subtle text-[18px] font-medium focus:outline-none"
       />
-      <div className="relative flex-1 min-h-0">
-        <MarkdownEditor
-          value={description}
-          onChange={setDescription}
-          onSave={save}
-          padding="0"
-          autoGrow
-          className="w-full text-fg font-inter min-h-[60px] max-h-[50vh] overflow-y-auto"
-        />
-        {description.length === 0 && (
-          <div className="pointer-events-none absolute top-0 left-0 text-fg-subtle font-inter text-[14px] leading-[1.7]">
-            Add description…
-          </div>
-        )}
-      </div>
+      <AiAssist
+        value={description}
+        onChange={setDescription}
+        fieldLabel="task description"
+        className="flex-1 min-h-0"
+      >
+        <div className="relative h-full">
+          <MarkdownEditor
+            value={description}
+            onChange={setDescription}
+            onSave={save}
+            padding="0"
+            autoGrow
+            className="w-full text-fg font-inter min-h-[60px] max-h-[50vh] overflow-y-auto"
+          />
+          {description.length === 0 && (
+            <div className="pointer-events-none absolute top-0 left-0 text-fg-subtle font-inter text-[14px] leading-[1.7]">
+              Add description…
+            </div>
+          )}
+        </div>
+      </AiAssist>
       <div className="flex items-center gap-2 mt-auto">
         <span className="ml-auto flex items-center gap-2">
           <Button onClick={onCancel} disabled={busy} tone="link">

@@ -16,11 +16,14 @@ export function AiAssist({
   value,
   onChange,
   fieldLabel,
+  className = "",
   children,
 }: {
   value: string;
   onChange: (text: string) => void;
   fieldLabel: string;
+  /** Layout classes the wrapped field used to carry as a flex/grid child. */
+  className?: string;
   children: React.ReactNode;
 }) {
   const ws = useContext(WorkspaceContext);
@@ -57,7 +60,7 @@ export function AiAssist({
   }
 
   return (
-    <div className="relative group">
+    <div className={`relative group ${className}`.trim()}>
       {children}
       {!busy && providers.length > 0 && (
         <button

@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AgentIdenticon } from "../components/AgentIdenticon";
+import { AiAssist } from "../components/AiAssist";
 import { Button } from "../components/Button";
 import { ContextPicker } from "../components/ContextPicker";
 import { DropdownSelect } from "../components/DropdownMenu";
@@ -285,18 +286,24 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
             />
           </FormField>
           <FormField label="Prompt">
-            <MarkdownEditor
+            <AiAssist
               value={state.prompt}
               onChange={(v) => patch("prompt", v)}
-              onSave={() => {
-                if (canSave) void save();
-              }}
-              placeholder="Describe what the agent should do in each session"
-              fontSize="12px"
-              padding="0"
-              autoGrow
-              className="text-fg font-inter bg-surface border border-border rounded px-2 py-1.5 min-h-[14rem] focus-within:border-border-focus"
-            />
+              fieldLabel="agent instructions"
+            >
+              <MarkdownEditor
+                value={state.prompt}
+                onChange={(v) => patch("prompt", v)}
+                onSave={() => {
+                  if (canSave) void save();
+                }}
+                placeholder="Describe what the agent should do in each session"
+                fontSize="12px"
+                padding="0"
+                autoGrow
+                className="text-fg font-inter bg-surface border border-border rounded px-2 py-1.5 min-h-[14rem] focus-within:border-border-focus"
+              />
+            </AiAssist>
           </FormField>
           <FormField label={`Context (${state.args.length})`}>
             <div className="flex flex-wrap items-center gap-1">

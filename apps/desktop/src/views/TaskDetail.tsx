@@ -13,6 +13,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AgentIdenticon } from "../components/AgentIdenticon";
 import { AgentName } from "../components/AgentName";
+import { AiAssist } from "../components/AiAssist";
 import { Button } from "../components/Button";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -281,14 +282,20 @@ export function TaskDetail({
         <div>
           <div className="text-[10px] uppercase tracking-wide text-fg-subtle mb-1">description</div>
           <div className="rounded-md border border-transparent focus-within:border-border-focus p-0 focus-within:p-4 transition-[padding,border-color] duration-150">
-            <MarkdownEditor
+            <AiAssist
               value={form.description}
               onChange={(v) => update("description", v)}
-              onSave={() => saveRef.current()}
-              padding="0"
-              autoGrow
-              className="text-fg font-inter"
-            />
+              fieldLabel="task description"
+            >
+              <MarkdownEditor
+                value={form.description}
+                onChange={(v) => update("description", v)}
+                onSave={() => saveRef.current()}
+                padding="0"
+                autoGrow
+                className="text-fg font-inter"
+              />
+            </AiAssist>
           </div>
         </div>
         <div>
@@ -1069,22 +1076,24 @@ function ThreadComposer({ taskId, variant }: { taskId: string; variant: string |
   }
 
   return (
-    <ChatInputShell
-      value={content}
-      onChange={setContent}
-      onSubmit={post}
-      placeholder="Add a comment…"
-      bottomRow={
-        <>
-          <FeedbackText feedback={fb.feedback} />
-          <div className="ml-auto">
-            <Button onClick={post} disabled={postComment.isPending || !content.trim()}>
-              {postComment.isPending ? "posting…" : "Post"}
-            </Button>
-          </div>
-        </>
-      }
-    />
+    <AiAssist value={content} onChange={setContent} fieldLabel="comment">
+      <ChatInputShell
+        value={content}
+        onChange={setContent}
+        onSubmit={post}
+        placeholder="Add a comment…"
+        bottomRow={
+          <>
+            <FeedbackText feedback={fb.feedback} />
+            <div className="ml-auto">
+              <Button onClick={post} disabled={postComment.isPending || !content.trim()}>
+                {postComment.isPending ? "posting…" : "Post"}
+              </Button>
+            </div>
+          </>
+        }
+      />
+    </AiAssist>
   );
 }
 
