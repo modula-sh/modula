@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, FilePlus, FolderPlus, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useContext, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { HeaderSlot } from "../components/HeaderSlot";
@@ -77,6 +78,12 @@ export function WikiView() {
   const queryClient = useQueryClient();
   const { data: tree } = useWikiTree(ws);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const pathParam = useSearchParams()[0].get("path");
+
+  // A search result deep-links here; re-select whenever the param changes.
+  useEffect(() => {
+    if (pathParam) setSelectedPath(pathParam);
+  }, [pathParam]);
   const { data: file } = useWikiFile(ws, selectedPath);
   const [draft, setDraft] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);

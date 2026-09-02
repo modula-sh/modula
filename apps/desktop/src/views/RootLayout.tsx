@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ChatRightSidebar } from "../components/chat/ChatRightSidebar";
 import { RightPanel, RightPanelCard } from "../components/right-panel/RightPanel";
+import { SearchModal } from "../components/SearchModal";
 import { AsideCardProvider, AsideCardTarget } from "../contexts/AsideCardContext";
 import { ChatSidebarProvider, useChatSidebar } from "../contexts/ChatSidebarContext";
 import { ConversationStreamProvider } from "../contexts/ConversationStreamProvider";
@@ -129,6 +130,19 @@ function RootLayoutBody({
   const { notifyRegionWidth } = useSidebarContext();
   const navRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Cmd/Ctrl+K opens search; preventDefault so the webview does not act on it.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Windows acrylic reads more solid than macOS vibrancy, so it needs less tint.
   let plate = "bg-chrome";
@@ -165,6 +179,7 @@ function RootLayoutBody({
             workspaces={workspaces}
             onSwitchWorkspace={setWorkspace}
             onRefreshWorkspaces={refreshWorkspaces}
+            onOpenSearch={() => setSearchOpen(true)}
           />
           <div className="flex-1 flex min-w-0 rounded-xl border border-edge bg-bg shadow-content overflow-hidden">
             <HeaderSlotProvider>
@@ -186,6 +201,7 @@ function RootLayoutBody({
           </div>
           <AsideCardTarget />
           <RightPanelCard />
+          {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
         </div>
       </AsideCardProvider>
     </ModalPortalProvider>

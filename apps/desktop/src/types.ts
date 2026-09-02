@@ -449,3 +449,24 @@ export interface PairingCode {
   qr_payload: string;
   expires_at: number;
 }
+
+/** The searchable entities. The engine sends the kind as this string. */
+export type SearchKind = "task" | "agent" | "project" | "provider" | "wiki" | "conversation";
+
+/** One run of excerpt text. The engine decides what is highlighted, so the
+ * client renders spans rather than re-searching the string. */
+export interface ExcerptSpan {
+  text: string;
+  is_match: boolean;
+}
+
+/** A search result. `field` names the content type that matched; `excerpt` is
+ * empty when the title itself matched. */
+export interface SearchHit {
+  kind: SearchKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  field: string;
+  excerpt: ExcerptSpan[];
+}

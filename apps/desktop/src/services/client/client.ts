@@ -14,6 +14,7 @@ import { ProjectResource } from "./resources/project";
 import { ProviderResource } from "./resources/provider";
 import { RemoteResource } from "./resources/remote";
 import { RoadmapResource } from "./resources/roadmap";
+import { SearchResource } from "./resources/search";
 import { SnapshotResource } from "./resources/snapshot";
 import { SystemResource } from "./resources/system";
 import { TaskResource } from "./resources/task";
@@ -31,6 +32,7 @@ export const client = Object.freeze({
   variant: new VariantResource(),
   roadmap: new RoadmapResource(),
   remote: new RemoteResource(),
+  search: new SearchResource(),
   snapshot: new SnapshotResource(),
   thread: new ThreadResource(),
   agent: new AgentResource(),
