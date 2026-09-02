@@ -78,12 +78,20 @@ export function WikiView() {
   const queryClient = useQueryClient();
   const { data: tree } = useWikiTree(ws);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const pathParam = useSearchParams()[0].get("path");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pathParam = searchParams.get("path");
 
   // A search result deep-links here; re-select whenever the param changes.
   useEffect(() => {
     if (pathParam) setSelectedPath(pathParam);
   }, [pathParam]);
+
+  // Tree clicks write the param back, so a later deep-link to a page the user
+  // has already visited still changes `pathParam` and re-runs the effect above.
+  function selectPath(path: string) {
+    setSelectedPath(path);
+    setSearchParams({ path }, { replace: true });
+  }
   const { data: file } = useWikiFile(ws, selectedPath);
   const [draft, setDraft] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -229,7 +237,7 @@ export function WikiView() {
       <WikiTree
         tree={tree ?? null}
         selectedPath={selectedPath}
-        onSelect={setSelectedPath}
+        onSelect={selectPath}
         onNewFile={openNewFile}
         onNewFolder={openNewFolder}
         onRename={openRename}

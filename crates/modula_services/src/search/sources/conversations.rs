@@ -1,7 +1,7 @@
 //! Conversations: title and the transcript's message contents.
 
 use async_trait::async_trait;
-use serde::Deserialize;
+use serde_json::Value;
 use sqlx::SqlitePool;
 
 use modula_core::error::ApiResult;
@@ -13,17 +13,22 @@ use super::super::SearchSource;
 /// Shown when a conversation has no title yet, matching the sidebar.
 const UNTITLED: &str = "Untitled";
 
-/// The slice of the `data` blob this source reads.
-#[derive(Default, Deserialize)]
-struct Transcript {
-    #[serde(default)]
-    messages: Vec<Message>,
-}
-
-#[derive(Deserialize)]
-struct Message {
-    #[serde(default)]
-    content: String,
+/// Message texts from the `data` blob, as tolerant of an odd message shape as
+/// `modula_db::conversations`' reader of the same column: a message without a
+/// string `content` contributes nothing instead of voiding the whole transcript.
+fn message_contents(data: &str) -> Vec<String> {
+    serde_json::from_str::<Value>(data)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("messages"))
+        .and_then(Value::as_array)
+        .map(|messages| {
+            messages
+                .iter()
+                .filter_map(|m| Some(m.get("content")?.as_str()?.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub(in crate::search) struct Conversations {
@@ -57,11 +62,10 @@ impl SearchSource for Conversations {
             .await?
             .into_iter()
             .filter_map(|c| {
-                let transcript: Transcript = serde_json::from_str(&c.data).unwrap_or_default();
-                let bodies: Vec<(&str, &str)> = transcript
-                    .messages
+                let contents = message_contents(&c.data);
+                let bodies: Vec<(&str, &str)> = contents
                     .iter()
-                    .map(|m| ("transcript", m.content.as_str()))
+                    .map(|content| ("transcript", content.as_str()))
                     .collect();
                 let title = if c.title.trim().is_empty() {
                     UNTITLED

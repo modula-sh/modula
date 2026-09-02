@@ -305,13 +305,12 @@ async fn agents_projects_and_providers_match_their_own_content_types() {
 }
 
 #[tokio::test]
-async fn wiki_pages_match_by_heading_and_by_contents() {
+async fn wiki_pages_match_by_heading_by_path_and_by_contents() {
     let f = fixture().await;
     let wiki = f.ws_dir.join("wiki");
     std::fs::create_dir_all(wiki.join("Modula")).unwrap();
     std::fs::write(
-        wiki.join(format!("# {NEEDLE}.md"))
-            .with_file_name("headed.md"),
+        wiki.join("headed.md"),
         format!("# The {NEEDLE} page\n\nbody"),
     )
     .unwrap();
@@ -320,10 +319,15 @@ async fn wiki_pages_match_by_heading_and_by_contents() {
         format!("# Plain\n\nsomething {NEEDLE} in the body"),
     )
     .unwrap();
+    std::fs::write(
+        wiki.join(format!("Modula/{NEEDLE}-notes.md")),
+        "# Notes\n\nneither heading nor body says it",
+    )
+    .unwrap();
 
     let hits = f.search(NEEDLE).await;
     let pages = Fixture::of_kind(&hits, SearchKind::Wiki);
-    assert_eq!(pages.len(), 2, "{hits:#?}");
+    assert_eq!(pages.len(), 3, "{hits:#?}");
 
     let headed = pages.iter().find(|h| h.id == "headed.md").unwrap();
     assert_eq!(headed.title, format!("The {NEEDLE} page"));
@@ -338,6 +342,13 @@ async fn wiki_pages_match_by_heading_and_by_contents() {
     assert_eq!(nested.title, "Plain");
     assert_eq!(nested.field, "contents");
     assert_eq!(nested.subtitle.as_deref(), Some("Modula"));
+
+    let by_path = pages
+        .iter()
+        .find(|h| h.id == format!("Modula/{NEEDLE}-notes.md"))
+        .unwrap();
+    assert_eq!(by_path.title, "Notes");
+    assert_eq!(by_path.field, "path");
 }
 
 #[tokio::test]
