@@ -73,7 +73,7 @@ export function AiAssist({
         </button>
       )}
       {busy && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg backdrop-blur-sm bg-overlay">
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg backdrop-blur-sm bg-bg/60">
           <Spinner size={18} />
         </div>
       )}
