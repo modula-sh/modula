@@ -198,6 +198,7 @@ function SidebarItem({
   }
 
   const rowClasses = `${rowLayout} py-1.5 rounded transition-colors `;
+  const idleColors = "text-fg-muted hover:text-fg hover:bg-surface-2/30";
   const body = (
     <>
       {item.icon && <span className="shrink-0">{item.icon}</span>}
@@ -225,7 +226,7 @@ function SidebarItem({
         type="button"
         onClick={item.onClick}
         title={!sidebarOpen ? item.label : undefined}
-        className={`${rowClasses}w-full text-fg-muted hover:text-fg hover:bg-surface-2/30`}
+        className={`${rowClasses}${idleColors} w-full text-left`}
       >
         {body}
       </button>
@@ -238,10 +239,7 @@ function SidebarItem({
       end={item.end}
       title={!sidebarOpen ? item.label : undefined}
       onContextMenu={item.onContextMenu}
-      className={({ isActive }) =>
-        rowClasses +
-        (isActive ? "bg-surface-2/50 text-fg" : "text-fg-muted hover:text-fg hover:bg-surface-2/30")
-      }
+      className={({ isActive }) => rowClasses + (isActive ? "bg-surface-2/50 text-fg" : idleColors)}
     >
       {body}
     </NavLink>
