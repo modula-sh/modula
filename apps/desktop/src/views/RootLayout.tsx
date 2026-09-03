@@ -10,6 +10,7 @@ import { HeaderSlotProvider } from "../contexts/HeaderSlotContext";
 import { ModalPortalProvider } from "../contexts/ModalPortalContext";
 import { PipelineContext } from "../contexts/PipelineContext";
 import { RightPanelProvider } from "../contexts/RightPanelProvider";
+import { ShortcutsProvider, useShortcut } from "../contexts/ShortcutsContext";
 import { SidebarProvider, useSidebarContext } from "../contexts/SidebarContext";
 import { SnapshotProvider, useSnapshot } from "../contexts/SnapshotContext";
 import { ThemeProvider, useThemeContext } from "../contexts/ThemeContext";
@@ -86,27 +87,29 @@ function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> })
 
   return (
     <ToastProvider>
-      <SidebarProvider>
-        <WorkspaceContext.Provider value={workspace}>
-          <PipelineContext.Provider value={pipeline}>
-            <SnapshotProvider value={{ snap }}>
-              <ConversationStreamProvider>
-                <EngineEvents workspace={workspace} />
-                <RightPanelProvider>
-                  <ChatSidebarProvider>
-                    <RootLayoutBody
-                      workspace={workspace}
-                      workspaces={workspaces}
-                      setWorkspace={setWorkspace}
-                      refreshWorkspaces={refreshWorkspaces}
-                    />
-                  </ChatSidebarProvider>
-                </RightPanelProvider>
-              </ConversationStreamProvider>
-            </SnapshotProvider>
-          </PipelineContext.Provider>
-        </WorkspaceContext.Provider>
-      </SidebarProvider>
+      <ShortcutsProvider>
+        <SidebarProvider>
+          <WorkspaceContext.Provider value={workspace}>
+            <PipelineContext.Provider value={pipeline}>
+              <SnapshotProvider value={{ snap }}>
+                <ConversationStreamProvider>
+                  <EngineEvents workspace={workspace} />
+                  <RightPanelProvider>
+                    <ChatSidebarProvider>
+                      <RootLayoutBody
+                        workspace={workspace}
+                        workspaces={workspaces}
+                        setWorkspace={setWorkspace}
+                        refreshWorkspaces={refreshWorkspaces}
+                      />
+                    </ChatSidebarProvider>
+                  </RightPanelProvider>
+                </ConversationStreamProvider>
+              </SnapshotProvider>
+            </PipelineContext.Provider>
+          </WorkspaceContext.Provider>
+        </SidebarProvider>
+      </ShortcutsProvider>
     </ToastProvider>
   );
 }
@@ -132,21 +135,7 @@ function RootLayoutBody({
   const contentRef = useRef<HTMLDivElement>(null);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // Cmd/Ctrl+K opens search; preventDefault so the webview does not act on it.
-  // Ctrl+K is skipped on macOS, where it is the system kill-to-end-of-line
-  // binding in every text field. `mac` is macOS *in the Tauri shell*, so browser
-  // dev mode falls the other way.
-  useEffect(() => {
-    const mac = windowButtons() === "system";
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || (!mac && e.ctrlKey)) && e.key === "k") {
-        e.preventDefault();
-        setSearchOpen(true);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useShortcut("mod+k", () => setSearchOpen(true));
 
   // Windows acrylic reads more solid than macOS vibrancy, so it needs less tint.
   let plate = "bg-chrome";

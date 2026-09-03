@@ -8,6 +8,7 @@ import { HeaderSlot } from "../components/HeaderSlot";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { PromptModal } from "../components/PromptModal";
 import { Spinner } from "../components/Spinner";
+import { useShortcut } from "../contexts/ShortcutsContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useWikiFile, useWikiTree, wikiKeys } from "../queries/wiki";
 import type { WikiFile, WikiFileBody, WikiNode } from "../services/client";
@@ -594,17 +595,9 @@ function WikiEditor({
     });
   }, []);
 
-  // ⌘/Ctrl-S to save while editing.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s" && dirty && !busy) {
-        e.preventDefault();
-        onSave();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dirty, busy, onSave]);
+  useShortcut("mod+s", () => {
+    if (dirty && !busy) onSave();
+  });
 
   if (path === null) {
     return (
