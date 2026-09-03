@@ -95,14 +95,12 @@ pub struct CreateProvider {
     pub mcp_servers: Vec<McpServer>,
 }
 
-/// One-off text generation for a field. `current_text` is empty for a blank
-/// field; `field_label` names the field being written.
+/// One-off text generation for a field.
 pub struct GenerateText {
     pub workspace_id: String,
     pub provider_id: String,
     pub model: Option<String>,
     pub instruction: String,
-    pub current_text: String,
     pub field_label: Option<String>,
 }
 

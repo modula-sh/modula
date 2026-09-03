@@ -157,7 +157,6 @@ impl ProviderService for ProviderHandler {
                     provider_id: body.provider_id,
                     model: body.model,
                     instruction: body.instruction,
-                    current_text: body.current_text,
                     field_label: body.field_label,
                 },
             )

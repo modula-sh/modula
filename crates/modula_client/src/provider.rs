@@ -121,7 +121,6 @@ impl ModulaClient {
                 provider_id: req.provider_id,
                 model: req.model,
                 instruction: req.instruction,
-                current_text: req.current_text,
                 field_label: req.field_label,
             })
             .await

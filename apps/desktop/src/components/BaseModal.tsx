@@ -2,8 +2,8 @@ import { useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 import { useModalPortal } from "../contexts/ModalPortalContext";
 
-// Open modals, outermost first. Nested modals (an AI prompt over the New Task
-// modal) must not both dismiss on one Escape, so only the last one reacts.
+// Open modals, outermost first. Only the last one reacts to Escape, so nesting
+// (an AI prompt over the New Task modal) doesn't dismiss both.
 const stack: string[] = [];
 
 /** Modal shell — portals into the nearest `ModalPortalProvider`. */
@@ -23,8 +23,8 @@ export function BaseModal({
 }) {
   const target = useModalPortal();
   const id = useId();
-  // Own effect so a re-render with a fresh `onCancel` doesn't re-push and
-  // wrongly promote this modal above a nested one.
+  // Own effect: a re-render with a fresh `onCancel` must not re-push and promote
+  // this modal above a nested one.
   useEffect(() => {
     if (!open) return;
     stack.push(id);

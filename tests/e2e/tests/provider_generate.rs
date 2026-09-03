@@ -1,5 +1,5 @@
 //! E2E: `ProviderService.Generate` — one throwaway provider session per call,
-//! returning the concatenated deltas over gRPC IPC.
+//! returning the concatenated deltas.
 
 use anyhow::Result;
 use modula_rpc::v1::GenerateTextRequest;
@@ -13,13 +13,12 @@ fn request(ws: &str, provider_id: &str, instruction: &str) -> GenerateTextReques
         provider_id: provider_id.to_string(),
         model: None,
         instruction: instruction.to_string(),
-        current_text: String::new(),
         field_label: Some("Description".to_string()),
     }
 }
 
-/// `runtime_from_provider` validates `config_dir` on disk at generate time, so
-/// every case needs a real directory to point the claude provider at.
+/// `runtime_from_provider` validates `config_dir` on disk, so every case needs a
+/// real directory to point the claude provider at.
 async fn provider(h: &Harness, ws: &str) -> Result<String> {
     let cfg_dir = h.modula_dir.join("fake-claude");
     std::fs::create_dir_all(&cfg_dir)?;

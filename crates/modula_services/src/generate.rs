@@ -1,7 +1,6 @@
-//! One-off text generation: run a throwaway provider session on a single prompt
-//! and return the finished text. Nothing is persisted — no conversation, no
-//! session, no event. Clients (desktop today, iOS later) get identical output
-//! because prompt composition and cleanup live here rather than in the UI.
+//! One-off text generation: a throwaway provider session on a single prompt.
+//! Nothing is persisted. Prompt composition and cleanup live here so every
+//! client gets identical output.
 
 use std::process::Stdio;
 use std::time::Duration;
@@ -16,15 +15,22 @@ use modula_core::error::{ApiError, ApiResult};
 use modula_db::providers::ProviderRepository;
 use modula_db::Database;
 
-/// Bound on a single generation. Long enough for a slow model on a long field,
-/// short enough that a wedged CLI doesn't hold the request open forever.
+/// Bound on a single generation, so a wedged CLI can't hold the request open.
 const GENERATE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The prompt every generation is sent.
+const PROMPT_TEMPLATE: &str = "You are writing the contents of {target} in an app. \
+Return only the resulting text: no preamble, no explanation, no code fences.\n\n\
+Instruction: {instruction}";
+
+/// `{target}`, with and without a caller-supplied field name.
+const TARGET_LABELED: &str = "the \"{label}\" field";
+const TARGET_UNLABELED: &str = "a text field";
 
 pub struct GenerateParams {
     pub provider_id: String,
     pub model: Option<String>,
     pub instruction: String,
-    pub current_text: String,
     pub field_label: Option<String>,
 }
 
@@ -59,20 +65,15 @@ impl GenerationService {
         let runtime = ProviderService::runtime_from_provider(&provider, params.model)?;
         let ws_dir = self.workspaces.workspace_dir(ws_id).await?;
 
-        let prompt = compose_prompt(
-            &params.instruction,
-            &params.current_text,
-            params.field_label.as_deref(),
-        );
-        // Claude emits deltas only under `--include-partial-messages`, which
-        // only the chat-first command passes; codex/opencode return None here
-        // and stream text from their default command.
+        let prompt = compose_prompt(&params.instruction, params.field_label.as_deref());
+        // Only the chat-first command passes Claude's `--include-partial-messages`,
+        // without which it emits no deltas. codex/opencode return None here.
         let mut cmd = match runtime.build_command_chat_first(&prompt, &Uuid::new_v4().to_string()) {
             Some(c) => c,
             None => runtime.build_command(&prompt, None),
         };
-        // Deliberately no MODULA_WORKSPACE / MODULA_ENGINE_SOCKET: a text
-        // generator has no business driving the engine.
+        // No MODULA_WORKSPACE / MODULA_ENGINE_SOCKET: a text generator has no
+        // business driving the engine.
         cmd.current_dir(&ws_dir)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -123,8 +124,6 @@ impl GenerationService {
 
         let text = match drained {
             Some(text) => text,
-            // stdout closed with no terminal event — the exit status and
-            // stderr tail are the only explanation available.
             None => {
                 let status = child.wait().await;
                 let stderr_text = stderr_task.await.unwrap_or_default();
@@ -153,24 +152,14 @@ impl GenerationService {
     }
 }
 
-/// A short instruction beats a long preamble — models drift on the latter.
-fn compose_prompt(instruction: &str, current_text: &str, field_label: Option<&str>) -> String {
+fn compose_prompt(instruction: &str, field_label: Option<&str>) -> String {
     let target = match field_label.map(str::trim).filter(|l| !l.is_empty()) {
-        Some(label) => format!("the \"{label}\" field"),
-        None => "a text field".to_string(),
+        Some(label) => TARGET_LABELED.replace("{label}", label),
+        None => TARGET_UNLABELED.to_string(),
     };
-    let mut prompt = format!(
-        "You are writing the contents of {target} in an app. Return only the resulting text: \
-         no preamble, no explanation, no code fences.\n\n"
-    );
-    if !current_text.trim().is_empty() {
-        prompt.push_str("Current content:\n---\n");
-        prompt.push_str(current_text.trim());
-        prompt.push_str("\n---\n\n");
-    }
-    prompt.push_str("Instruction: ");
-    prompt.push_str(instruction.trim());
-    prompt
+    PROMPT_TEMPLATE
+        .replace("{target}", &target)
+        .replace("{instruction}", instruction.trim())
 }
 
 /// Unwrap a response that is entirely one fenced block; leave anything else
@@ -214,14 +203,10 @@ mod tests {
     }
 
     #[test]
-    fn prompt_includes_current_content_only_when_present() {
-        let with = compose_prompt("fix grammar", "teh text", Some("Description"));
-        assert!(with.contains("the \"Description\" field"));
-        assert!(with.contains("Current content:\n---\nteh text"));
-        assert!(with.ends_with("Instruction: fix grammar"));
-
-        let without = compose_prompt("write one", "   ", None);
-        assert!(without.contains("a text field"));
-        assert!(!without.contains("Current content"));
+    fn prompt_names_the_target_field() {
+        let labeled = compose_prompt("fix grammar", Some("Description"));
+        assert!(labeled.contains("the \"Description\" field"));
+        assert!(labeled.ends_with("Instruction: fix grammar"));
+        assert!(compose_prompt("write one", None).contains("a text field"));
     }
 }

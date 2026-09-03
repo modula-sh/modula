@@ -141,9 +141,8 @@ pub trait ProviderRuntime: Send + Sync {
 /// Max bytes of stderr to retain for an error fallback message.
 const STDERR_CAPTURE_CAP: usize = 4096;
 
-/// Read a provider child's stderr to EOF, keeping only the first
-/// [`STDERR_CAPTURE_CAP`] bytes. Draining past the cap matters: a full stderr
-/// pipe blocks the child.
+/// Read stderr to EOF, keeping the first [`STDERR_CAPTURE_CAP`] bytes. Draining
+/// past the cap matters: a full stderr pipe blocks the child.
 pub(crate) async fn drain_stderr(stderr: tokio::process::ChildStderr) -> String {
     use tokio::io::AsyncReadExt;
     let mut buf = Vec::with_capacity(STDERR_CAPTURE_CAP.min(1024));

@@ -83,7 +83,6 @@ pub async fn provider_generate(
     provider_id: String,
     model: Option<String>,
     instruction: String,
-    current_text: String,
     field_label: Option<String>,
 ) -> Result<String, String> {
     Ok(engine
@@ -92,7 +91,6 @@ pub async fn provider_generate(
             provider_id,
             model,
             instruction,
-            current_text,
             field_label,
         })
         .await?)

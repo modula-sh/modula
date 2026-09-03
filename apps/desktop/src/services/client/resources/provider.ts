@@ -41,7 +41,6 @@ export class ProviderResource {
       providerId: body.provider_id,
       model: body.model,
       instruction: body.instruction,
-      currentText: body.current_text,
       fieldLabel: body.field_label,
     });
   }

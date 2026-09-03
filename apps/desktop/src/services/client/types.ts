@@ -119,7 +119,6 @@ export interface GenerateTextBody {
   provider_id: string;
   model?: string;
   instruction: string;
-  current_text: string;
   field_label?: string;
 }
 

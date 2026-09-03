@@ -29,19 +29,29 @@ export function AiAssistModal({
   const disabled = !prompt.trim() || !providerId;
 
   useEffect(() => {
-    if (open) ref.current?.focus();
+    if (!open) return;
+    const el = ref.current;
+    el?.focus();
+    el?.setSelectionRange(el.value.length, el.value.length);
   }, [open]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [open, prompt]);
 
   return (
     <BaseModal open={open} onCancel={onCancel}>
       <div className="text-sm font-semibold text-fg">{AI_ASSIST_TITLE}</div>
+      <hr className="-mx-4 border-edge" />
       <textarea
         ref={ref}
         value={prompt}
         onChange={(e) => onPromptChange(e.target.value)}
         placeholder={AI_ASSIST_PLACEHOLDER}
-        rows={4}
-        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-subtle resize-none outline-none focus:border-fg-subtle"
+        className="w-full min-h-[5rem] bg-transparent text-sm text-fg placeholder:text-fg-subtle resize-none outline-none overflow-hidden"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !disabled) {
             e.preventDefault();

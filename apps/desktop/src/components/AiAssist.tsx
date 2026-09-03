@@ -9,9 +9,8 @@ import { AiAssistModal } from "./AiAssistModal";
 import { FeedbackText } from "./FeedbackText";
 import { Spinner } from "./Spinner";
 
-/** Wraps any controlled text editor with a hover "Use AI" pill that fills it
- * from a one-off provider prompt. The child is untouched — it only needs the
- * `value`/`onChange` the call site already holds. */
+/** Wraps any controlled text editor with a hover "Use AI" pill that refills it
+ * from a one-off provider prompt. The child is untouched. */
 export function AiAssist({
   value,
   onChange,
@@ -22,7 +21,7 @@ export function AiAssist({
   value: string;
   onChange: (text: string) => void;
   fieldLabel: string;
-  /** Layout classes the wrapped field used to carry as a flex/grid child. */
+  /** Layout classes for the wrapper, when the field sizes itself in a parent. */
   className?: string;
   children: React.ReactNode;
 }) {
@@ -47,11 +46,9 @@ export function AiAssist({
       const text = await client.provider.generate(ws, {
         provider_id: providerId,
         instruction: prompt,
-        current_text: value,
         field_label: fieldLabel,
       });
       onChange(text);
-      setPrompt("");
     } catch (e) {
       fb.err(errorMessage(e), { clearAfter: 8000 });
     } finally {
@@ -65,8 +62,11 @@ export function AiAssist({
       {!busy && providers.length > 0 && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="absolute top-1.5 right-1.5 z-10 hidden group-hover:flex group-focus-within:flex items-center gap-1 text-[11px] text-fg-subtle hover:text-fg bg-surface border border-border rounded px-1.5 py-0.5"
+          onClick={() => {
+            setPrompt(value);
+            setOpen(true);
+          }}
+          className="absolute top-1.5 right-1.5 z-10 hidden group-hover:flex group-focus-within:flex items-center gap-1 font-inter text-[11px] text-fg-subtle hover:text-fg bg-surface border border-border rounded px-1.5 py-0.5"
         >
           <AI_ASSIST_ICON size={11} />
           {AI_ASSIST_LABEL}
