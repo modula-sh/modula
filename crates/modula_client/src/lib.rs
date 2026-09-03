@@ -30,6 +30,7 @@ mod raw;
 mod request;
 mod roadmap;
 mod run;
+mod search;
 mod snapshot;
 mod task;
 mod thread;
@@ -42,8 +43,8 @@ pub use error::{rpc as rpc_error, ClientError};
 pub use project::CreatedProject;
 pub use provider::CreatedProvider;
 pub use request::{
-    AppendEntry, CreateProvider, CreateTask, SetRoadmapStatus, UpdateProvider, UpdateTask,
-    UpsertTask, WriteAgent,
+    AppendEntry, CreateProvider, CreateTask, GenerateText, SetRoadmapStatus, UpdateProvider,
+    UpdateTask, UpsertTask, WriteAgent,
 };
 pub use roadmap::RoadmapStatus;
 pub use task::{CreatedTask, CreatedVariant, ResetOutcome, UpsertOutcome};
@@ -61,10 +62,10 @@ use modula_rpc::v1::{
     integration_service_client::IntegrationServiceClient, label_service_client::LabelServiceClient,
     log_service_client::LogServiceClient, project_service_client::ProjectServiceClient,
     provider_service_client::ProviderServiceClient, roadmap_service_client::RoadmapServiceClient,
-    run_service_client::RunServiceClient, task_service_client::TaskServiceClient,
-    thread_service_client::ThreadServiceClient, usage_service_client::UsageServiceClient,
-    variant_service_client::VariantServiceClient, wiki_service_client::WikiServiceClient,
-    workspace_service_client::WorkspaceServiceClient,
+    run_service_client::RunServiceClient, search_service_client::SearchServiceClient,
+    task_service_client::TaskServiceClient, thread_service_client::ThreadServiceClient,
+    usage_service_client::UsageServiceClient, variant_service_client::VariantServiceClient,
+    wiki_service_client::WikiServiceClient, workspace_service_client::WorkspaceServiceClient,
 };
 use tonic::transport::Channel;
 
@@ -183,5 +184,9 @@ impl ModulaClient {
 
     async fn logs(&self) -> Result<LogServiceClient<Channel>, ClientError> {
         Ok(LogServiceClient::new(self.channel().await?))
+    }
+
+    async fn search_client(&self) -> Result<SearchServiceClient<Channel>, ClientError> {
+        Ok(SearchServiceClient::new(self.channel().await?))
     }
 }

@@ -1,12 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, FilePlus, FolderPlus, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { HeaderSlot } from "../components/HeaderSlot";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { PromptModal } from "../components/PromptModal";
 import { Spinner } from "../components/Spinner";
+import { useShortcut } from "../contexts/ShortcutsContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useWikiFile, useWikiTree, wikiKeys } from "../queries/wiki";
 import type { WikiFile, WikiFileBody, WikiNode } from "../services/client";
@@ -77,6 +79,20 @@ export function WikiView() {
   const queryClient = useQueryClient();
   const { data: tree } = useWikiTree(ws);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pathParam = searchParams.get("path");
+
+  // A search result deep-links here.
+  useEffect(() => {
+    if (pathParam) setSelectedPath(pathParam);
+  }, [pathParam]);
+
+  // Tree clicks write the param back, so deep-linking to an already-visited
+  // page still changes `pathParam` and re-runs the effect above.
+  function selectPath(path: string) {
+    setSelectedPath(path);
+    setSearchParams({ path }, { replace: true });
+  }
   const { data: file } = useWikiFile(ws, selectedPath);
   const [draft, setDraft] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -95,10 +111,15 @@ export function WikiView() {
     setDraft(file ? file.content : null);
   }, [file]);
 
-  // Reset selection on workspace switch — the wiki is workspace-scoped.
+  // Reset selection on workspace switch. The ref guard keeps this off the mount
+  // pass, where it would clear a page just deep-linked to.
+  const prevWs = useRef(ws);
   useEffect(() => {
+    if (prevWs.current === ws) return;
+    prevWs.current = ws;
     setSelectedPath(null);
-  }, [ws]);
+    setSearchParams({}, { replace: true });
+  }, [ws, setSearchParams]);
 
   const invalidateTree = () => queryClient.invalidateQueries({ queryKey: wikiKeys.tree(ws) });
 
@@ -222,7 +243,7 @@ export function WikiView() {
       <WikiTree
         tree={tree ?? null}
         selectedPath={selectedPath}
-        onSelect={setSelectedPath}
+        onSelect={selectPath}
         onNewFile={openNewFile}
         onNewFolder={openNewFolder}
         onRename={openRename}
@@ -573,17 +594,9 @@ function WikiEditor({
     });
   }, []);
 
-  // ⌘/Ctrl-S to save while editing.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s" && dirty && !busy) {
-        e.preventDefault();
-        onSave();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dirty, busy, onSave]);
+  useShortcut("mod+s", () => {
+    if (dirty && !busy) onSave();
+  });
 
   if (path === null) {
     return (

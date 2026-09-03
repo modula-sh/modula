@@ -10,6 +10,7 @@ import {
   Map,
   Pencil,
   PenSquare,
+  Search,
   Server,
   Settings,
   Trash2,
@@ -31,7 +32,8 @@ import { client } from "../services/client";
 import type { ConversationSummary, WorkspaceInfo } from "../types";
 
 export type NavItem = {
-  to: string;
+  /** Absent for an action row, which renders a button instead of a NavLink. */
+  to?: string;
   label: string;
   icon?: React.ReactNode;
   end?: boolean;
@@ -50,6 +52,8 @@ export type NavItem = {
   subtitle?: string;
   /** Right-click handler. Receives the original mouse event. */
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** Action for a `to`-less row. */
+  onClick?: () => void;
 };
 
 type NavAction = {
@@ -193,17 +197,10 @@ function SidebarItem({
     );
   }
 
-  return (
-    <NavLink
-      to={item.to}
-      end={item.end}
-      title={!sidebarOpen ? item.label : undefined}
-      onContextMenu={item.onContextMenu}
-      className={({ isActive }) =>
-        `${rowLayout} py-1.5 rounded transition-colors ` +
-        (isActive ? "bg-surface-2/50 text-fg" : "text-fg-muted hover:text-fg hover:bg-surface-2/30")
-      }
-    >
+  const rowClasses = `${rowLayout} py-1.5 rounded transition-colors `;
+  const idleColors = "text-fg-muted hover:text-fg hover:bg-surface-2/30";
+  const body = (
+    <>
       {item.icon && <span className="shrink-0">{item.icon}</span>}
       {sidebarOpen ? (
         <>
@@ -220,6 +217,31 @@ function SidebarItem({
       ) : (
         <span className="sr-only">{item.label}</span>
       )}
+    </>
+  );
+
+  if (item.to === undefined) {
+    return (
+      <button
+        type="button"
+        onClick={item.onClick}
+        title={!sidebarOpen ? item.label : undefined}
+        className={`${rowClasses}${idleColors} w-full text-left`}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      title={!sidebarOpen ? item.label : undefined}
+      onContextMenu={item.onContextMenu}
+      className={({ isActive }) => rowClasses + (isActive ? "bg-surface-2/50 text-fg" : idleColors)}
+    >
+      {body}
     </NavLink>
   );
 }
@@ -229,12 +251,14 @@ export function Sidebar({
   workspaces,
   onSwitchWorkspace,
   onRefreshWorkspaces,
+  onOpenSearch,
   ref,
 }: {
   workspace: string;
   workspaces: WorkspaceInfo[];
   onSwitchWorkspace: (ws: string) => void;
   onRefreshWorkspaces: () => void;
+  onOpenSearch: () => void;
   /** RootLayout measures the nav's live width for the auto-collapse decision. */
   ref?: React.Ref<HTMLElement>;
 }) {
@@ -368,6 +392,11 @@ export function Sidebar({
         </div>
         <nav className="flex-1 flex flex-col min-h-0 p-2 overflow-x-hidden">
           <div className="shrink-0 space-y-0.5">
+            <SidebarItem
+              item={{ label: "Search", icon: <Search size={16} />, onClick: onOpenSearch }}
+              depth={0}
+              sidebarOpen={open}
+            />
             {navItems.map((item) => (
               <SidebarItem key={item.to} item={item} depth={0} sidebarOpen={open} />
             ))}

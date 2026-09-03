@@ -93,6 +93,14 @@ pub struct TaskPatch {
     pub synced_at: Option<Option<String>>,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct TaskMatch {
+    pub id: String,
+    pub external_id: Option<String>,
+    pub title: String,
+    pub description: String,
+}
+
 #[derive(Clone, Default)]
 pub struct TaskRepository;
 
@@ -336,6 +344,31 @@ impl TaskRepository {
             return Err(Error::NotFound(format!("unknown task: {id}")));
         }
         Ok(())
+    }
+    /// Newest first, so a truncating `limit` keeps the freshest.
+    pub async fn search<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<TaskMatch>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let pattern = crate::search::like_pattern(query);
+        Ok(sqlx::query_as::<_, TaskMatch>(
+            "SELECT id, external_id, title, description FROM tasks \
+             WHERE workspace_id = ? AND deleted_at IS NULL \
+               AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\') \
+             ORDER BY updated_at DESC LIMIT ?",
+        )
+        .bind(ws_id)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(exec)
+        .await?)
     }
 }
 

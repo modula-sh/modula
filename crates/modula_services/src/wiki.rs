@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use modula_types::WikiNode;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use walkdir::WalkDir;
 
 use modula_core::error::ApiError;
 
@@ -178,4 +179,66 @@ pub fn delete(root: &Path, rel: &str) -> Result<(), ApiError> {
         fs::remove_file(&target)?;
     }
     Ok(())
+}
+
+/// Caps on the search walk, which is a linear scan over files on disk.
+const MAX_FILE_BYTES: u64 = 1024 * 1024;
+const MAX_FILES_SCANNED: usize = 2000;
+
+pub struct WikiMatch {
+    pub path: String,
+    pub title: String,
+    pub body: String,
+}
+
+/// Wiki pages whose title, path or contents contain `query`. Skips dotfiles,
+/// oversized files and anything that is not UTF-8.
+pub fn search(root: &Path, query: &str, limit: usize) -> Vec<WikiMatch> {
+    let mut out = Vec::new();
+    let mut scanned = 0usize;
+    let walk = WalkDir::new(root)
+        .into_iter()
+        .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'));
+    for entry in walk.filter_map(Result::ok) {
+        if out.len() >= limit || scanned >= MAX_FILES_SCANNED {
+            break;
+        }
+        if !entry.file_type().is_file()
+            || entry.metadata().map(|m| m.len()).unwrap_or(u64::MAX) > MAX_FILE_BYTES
+        {
+            continue;
+        }
+        let (Ok(body), Ok(rel)) = (
+            fs::read_to_string(entry.path()),
+            entry.path().strip_prefix(root),
+        ) else {
+            continue;
+        };
+        scanned += 1;
+        let path = rel.to_string_lossy().replace('\\', "/");
+        let title = title_of(&path, &body);
+        if crate::search::contains(&title, query)
+            || crate::search::contains(&path, query)
+            || crate::search::contains(&body, query)
+        {
+            out.push(WikiMatch { path, title, body });
+        }
+    }
+    out
+}
+
+/// The page's first `# ` heading, else its filename.
+fn title_of(rel_path: &str, body: &str) -> String {
+    body.lines()
+        .find_map(|l| l.strip_prefix("# "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            Path::new(rel_path)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        })
 }

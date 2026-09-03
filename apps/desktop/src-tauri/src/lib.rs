@@ -95,6 +95,7 @@ pub fn run() {
             grpc::provider::provider_create,
             grpc::provider::provider_update,
             grpc::provider::provider_delete,
+            grpc::provider::provider_generate,
             grpc::agent::agent_list_running,
             grpc::agent::agent_get,
             grpc::agent::agent_config,
@@ -128,6 +129,7 @@ pub fn run() {
             grpc::project::project_repo_branches,
             grpc::diff::variant_diff,
             grpc::diff::variant_pr,
+            grpc::search::search_query,
         ])
         .setup(move |app| {
             // In dev (`bash scripts/dev.sh`) the engine is already running under

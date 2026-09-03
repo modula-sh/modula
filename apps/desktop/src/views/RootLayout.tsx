@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ChatRightSidebar } from "../components/chat/ChatRightSidebar";
 import { RightPanel, RightPanelCard } from "../components/right-panel/RightPanel";
+import { SearchModal } from "../components/SearchModal";
 import { AsideCardProvider, AsideCardTarget } from "../contexts/AsideCardContext";
 import { ChatSidebarProvider, useChatSidebar } from "../contexts/ChatSidebarContext";
 import { ConversationStreamProvider } from "../contexts/ConversationStreamProvider";
@@ -9,6 +10,7 @@ import { HeaderSlotProvider } from "../contexts/HeaderSlotContext";
 import { ModalPortalProvider } from "../contexts/ModalPortalContext";
 import { PipelineContext } from "../contexts/PipelineContext";
 import { RightPanelProvider } from "../contexts/RightPanelProvider";
+import { ShortcutsProvider, useShortcut } from "../contexts/ShortcutsContext";
 import { SidebarProvider, useSidebarContext } from "../contexts/SidebarContext";
 import { SnapshotProvider, useSnapshot } from "../contexts/SnapshotContext";
 import { ThemeProvider, useThemeContext } from "../contexts/ThemeContext";
@@ -85,27 +87,29 @@ function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> })
 
   return (
     <ToastProvider>
-      <SidebarProvider>
-        <WorkspaceContext.Provider value={workspace}>
-          <PipelineContext.Provider value={pipeline}>
-            <SnapshotProvider value={{ snap }}>
-              <ConversationStreamProvider>
-                <EngineEvents workspace={workspace} />
-                <RightPanelProvider>
-                  <ChatSidebarProvider>
-                    <RootLayoutBody
-                      workspace={workspace}
-                      workspaces={workspaces}
-                      setWorkspace={setWorkspace}
-                      refreshWorkspaces={refreshWorkspaces}
-                    />
-                  </ChatSidebarProvider>
-                </RightPanelProvider>
-              </ConversationStreamProvider>
-            </SnapshotProvider>
-          </PipelineContext.Provider>
-        </WorkspaceContext.Provider>
-      </SidebarProvider>
+      <ShortcutsProvider>
+        <SidebarProvider>
+          <WorkspaceContext.Provider value={workspace}>
+            <PipelineContext.Provider value={pipeline}>
+              <SnapshotProvider value={{ snap }}>
+                <ConversationStreamProvider>
+                  <EngineEvents workspace={workspace} />
+                  <RightPanelProvider>
+                    <ChatSidebarProvider>
+                      <RootLayoutBody
+                        workspace={workspace}
+                        workspaces={workspaces}
+                        setWorkspace={setWorkspace}
+                        refreshWorkspaces={refreshWorkspaces}
+                      />
+                    </ChatSidebarProvider>
+                  </RightPanelProvider>
+                </ConversationStreamProvider>
+              </SnapshotProvider>
+            </PipelineContext.Provider>
+          </WorkspaceContext.Provider>
+        </SidebarProvider>
+      </ShortcutsProvider>
     </ToastProvider>
   );
 }
@@ -129,6 +133,9 @@ function RootLayoutBody({
   const { notifyRegionWidth } = useSidebarContext();
   const navRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useShortcut("mod+k", () => setSearchOpen(true));
 
   // Windows acrylic reads more solid than macOS vibrancy, so it needs less tint.
   let plate = "bg-chrome";
@@ -165,6 +172,7 @@ function RootLayoutBody({
             workspaces={workspaces}
             onSwitchWorkspace={setWorkspace}
             onRefreshWorkspaces={refreshWorkspaces}
+            onOpenSearch={() => setSearchOpen(true)}
           />
           <div className="flex-1 flex min-w-0 rounded-xl border border-edge bg-bg shadow-content overflow-hidden">
             <HeaderSlotProvider>
@@ -186,6 +194,7 @@ function RootLayoutBody({
           </div>
           <AsideCardTarget />
           <RightPanelCard />
+          {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
         </div>
       </AsideCardProvider>
     </ModalPortalProvider>

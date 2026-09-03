@@ -24,7 +24,7 @@ use crate::events::{
     EventSink, CONVERSATION_CREATE, CONVERSATION_DELETE, CONVERSATION_RUN_ENDED,
     CONVERSATION_RUN_STARTED, CONVERSATION_UPDATE,
 };
-use crate::providers::{ChatEvent, ProviderRuntime, ProviderService};
+use crate::providers::{self, ChatEvent, ProviderRuntime, ProviderService};
 use crate::workspaces::WorkspaceService;
 use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
@@ -593,9 +593,6 @@ pub fn drain_queue(
     })
 }
 
-/// Max bytes of stderr to retain for an error fallback message.
-const STDERR_CAPTURE_CAP: usize = 4096;
-
 #[allow(clippy::too_many_arguments)]
 async fn run_to_completion(
     slot: RunSlot,
@@ -610,7 +607,7 @@ async fn run_to_completion(
     cid: String,
     initial_session_captured: bool,
 ) {
-    let stderr_task = tokio::spawn(drain_stderr(stderr));
+    let stderr_task = tokio::spawn(providers::drain_stderr(stderr));
 
     let reader = tokio::io::BufReader::new(stdout);
     let mut lines = reader.lines();
@@ -724,28 +721,6 @@ async fn run_to_completion(
     } else {
         emit(&slot, WireEvent::Done).await;
     }
-}
-
-async fn drain_stderr(stderr: tokio::process::ChildStderr) -> String {
-    use tokio::io::AsyncReadExt;
-    let mut buf = Vec::with_capacity(STDERR_CAPTURE_CAP.min(1024));
-    let mut reader = tokio::io::BufReader::new(stderr);
-    let mut chunk = [0u8; 1024];
-    loop {
-        match reader.read(&mut chunk).await {
-            Ok(0) => break,
-            Ok(n) => {
-                let remaining = STDERR_CAPTURE_CAP.saturating_sub(buf.len());
-                let take = n.min(remaining);
-                if take > 0 {
-                    buf.extend_from_slice(&chunk[..take]);
-                }
-                // Keep draining past the cap so the child's stderr pipe never blocks.
-            }
-            Err(_) => break,
-        }
-    }
-    String::from_utf8_lossy(&buf).into_owned()
 }
 
 /// Derive a conversation title from the first user message: the first non-empty

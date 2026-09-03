@@ -14,6 +14,7 @@ use modula_services::config::ConfigService;
 use modula_services::conversations::{ConvRunRegistry, ConvRuntime, ConversationService};
 use modula_services::diffs::DiffService;
 use modula_services::events::{Bus, EventService, EventSink};
+use modula_services::generate::GenerationService;
 use modula_services::integrations::IntegrationsService;
 use modula_services::logs::LogsService;
 use modula_services::loop_registry::LoopRegistry;
@@ -23,6 +24,7 @@ use modula_services::projects::ProjectService;
 use modula_services::providers::ProviderService;
 use modula_services::runs::RunService;
 use modula_services::scheduler::SchedulerHandle;
+use modula_services::search::SearchService;
 use modula_services::snapshot::SnapshotService;
 use modula_services::workspaces::WorkspaceService;
 
@@ -62,6 +64,8 @@ pub struct AppState {
     /// Conversation CRUD business service. Distinct from `conv_runs`, which is
     /// the in-flight streaming registry (runtime), not durable state.
     pub conversations: ConversationService,
+    /// One-off provider text generation for the field assist.
+    pub generation: GenerationService,
     /// Variant diff aggregation service (owns repos + DIs `WorkspaceService`).
     pub diffs: DiffService,
     /// Variant PR-link resolution service.
@@ -72,6 +76,8 @@ pub struct AppState {
     pub snapshot: SnapshotService,
     /// Log-path resolution service (DIs `WorkspaceService`); `tail_lines` streams.
     pub logs: LogsService,
+    /// Read-only cross-domain aggregator: no transaction, no writes, no events.
+    pub search: SearchService,
     pub scheduler: SchedulerHandle,
     pub loops: LoopRegistry,
     /// In-flight conversation runs; outlives any individual SSE response so
@@ -189,6 +195,8 @@ impl AppState {
         let runs = RunService::new(db.clone(), repos.agent_runs.clone(), workspaces.clone());
         let conversations =
             ConversationService::new(db.clone(), repos.conversations.clone(), event_sink);
+        let generation =
+            GenerationService::new(db.clone(), repos.providers.clone(), workspaces.clone());
         let diffs = DiffService::new(
             db.clone(),
             repos.tasks.clone(),
@@ -210,6 +218,7 @@ impl AppState {
             processes.clone(),
             workspaces.clone(),
         );
+        let search = SearchService::new(workspaces.clone(), &repos);
         // Plugins own their state; the engine keeps no field per plugin.
         let ctx = PluginContext {
             db: db.clone(),
@@ -250,11 +259,13 @@ impl AppState {
             events,
             runs,
             conversations,
+            generation,
             diffs,
             pr,
             processes,
             snapshot,
             logs,
+            search,
             scheduler,
             loops,
             conv,
