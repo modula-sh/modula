@@ -9,12 +9,18 @@ function inTauri(): boolean {
   return !!w.__TAURI_INTERNALS__;
 }
 
-/** Who draws the window buttons — the only platform difference the UI cares
- * about. `system` is macOS (traffic lights, native double-click zoom), `app` is
- * the undecorated Windows/Linux window, `none` is a browser. */
+/** Who draws the window buttons. `system` is macOS (traffic lights, native
+ * double-click zoom), `app` is the undecorated Windows/Linux window, `none` is
+ * a browser. */
 export function windowButtons(): "system" | "app" | "none" {
   if (!inTauri()) return "none";
-  return platform() === "macos" ? "system" : "app";
+  return isMac() ? "system" : "app";
+}
+
+/** macOS, including browser dev mode, where the Tauri APIs are unavailable.
+ * Keyboard shortcuts need this even when no native window is involved. */
+export function isMac(): boolean {
+  return inTauri() ? platform() === "macos" : /Mac/i.test(navigator.userAgent);
 }
 
 /** `close` goes through CloseRequested, which the Rust shell intercepts to hide

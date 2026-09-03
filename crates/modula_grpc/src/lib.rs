@@ -7,10 +7,11 @@ use modula_rpc::v1::{
     integration_service_server::IntegrationServiceServer, label_service_server::LabelServiceServer,
     log_service_server::LogServiceServer, project_service_server::ProjectServiceServer,
     provider_service_server::ProviderServiceServer, roadmap_service_server::RoadmapServiceServer,
-    run_service_server::RunServiceServer, snapshot_service_server::SnapshotServiceServer,
-    task_service_server::TaskServiceServer, thread_service_server::ThreadServiceServer,
-    usage_service_server::UsageServiceServer, variant_service_server::VariantServiceServer,
-    wiki_service_server::WikiServiceServer, workspace_service_server::WorkspaceServiceServer,
+    run_service_server::RunServiceServer, search_service_server::SearchServiceServer,
+    snapshot_service_server::SnapshotServiceServer, task_service_server::TaskServiceServer,
+    thread_service_server::ThreadServiceServer, usage_service_server::UsageServiceServer,
+    variant_service_server::VariantServiceServer, wiki_service_server::WikiServiceServer,
+    workspace_service_server::WorkspaceServiceServer,
 };
 use tonic::transport::server::Router;
 
@@ -42,6 +43,7 @@ mod project;
 mod provider;
 mod roadmap;
 mod run;
+mod search;
 mod snapshot;
 mod task;
 mod thread;
@@ -62,6 +64,7 @@ pub use project::ProjectHandler;
 pub use provider::ProviderHandler;
 pub use roadmap::RoadmapHandler;
 pub use run::RunHandler;
+pub use search::SearchHandler;
 pub use snapshot::SnapshotHandler;
 pub use task::{TaskHandler, VariantHandler};
 pub use thread::ThreadHandler;
@@ -137,6 +140,9 @@ pub fn make_router(state: AppState, registry: &PluginRegistry) -> Router {
             })
             .max_encoding_message_size(MAX_UNARY_MESSAGE_SIZE),
         )
+        .add_service(SearchServiceServer::new(SearchHandler {
+            state: state.clone(),
+        }))
         .add_service(WikiServiceServer::new(WikiHandler { state }));
     // Plugins add their services last, so a plugin can never shadow a core one.
     registry

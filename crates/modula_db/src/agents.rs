@@ -283,6 +283,14 @@ async fn insert_seed(
     Ok(())
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AgentMatch {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub prompt: String,
+}
+
 #[derive(Clone, Default)]
 pub struct AgentRepository;
 
@@ -543,6 +551,32 @@ impl AgentRepository {
             .fetch_all(exec)
             .await?,
         )
+    }
+    pub async fn search<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<AgentMatch>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let pattern = crate::search::like_pattern(query);
+        Ok(sqlx::query_as::<_, AgentMatch>(
+            "SELECT id, name, description, prompt FROM agents \
+             WHERE workspace_id = ? \
+               AND (name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' \
+                    OR prompt LIKE ? ESCAPE '\\') \
+             ORDER BY updated_at DESC LIMIT ?",
+        )
+        .bind(ws_id)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(exec)
+        .await?)
     }
 }
 

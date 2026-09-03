@@ -76,6 +76,15 @@ pub struct ConversationCreate {
     pub context: serde_json::Value,
 }
 
+/// `data` is the raw transcript JSON; `LIKE` also sees its envelope, so the
+/// caller must re-check the decoded messages.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ConversationMatch {
+    pub id: String,
+    pub title: String,
+    pub data: String,
+}
+
 #[derive(Clone, Default)]
 pub struct ConversationRepository;
 
@@ -246,5 +255,29 @@ impl ConversationRepository {
             .execute(exec)
             .await?;
         Ok(())
+    }
+    pub async fn search<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<ConversationMatch>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let pattern = crate::search::like_pattern(query);
+        Ok(sqlx::query_as::<_, ConversationMatch>(
+            "SELECT id, title, data FROM conversations \
+             WHERE workspace_id = ? \
+               AND (title LIKE ? ESCAPE '\\' OR data LIKE ? ESCAPE '\\') \
+             ORDER BY updated_at DESC LIMIT ?",
+        )
+        .bind(ws_id)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(exec)
+        .await?)
     }
 }

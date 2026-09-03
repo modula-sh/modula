@@ -36,6 +36,13 @@ impl From<ProjectRecord> for Project {
     }
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ProjectMatch {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Clone, Default)]
 pub struct ProjectRepository;
 
@@ -151,5 +158,29 @@ impl ProjectRepository {
             return Err(Error::NotFound(format!("unknown project: {id}")));
         }
         Ok(())
+    }
+    pub async fn search<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<ProjectMatch>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let pattern = crate::search::like_pattern(query);
+        Ok(sqlx::query_as::<_, ProjectMatch>(
+            "SELECT id, name, path FROM projects \
+             WHERE workspace_id = ? \
+               AND (name LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\') \
+             ORDER BY name LIMIT ?",
+        )
+        .bind(ws_id)
+        .bind(&pattern)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(exec)
+        .await?)
     }
 }

@@ -1,0 +1,36 @@
+syntax = "proto3";
+package modula.v1;
+
+// Workspace-wide search. Matching, excerpting and highlighting happen here so
+// every client renders the same results.
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  string workspace_id = 1;
+  string query = 2;
+  // Kind keys to search; empty means all of them. Unknown keys are ignored.
+  repeated string kinds = 3;
+  // Per-kind cap; 0 means the server default.
+  uint32 limit = 4;
+}
+message SearchResponse {
+  repeated SearchHit hits = 1;
+}
+
+message SearchHit {
+  // One of: task, agent, project, provider, wiki, conversation.
+  string kind = 1;
+  string id = 2;
+  string title = 3;
+  string field = 4;
+  optional string subtitle = 5;
+  // Empty when the title itself matched.
+  repeated ExcerptSpan excerpt = 6;
+}
+
+message ExcerptSpan {
+  string text = 1;
+  bool is_match = 2;
+}
