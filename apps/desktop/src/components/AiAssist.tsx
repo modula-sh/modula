@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { useSnapshot } from "../contexts/SnapshotContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useFeedback } from "../hooks/useFeedback";
@@ -9,8 +9,27 @@ import { AiAssistModal } from "./AiAssistModal";
 import { FeedbackText } from "./FeedbackText";
 import { Spinner } from "./Spinner";
 
-/** Wraps any controlled text editor with a hover "Use AI" pill that refills it
- * from a one-off provider prompt. The child is untouched. */
+/** Null outside an `AiAssist`, and when no provider is configured. */
+const AiAssistContext = createContext<{ open: () => void; busy: boolean } | null>(null);
+
+/** Matches the pill controls in the chat input's action row. */
+const TRIGGER_CLASS =
+  "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-inter text-fg-muted transition-colors enabled:hover:bg-surface-2 enabled:hover:text-fg focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed";
+
+/** The "Use AI" button, for the field's own action row. */
+export function AiAssistTrigger() {
+  const assist = useContext(AiAssistContext);
+  if (!assist) return null;
+  return (
+    <button type="button" disabled={assist.busy} onClick={assist.open} className={TRIGGER_CLASS}>
+      <AI_ASSIST_ICON size={12} />
+      {AI_ASSIST_LABEL}
+    </button>
+  );
+}
+
+/** Refills any controlled text editor from a one-off provider prompt, blurring
+ * the wrapped field while it generates. */
 export function AiAssist({
   value,
   onChange,
@@ -56,42 +75,41 @@ export function AiAssist({
     }
   }
 
+  const handle = providers.length
+    ? {
+        busy,
+        open: () => {
+          setPrompt(value);
+          setOpen(true);
+        },
+      }
+    : null;
+
   return (
-    <div className={`relative group ${className}`.trim()}>
-      {children}
-      {!busy && providers.length > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            setPrompt(value);
-            setOpen(true);
-          }}
-          className="absolute top-1.5 right-1.5 z-10 hidden group-hover:flex group-focus-within:flex items-center gap-1 font-inter text-[11px] text-fg-subtle hover:text-fg bg-surface border border-border rounded px-1.5 py-0.5"
-        >
-          <AI_ASSIST_ICON size={11} />
-          {AI_ASSIST_LABEL}
-        </button>
-      )}
-      {busy && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg backdrop-blur-sm bg-bg/60">
-          <Spinner size={18} />
-        </div>
-      )}
-      {fb.feedback && (
-        <div className="absolute -bottom-4 right-0">
-          <FeedbackText feedback={fb.feedback} />
-        </div>
-      )}
-      <AiAssistModal
-        open={open}
-        prompt={prompt}
-        onPromptChange={setPrompt}
-        providerId={providerId}
-        onProviderChange={setStoredProvider}
-        providers={providers}
-        onSubmit={handleSubmit}
-        onCancel={() => setOpen(false)}
-      />
-    </div>
+    <AiAssistContext.Provider value={handle}>
+      <div className={`relative ${className}`.trim()}>
+        {children}
+        {busy && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg backdrop-blur-sm bg-bg/60">
+            <Spinner size={18} />
+          </div>
+        )}
+        {fb.feedback && (
+          <div className="absolute -bottom-4 right-0">
+            <FeedbackText feedback={fb.feedback} />
+          </div>
+        )}
+        <AiAssistModal
+          open={open}
+          prompt={prompt}
+          onPromptChange={setPrompt}
+          providerId={providerId}
+          onProviderChange={setStoredProvider}
+          providers={providers}
+          onSubmit={handleSubmit}
+          onCancel={() => setOpen(false)}
+        />
+      </div>
+    </AiAssistContext.Provider>
   );
 }

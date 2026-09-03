@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Download, Plus } from "lucide-react";
 import { useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AiAssist } from "../components/AiAssist";
+import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
 import { BaseModal } from "../components/BaseModal";
 import { Button } from "../components/Button";
 import { HeaderSlot } from "../components/HeaderSlot";
@@ -365,9 +365,12 @@ function NewTaskForm({
         value={description}
         onChange={setDescription}
         fieldLabel="task description"
-        className="flex-1 min-h-0"
+        className="flex-1 min-h-0 flex flex-col"
       >
-        <div className="relative h-full">
+        <div className="flex justify-end empty:hidden">
+          <AiAssistTrigger />
+        </div>
+        <div className="relative flex-1 min-h-0">
           <MarkdownEditor
             value={description}
             onChange={setDescription}

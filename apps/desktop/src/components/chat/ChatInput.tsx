@@ -1,6 +1,6 @@
 import type { ProviderModel } from "../../lib/providerCatalog";
 import { useLocalStorage } from "../../lib/useLocalStorage";
-import { AiAssist } from "../AiAssist";
+import { AiAssist, AiAssistTrigger } from "../AiAssist";
 import { DropdownSelect } from "../DropdownMenu";
 import { ChatInputShell } from "./ChatInputShell";
 import { SendButton } from "./SendButton";
@@ -55,6 +55,7 @@ export function ChatInput({
               disabled={streaming}
               title="Model. Changes apply to the next message"
             />
+            <AiAssistTrigger />
             <div className="ml-auto">
               <SendButton onClick={submit} disabled={buttonDisabled} busy={streaming} />
             </div>

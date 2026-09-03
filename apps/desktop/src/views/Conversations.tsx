@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { AiAssist } from "../components/AiAssist";
+import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
 import { Button } from "../components/Button";
 import { ChatInput } from "../components/chat/ChatInput";
 import { ChatInputShell } from "../components/chat/ChatInputShell";
@@ -179,6 +179,7 @@ export function ConversationsView() {
                     disabled={busy}
                   />
                 )}
+                <AiAssistTrigger />
                 <div className="ml-auto">
                   <SendButton
                     onClick={handleSubmit}

@@ -13,7 +13,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AgentIdenticon } from "../components/AgentIdenticon";
 import { AgentName } from "../components/AgentName";
-import { AiAssist } from "../components/AiAssist";
+import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
 import { Button } from "../components/Button";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -279,25 +279,26 @@ export function TaskDetail({
             <div className="text-fg text-xl font-semibold font-inter mt-1">{task.title}</div>
           )}
         </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-subtle mb-1">description</div>
+        <AiAssist
+          value={form.description}
+          onChange={(v) => update("description", v)}
+          fieldLabel="task description"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[10px] uppercase tracking-wide text-fg-subtle">description</div>
+            <AiAssistTrigger />
+          </div>
           <div className="rounded-md border border-transparent focus-within:border-border-focus p-0 focus-within:p-4 transition-[padding,border-color] duration-150">
-            <AiAssist
+            <MarkdownEditor
               value={form.description}
               onChange={(v) => update("description", v)}
-              fieldLabel="task description"
-            >
-              <MarkdownEditor
-                value={form.description}
-                onChange={(v) => update("description", v)}
-                onSave={() => saveRef.current()}
-                padding="0"
-                autoGrow
-                className="text-fg font-inter"
-              />
-            </AiAssist>
+              onSave={() => saveRef.current()}
+              padding="0"
+              autoGrow
+              className="text-fg font-inter"
+            />
           </div>
-        </div>
+        </AiAssist>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-fg-subtle">variants</div>
           {task.variants.length === 0 ? (
@@ -1084,6 +1085,7 @@ function ThreadComposer({ taskId, variant }: { taskId: string; variant: string |
         placeholder="Add a comment…"
         bottomRow={
           <>
+            <AiAssistTrigger />
             <FeedbackText feedback={fb.feedback} />
             <div className="ml-auto">
               <Button onClick={post} disabled={postComment.isPending || !content.trim()}>
