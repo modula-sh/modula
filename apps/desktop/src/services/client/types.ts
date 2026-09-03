@@ -115,6 +115,13 @@ export interface ProviderWriteBody {
   mcp_servers?: ProviderMcpEntry[];
 }
 
+export interface GenerateTextBody {
+  provider_id: string;
+  model?: string;
+  instruction: string;
+  field_label?: string;
+}
+
 export interface CreateConversationBody {
   provider_id: string;
   title?: string;

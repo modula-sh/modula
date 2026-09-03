@@ -1,4 +1,4 @@
-use modula_client::{CreateProvider, CreatedProvider, ModulaClient, UpdateProvider};
+use modula_client::{CreateProvider, CreatedProvider, GenerateText, ModulaClient, UpdateProvider};
 use modula_types::{CatalogProvider, McpServer, Provider};
 use tauri::State;
 
@@ -74,6 +74,26 @@ pub async fn provider_update(
         })
         .await?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn provider_generate(
+    engine: State<'_, ModulaClient>,
+    workspace_id: String,
+    provider_id: String,
+    model: Option<String>,
+    instruction: String,
+    field_label: Option<String>,
+) -> Result<String, String> {
+    Ok(engine
+        .generate_text(GenerateText {
+            workspace_id,
+            provider_id,
+            model,
+            instruction,
+            field_label,
+        })
+        .await?)
 }
 
 #[tauri::command]
