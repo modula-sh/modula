@@ -4,7 +4,7 @@ import { BaseModal } from "./BaseModal";
 import { Button } from "./Button";
 import { DropdownSelect } from "./DropdownMenu";
 
-/** Prompt + provider picker for the "Use AI" field assist. Presentational —
+/** Prompt + provider picker for the field assist. Presentational —
  * the wrapper owns the call. */
 export function AiAssistModal({
   open,

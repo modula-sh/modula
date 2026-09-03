@@ -1,7 +1,7 @@
 import { Sparkles } from "lucide-react";
 
-/** Every user-facing string and the icon for the "Use AI" field assist. */
-export const AI_ASSIST_LABEL = "Use AI";
+/** Every user-facing string and the icon for the field assist. */
+export const AI_ASSIST_LABEL = "Generate";
 export const AI_ASSIST_ICON = Sparkles;
 export const AI_ASSIST_TITLE = "Generate with AI";
 export const AI_ASSIST_PLACEHOLDER =

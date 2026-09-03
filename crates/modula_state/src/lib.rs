@@ -63,7 +63,7 @@ pub struct AppState {
     /// Conversation CRUD business service. Distinct from `conv_runs`, which is
     /// the in-flight streaming registry (runtime), not durable state.
     pub conversations: ConversationService,
-    /// One-off provider text generation for the "Use AI" field assist.
+    /// One-off provider text generation for the field assist.
     pub generation: GenerationService,
     /// Variant diff aggregation service (owns repos + DIs `WorkspaceService`).
     pub diffs: DiffService,

@@ -16,7 +16,7 @@ const AiAssistContext = createContext<{ open: () => void; busy: boolean } | null
 const TRIGGER_CLASS =
   "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-inter text-fg-muted transition-colors enabled:hover:bg-surface-2 enabled:hover:text-fg focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed";
 
-/** The "Use AI" button, for the field's own action row. */
+/** The generate button, for the field's own action row. */
 export function AiAssistTrigger() {
   const assist = useContext(AiAssistContext);
   if (!assist) return null;
