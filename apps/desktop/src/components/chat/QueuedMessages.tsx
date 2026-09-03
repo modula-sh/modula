@@ -11,18 +11,20 @@ export function QueuedMessages({
 }) {
   if (queued.length === 0) return null;
   return (
-    <div className="flex flex-col gap-1 mb-2">
+    <div className="flex flex-col items-end gap-1 mb-2">
       {queued.map((q) => (
         <div
           key={q.id}
-          className="flex items-center gap-2 px-3 py-1.5 bg-chat-input border border-chat-input-border/50 rounded-2xl shadow-panel"
+          className="flex items-center gap-2 max-w-full px-3 py-1.5 bg-chat-input border border-chat-input-border/50 rounded-2xl shadow-panel"
         >
-          <span className="flex-1 truncate text-[13px] text-fg-subtle font-geist">{q.content}</span>
+          <span className="min-w-0 truncate text-[13px] text-fg-subtle font-geist">
+            {q.content}
+          </span>
           <button
             type="button"
             onClick={() => onRemove(q.id)}
             title="Remove from queue"
-            className="text-fg-subtle hover:text-fg transition-colors"
+            className="shrink-0 text-fg-subtle hover:text-fg transition-colors"
           >
             <X size={14} />
           </button>
