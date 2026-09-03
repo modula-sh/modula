@@ -13,6 +13,11 @@ use super::super::SearchSource;
 /// Shown when a conversation has no title yet, matching the sidebar.
 const UNTITLED: &str = "Untitled";
 
+/// How many rows to ask SQL for per row we can return. This is the one source
+/// whose predicate is wider than what it renders, so envelope-only rows would
+/// otherwise spend the whole limit and zero the kind out.
+const OVERFETCH: i64 = 4;
+
 /// Message texts from the `data` blob, as tolerant of an odd message shape as
 /// `modula_db::conversations`' reader of the same column: a message without a
 /// string `content` contributes nothing instead of voiding the whole transcript.
@@ -58,7 +63,7 @@ impl SearchSource for Conversations {
         // title and every message content come up empty.
         Ok(self
             .conversations
-            .search(&self.pool, ws, query, limit)
+            .search(&self.pool, ws, query, limit.saturating_mul(OVERFETCH))
             .await?
             .into_iter()
             .filter_map(|c| {
@@ -74,6 +79,7 @@ impl SearchSource for Conversations {
                 };
                 super::hit(SearchKind::Conversation, c.id, title, None, query, &bodies)
             })
+            .take(limit.max(0) as usize)
             .collect())
     }
 }

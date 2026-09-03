@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, FilePlus, FolderPlus, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { ConfirmModal } from "../components/ConfirmModal";
@@ -110,10 +110,16 @@ export function WikiView() {
     setDraft(file ? file.content : null);
   }, [file]);
 
-  // Reset selection on workspace switch — the wiki is workspace-scoped.
+  // Reset selection on workspace switch — the wiki is workspace-scoped. The ref
+  // guard keeps this off the mount pass, where it would otherwise run after the
+  // `?path=` effect above and clear the page a search result just deep-linked to.
+  const prevWs = useRef(ws);
   useEffect(() => {
+    if (prevWs.current === ws) return;
+    prevWs.current = ws;
     setSelectedPath(null);
-  }, [ws]);
+    setSearchParams({}, { replace: true });
+  }, [ws, setSearchParams]);
 
   const invalidateTree = () => queryClient.invalidateQueries({ queryKey: wikiKeys.tree(ws) });
 

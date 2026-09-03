@@ -133,9 +133,12 @@ function RootLayoutBody({
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Cmd/Ctrl+K opens search; preventDefault so the webview does not act on it.
+  // Ctrl+K is skipped on macOS, where it is the system kill-to-end-of-line
+  // binding in every text field.
   useEffect(() => {
+    const mac = windowButtons() === "system";
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || (!mac && e.ctrlKey)) && e.key === "k") {
         e.preventDefault();
         setSearchOpen(true);
       }

@@ -115,6 +115,34 @@ async fn seed_conversation(f: &Fixture, title: &str, messages: &[&str]) -> Strin
     id
 }
 
+/// A conversation stamped older than every other row. Inserted directly because
+/// the `updated_at` trigger rewrites any UPDATE back to now.
+async fn seed_oldest_conversation(f: &Fixture, title: &str, message: &str) -> String {
+    let provider = f
+        .repos
+        .providers
+        .list(&f.env.pool, &f.env.ws)
+        .await
+        .unwrap()[0]
+        .id
+        .clone();
+    let id = uuid::Uuid::new_v4().to_string();
+    let data = json!({ "messages": [{ "role": "user", "content": message }] });
+    sqlx::query(
+        "INSERT INTO conversations (workspace_id, id, title, provider_id, data, updated_at) \
+         VALUES (?, ?, ?, ?, ?, '2000-01-01T00:00:00.000Z')",
+    )
+    .bind(&f.env.ws)
+    .bind(&id)
+    .bind(title)
+    .bind(provider)
+    .bind(data.to_string())
+    .execute(&f.env.pool)
+    .await
+    .unwrap();
+    id
+}
+
 #[tokio::test]
 async fn task_title_match_carries_no_excerpt_and_a_body_match_does() {
     let f = fixture().await;
@@ -231,6 +259,23 @@ async fn a_conversation_matching_only_json_envelope_text_is_dropped() {
     assert_eq!(convs[0].id, real);
     assert_eq!(convs[0].field, "transcript");
     assert!(!convs[0].excerpt.is_empty());
+}
+
+#[tokio::test]
+async fn envelope_only_conversations_do_not_crowd_out_a_real_match() {
+    let f = fixture().await;
+    let real = seed_oldest_conversation(&f, "Chat", "the user asked about it").await;
+    // Every seeded message carries the role "user", so each of these matches the
+    // SQL LIKE over the raw blob and is then dropped — enough to fill the default
+    // per-kind limit ahead of the older row that really matches.
+    for _ in 0..=DEFAULT_LIMIT {
+        seed_conversation(&f, "Chat", &["nothing relevant"]).await;
+    }
+
+    let hits = f.search("user").await;
+    let convs = Fixture::of_kind(&hits, SearchKind::Conversation);
+    assert_eq!(convs.len(), 1, "{hits:#?}");
+    assert_eq!(convs[0].id, real);
 }
 
 #[tokio::test]
