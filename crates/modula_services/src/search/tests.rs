@@ -80,6 +80,25 @@ async fn seed_task(f: &Fixture, title: &str, description: &str) -> String {
         .0
 }
 
+async fn seed_comment(f: &Fixture, task: &str, content: &str) {
+    f.repos
+        .threads
+        .append(
+            &f.env.pool,
+            &f.env.ws,
+            task,
+            None,
+            "worker",
+            "comment",
+            content,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+}
+
 async fn seed_conversation(f: &Fixture, title: &str, messages: &[&str]) -> String {
     let provider = f
         .repos
@@ -178,22 +197,7 @@ async fn a_comment_surfaces_its_task_once_and_never_a_deleted_one() {
     let dead = seed_task(&f, "Dead task", "").await;
     for task in [&live, &dead] {
         for n in 0..2 {
-            f.repos
-                .threads
-                .append(
-                    &f.env.pool,
-                    &f.env.ws,
-                    task,
-                    None,
-                    "worker",
-                    "comment",
-                    &format!("round {n} was {NEEDLE}"),
-                    None,
-                    None,
-                    None,
-                )
-                .await
-                .unwrap();
+            seed_comment(&f, task, &format!("round {n} was {NEEDLE}")).await;
         }
     }
     f.repos
@@ -216,27 +220,31 @@ async fn a_comment_surfaces_its_task_once_and_never_a_deleted_one() {
 async fn a_title_or_description_match_outranks_the_same_task_s_comment() {
     let f = fixture().await;
     let id = seed_task(&f, &format!("{NEEDLE} in the title"), "").await;
-    f.repos
-        .threads
-        .append(
-            &f.env.pool,
-            &f.env.ws,
-            &id,
-            None,
-            "worker",
-            "comment",
-            &format!("also {NEEDLE} here"),
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
+    seed_comment(&f, &id, &format!("also {NEEDLE} here")).await;
 
     let hits = f.search(NEEDLE).await;
     let tasks = Fixture::of_kind(&hits, SearchKind::Task);
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].field, "title");
+}
+
+#[tokio::test]
+async fn deduped_comments_do_not_crowd_out_a_comment_only_task() {
+    let f = fixture().await;
+    let titled = seed_task(&f, &format!("{NEEDLE} in the title"), "").await;
+    let comment_only = seed_task(&f, "Plain title", "").await;
+    seed_comment(&f, &comment_only, &format!("only here is {NEEDLE}")).await;
+    // Newer entries on the already-matched task, enough to fill the per-kind
+    // limit ahead of the one entry that is a task's only way to surface. The
+    // dedupe drops them all, so without the over-fetch it drops the other task.
+    for _ in 0..=DEFAULT_LIMIT {
+        seed_comment(&f, &titled, &format!("more {NEEDLE}")).await;
+    }
+
+    let hits = f.search(NEEDLE).await;
+    let tasks = Fixture::of_kind(&hits, SearchKind::Task);
+    assert_eq!(tasks.len(), 2, "{hits:#?}");
+    assert!(tasks.iter().any(|h| h.id == comment_only), "{hits:#?}");
 }
 
 #[tokio::test]

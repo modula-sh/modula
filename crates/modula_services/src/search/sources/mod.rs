@@ -11,6 +11,11 @@ use modula_types::{SearchHit, SearchKind};
 
 use super::excerpt::{contains, excerpt, RADIUS};
 
+/// Rows to ask SQL for per row we can return, where a source's `LIKE` is
+/// wider than what it renders. `limit` caps results the user sees, so rows
+/// dropped after the query must not spend it.
+const OVERFETCH: i64 = 4;
+
 /// The hit for one row. A title match wins and carries no excerpt — the title
 /// is already row 1 of the result, so repeating it below is noise. Otherwise
 /// the first `bodies` entry containing the query supplies the excerpt, which

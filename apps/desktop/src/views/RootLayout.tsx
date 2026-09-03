@@ -134,7 +134,8 @@ function RootLayoutBody({
 
   // Cmd/Ctrl+K opens search; preventDefault so the webview does not act on it.
   // Ctrl+K is skipped on macOS, where it is the system kill-to-end-of-line
-  // binding in every text field.
+  // binding in every text field. `mac` is macOS *in the Tauri shell*, so browser
+  // dev mode falls the other way.
   useEffect(() => {
     const mac = windowButtons() === "system";
     function onKey(e: KeyboardEvent) {

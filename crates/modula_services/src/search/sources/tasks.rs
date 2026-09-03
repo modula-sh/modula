@@ -52,7 +52,18 @@ impl SearchSource for Tasks {
 
         // A comment has no view of its own, so it surfaces as its owning task —
         // and only when that task has not already matched on a stronger field.
-        for c in self.threads.search(&self.pool, ws, query, limit).await? {
+        // A busy thread on an already-matched task is the likeliest source of
+        // entries, so over-fetch rather than let the dedupe spend the limit.
+        for c in self
+            .threads
+            .search(
+                &self.pool,
+                ws,
+                query,
+                limit.saturating_mul(super::OVERFETCH),
+            )
+            .await?
+        {
             if hits.len() as i64 >= limit {
                 break;
             }

@@ -60,8 +60,6 @@ pub struct ThreadMatch {
     pub task_id: String,
     pub task_title: String,
     pub task_external_id: Option<String>,
-    pub author: String,
-    pub kind: String,
     pub content: String,
 }
 
@@ -253,7 +251,7 @@ impl ThreadRepository {
     {
         Ok(sqlx::query_as::<_, ThreadMatch>(
             "SELECT te.task_id, t.title AS task_title, t.external_id AS task_external_id, \
-                    te.author, te.kind, te.content \
+                    te.content \
              FROM thread_entries te \
              JOIN tasks t ON t.workspace_id = te.workspace_id AND t.id = te.task_id \
              WHERE te.workspace_id = ? AND t.deleted_at IS NULL \
