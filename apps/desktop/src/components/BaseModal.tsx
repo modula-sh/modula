@@ -1,8 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 import { useModalPortal } from "../contexts/ModalPortalContext";
 
 const CHROME = "bg-bg border border-edge rounded-xl shadow-xl p-4 flex flex-col gap-3";
+
+// Open modals, outermost first. Only the last one reacts to Escape, so nesting
+// (an AI prompt over the New Task modal) doesn't dismiss both.
+const stack: string[] = [];
 
 /** Modal shell — portals into the nearest `ModalPortalProvider`. */
 export function BaseModal({
@@ -26,15 +30,25 @@ export function BaseModal({
   panelClassName?: string;
 }) {
   const target = useModalPortal();
+  const id = useId();
+  // Own effect: a re-render with a fresh `onCancel` must not re-push and promote
+  // this modal above a nested one.
+  useEffect(() => {
+    if (!open) return;
+    stack.push(id);
+    return () => {
+      stack.splice(stack.indexOf(id), 1);
+    };
+  }, [open, id]);
 
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) onCancel();
+      if (e.key === "Escape" && !busy && stack[stack.length - 1] === id) onCancel();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, busy, onCancel]);
+  }, [open, busy, onCancel, id]);
 
   if (!open || !target) return null;
 
@@ -44,7 +58,7 @@ export function BaseModal({
         align === "top" ? "items-start pt-[12vh]" : "items-center"
       }`}
       onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onCancel();
+        if (e.target === e.currentTarget && !busy && stack[stack.length - 1] === id) onCancel();
       }}
     >
       <div

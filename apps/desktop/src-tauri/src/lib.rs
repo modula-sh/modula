@@ -93,6 +93,7 @@ pub fn run() {
             grpc::provider::provider_create,
             grpc::provider::provider_update,
             grpc::provider::provider_delete,
+            grpc::provider::provider_generate,
             grpc::agent::agent_list_running,
             grpc::agent::agent_get,
             grpc::agent::agent_config,

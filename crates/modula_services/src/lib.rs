@@ -6,6 +6,7 @@ pub mod diff;
 pub mod diffs;
 pub mod dispatcher;
 pub mod events;
+pub mod generate;
 pub mod integrations;
 pub mod labels;
 pub mod logs;

@@ -95,6 +95,15 @@ pub struct CreateProvider {
     pub mcp_servers: Vec<McpServer>,
 }
 
+/// One-off text generation for a field.
+pub struct GenerateText {
+    pub workspace_id: String,
+    pub provider_id: String,
+    pub model: Option<String>,
+    pub instruction: String,
+    pub field_label: Option<String>,
+}
+
 /// Partial provider edit. `mcp_servers: None` leaves the config file untouched;
 /// `Some` reconciles it. `clear_description` blanks the description.
 pub struct UpdateProvider {

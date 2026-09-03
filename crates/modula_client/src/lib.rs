@@ -43,8 +43,8 @@ pub use error::{rpc as rpc_error, ClientError};
 pub use project::CreatedProject;
 pub use provider::CreatedProvider;
 pub use request::{
-    AppendEntry, CreateProvider, CreateTask, SetRoadmapStatus, UpdateProvider, UpdateTask,
-    UpsertTask, WriteAgent,
+    AppendEntry, CreateProvider, CreateTask, GenerateText, SetRoadmapStatus, UpdateProvider,
+    UpdateTask, UpsertTask, WriteAgent,
 };
 pub use roadmap::RoadmapStatus;
 pub use task::{CreatedTask, CreatedVariant, ResetOutcome, UpsertOutcome};
