@@ -65,7 +65,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
       onCancel={onClose}
       align="top"
       chromeless
-      panelClassName="w-[36rem] bg-bg/70 backdrop-blur-2xl border border-border rounded-xl shadow-popover"
+      panelClassName="w-[36rem] bg-bg border border-edge rounded-xl shadow-popover dark:bg-bg/70 dark:border-border dark:backdrop-blur-2xl"
     >
       <input
         autoFocus
