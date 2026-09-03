@@ -10,8 +10,8 @@ import { Spinner } from "./Spinner";
 
 const DEBOUNCE_MS = 250;
 
-/** Contiguous runs of one kind. The engine returns each source's hits together
- * and already ranked, so grouping is a scan and never a re-sort. */
+/** The engine returns each source's hits together and ranked, so grouping is a
+ * scan rather than a re-sort. */
 function groupByKind(hits: SearchHit[]) {
   const groups: { kind: SearchKind; hits: SearchHit[] }[] = [];
   for (const hit of hits) {

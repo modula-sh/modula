@@ -93,8 +93,6 @@ pub struct TaskPatch {
     pub synced_at: Option<Option<String>>,
 }
 
-/// A task row that matched a search, projected down to what a result row
-/// renders. See [`TaskRepository::search`].
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct TaskMatch {
     pub id: String,
@@ -347,8 +345,7 @@ impl TaskRepository {
         }
         Ok(())
     }
-    /// Tasks whose title or description matches `query`. Soft-deleted tasks
-    /// never match. Newest first, so a truncating `limit` keeps the freshest.
+    /// Newest first, so a truncating `limit` keeps the freshest.
     pub async fn search<'e, E>(
         &self,
         exec: E,

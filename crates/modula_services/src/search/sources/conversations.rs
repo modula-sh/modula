@@ -10,12 +10,10 @@ use modula_types::{SearchHit, SearchKind};
 
 use super::super::SearchSource;
 
-/// Shown when a conversation has no title yet, matching the sidebar.
 const UNTITLED: &str = "Untitled";
 
-/// Message texts from the `data` blob, as tolerant of an odd message shape as
-/// `modula_db::conversations`' reader of the same column: a message without a
-/// string `content` contributes nothing instead of voiding the whole transcript.
+/// Message texts from the `data` blob. A malformed message contributes nothing
+/// rather than voiding the whole transcript.
 fn message_contents(data: &str) -> Vec<String> {
     serde_json::from_str::<Value>(data)
         .ok()
@@ -52,10 +50,8 @@ impl SearchSource for Conversations {
     }
 
     async fn search(&self, ws: &str, query: &str, limit: i64) -> ApiResult<Vec<SearchHit>> {
-        // The SQL matched the raw JSON, so a row may have hit the envelope (a
-        // role, a timestamp, a key name) rather than any message text. Decoding
-        // only the matched rows keeps that cheap; `hit` then drops a row whose
-        // title and every message content come up empty.
+        // The SQL matched raw JSON, so a row may have hit the envelope (a role,
+        // a timestamp) rather than message text; `hit` drops those.
         Ok(self
             .conversations
             .search(

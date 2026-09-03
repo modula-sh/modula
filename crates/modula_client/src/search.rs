@@ -5,9 +5,8 @@ use crate::error::{rpc, ClientError};
 use crate::ModulaClient;
 
 impl ModulaClient {
-    /// Workspace-wide search. `kinds` empty means every kind, `limit` 0 the
-    /// engine's per-kind default. Distinct from `search_integration`, which
-    /// queries an external issue tracker.
+    /// Workspace-wide search, unlike `search_integration`, which queries an
+    /// external issue tracker.
     pub async fn search(
         &self,
         workspace_id: &str,

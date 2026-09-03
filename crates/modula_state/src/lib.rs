@@ -76,8 +76,7 @@ pub struct AppState {
     pub snapshot: SnapshotService,
     /// Log-path resolution service (DIs `WorkspaceService`); `tail_lines` streams.
     pub logs: LogsService,
-    /// Workspace-wide search. A read-only cross-domain aggregator: it owns no
-    /// transaction, writes nothing, and publishes no event.
+    /// Read-only cross-domain aggregator: no transaction, no writes, no events.
     pub search: SearchService,
     pub scheduler: SchedulerHandle,
     pub loops: LoopRegistry,

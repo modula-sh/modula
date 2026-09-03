@@ -50,10 +50,9 @@ impl SearchSource for Tasks {
             })
             .collect();
 
-        // A comment has no view of its own, so it surfaces as its owning task —
-        // and only when that task has not already matched on a stronger field.
-        // A busy thread on an already-matched task is the likeliest source of
-        // entries, so over-fetch rather than let the dedupe spend the limit.
+        // A comment has no view of its own, so it surfaces as its owning task,
+        // and only if that task has not already matched. Over-fetch because a
+        // busy thread on an already-matched task would otherwise spend the limit.
         for c in self
             .threads
             .search(

@@ -52,9 +52,8 @@ impl From<ThreadEntryRecord> for ThreadEntry {
 const SELECT_COLS: &str =
     "id, variant_id, ts, author, kind, round, content, verdict, affected_variants";
 
-/// A thread entry that matched a search, carrying its owning task's display
-/// fields — a comment hit is shown (and navigated to) as its task. See
-/// [`ThreadRepository::search`].
+/// Carries the owning task's display fields: a comment hit is shown, and
+/// navigated to, as its task.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ThreadMatch {
     pub task_id: String,
@@ -236,9 +235,7 @@ impl ThreadRepository {
         .await?;
         Ok(res.rows_affected() > 0)
     }
-    /// Thread entries whose content matches `query`, joined to their task for
-    /// the display fields. Entries outlive their task's soft delete, so the
-    /// join filters those out.
+    /// Entries outlive their task's soft delete, so the join filters those out.
     pub async fn search<'e, E>(
         &self,
         exec: E,

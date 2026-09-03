@@ -20,8 +20,8 @@ function parse(chord: string): Spec {
   };
 }
 
-/** The physical key rather than the character it produces, so AZERTY, Cyrillic
- * and caps lock all still match the letter printed on a US keyboard. */
+/** The physical key, so caps lock and non-US layouts still match the letter
+ * printed on a US keyboard. */
 function pressedKey(e: KeyboardEvent): string {
   if (e.code.startsWith("Key")) return e.code.slice(3).toLowerCase();
   if (e.code.startsWith("Digit")) return e.code.slice(5);
@@ -29,8 +29,8 @@ function pressedKey(e: KeyboardEvent): string {
 }
 
 function matches(spec: Spec, e: KeyboardEvent, mac: boolean): boolean {
-  // The other platform's modifier has to be up: Win+K opens a system panel on
-  // Windows, and ⌃K is kill-to-end-of-line in every macOS text field.
+  // The other platform's modifier must be up: Win+K is a Windows system
+  // shortcut, ⌃K a macOS text binding.
   const mod = mac ? e.metaKey : e.ctrlKey;
   const otherMod = mac ? e.ctrlKey : e.metaKey;
   return (
@@ -48,7 +48,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /** One window keydown listener for the whole app. The most recently mounted
- * match wins, so a view can shadow a layout-level binding. */
+ * match wins, so a view can shadow a layout binding. */
 export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
   const entries = useRef<Entry[]>([]).current;
 

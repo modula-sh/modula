@@ -1,15 +1,10 @@
-//! Case-insensitive matching and the excerpt/highlight helper every source
-//! shares.
+//! Matching and excerpting, shared by every source.
 //!
-//! Folding is ASCII-only on purpose. SQLite's default `LIKE` folds ASCII only,
-//! so anything wider would disagree with the query that produced the row; and
-//! `to_ascii_lowercase` is length-preserving, so an offset found in the lowered
-//! copy indexes the original correctly. Non-ASCII queries therefore match
-//! case-sensitively.
+//! Folding is ASCII-only to agree with SQLite's `LIKE`, which is also ASCII-only
+//! — and being length-preserving, it keeps offsets valid in the original.
 
 use modula_types::ExcerptSpan;
 
-/// Bytes of context kept either side of the match.
 pub(super) const RADIUS: usize = 60;
 
 pub(crate) fn contains(haystack: &str, needle: &str) -> bool {
@@ -18,9 +13,8 @@ pub(crate) fn contains(haystack: &str, needle: &str) -> bool {
         .contains(&needle.to_ascii_lowercase())
 }
 
-/// Spans covering the first occurrence of `needle`, with up to `radius` bytes
-/// of context either side, whitespace runs collapsed and `…` marking each
-/// truncated end. `None` when `needle` does not occur.
+/// Spans covering the first occurrence of `needle`, with `radius` bytes of
+/// context either side and `…` marking each truncated end.
 pub(super) fn excerpt(haystack: &str, needle: &str, radius: usize) -> Option<Vec<ExcerptSpan>> {
     let start = haystack
         .to_ascii_lowercase()
@@ -52,8 +46,7 @@ pub(super) fn excerpt(haystack: &str, needle: &str, radius: usize) -> Option<Vec
     )
 }
 
-/// Every run of whitespace becomes a single space, so a markdown body or a
-/// multi-line comment renders as one readable line.
+/// Collapses whitespace runs so a multi-line body renders as one line.
 fn collapse(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut last_ws = false;

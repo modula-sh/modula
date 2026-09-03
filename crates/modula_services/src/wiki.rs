@@ -181,21 +181,18 @@ pub fn delete(root: &Path, rel: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Caps on the search walk. The wiki is markdown on disk rather than rows, so
-/// its cost tracks content size; these plus the client's input debounce are
-/// what keep a linear scan honest.
+/// Caps on the search walk, which is a linear scan over files on disk.
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_FILES_SCANNED: usize = 2000;
 
-/// A wiki page that matched a search. See [`search`].
 pub struct WikiMatch {
     pub path: String,
     pub title: String,
     pub body: String,
 }
 
-/// Wiki pages whose title, workspace-relative path or contents contain
-/// `query`. Skips dotfiles, oversized files and anything that is not UTF-8.
+/// Wiki pages whose title, path or contents contain `query`. Skips dotfiles,
+/// oversized files and anything that is not UTF-8.
 pub fn search(root: &Path, query: &str, limit: usize) -> Vec<WikiMatch> {
     let mut out = Vec::new();
     let mut scanned = 0usize;
@@ -230,8 +227,7 @@ pub fn search(root: &Path, query: &str, limit: usize) -> Vec<WikiMatch> {
     out
 }
 
-/// The page's first `# ` heading, falling back to its filename without the
-/// extension.
+/// The page's first `# ` heading, else its filename.
 fn title_of(rel_path: &str, body: &str) -> String {
     body.lines()
         .find_map(|l| l.strip_prefix("# "))

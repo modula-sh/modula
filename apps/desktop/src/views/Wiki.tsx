@@ -82,13 +82,13 @@ export function WikiView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const pathParam = searchParams.get("path");
 
-  // A search result deep-links here; re-select whenever the param changes.
+  // A search result deep-links here.
   useEffect(() => {
     if (pathParam) setSelectedPath(pathParam);
   }, [pathParam]);
 
-  // Tree clicks write the param back, so a later deep-link to a page the user
-  // has already visited still changes `pathParam` and re-runs the effect above.
+  // Tree clicks write the param back, so deep-linking to an already-visited
+  // page still changes `pathParam` and re-runs the effect above.
   function selectPath(path: string) {
     setSelectedPath(path);
     setSearchParams({ path }, { replace: true });
@@ -111,9 +111,8 @@ export function WikiView() {
     setDraft(file ? file.content : null);
   }, [file]);
 
-  // Reset selection on workspace switch — the wiki is workspace-scoped. The ref
-  // guard keeps this off the mount pass, where it would otherwise run after the
-  // `?path=` effect above and clear the page a search result just deep-linked to.
+  // Reset selection on workspace switch. The ref guard keeps this off the mount
+  // pass, where it would clear a page just deep-linked to.
   const prevWs = useRef(ws);
   useEffect(() => {
     if (prevWs.current === ws) return;

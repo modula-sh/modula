@@ -10,7 +10,7 @@ use crate::loop_registry::LoopRegistry;
 use crate::scheduler::SchedulerHandle;
 use crate::testkit::{env, Env};
 
-/// A word no seeded default row contains, so a match is always the test's own.
+/// A word no seeded row contains, so a match is always the test's own.
 const NEEDLE: &str = "quixotic";
 
 struct Fixture {
@@ -34,7 +34,6 @@ async fn fixture() -> Fixture {
     let env = env().await;
     let repos = Repositories::new(&env.pool);
     let slug = repos.workspaces.slug_for(&env.pool, &env.ws).await.unwrap();
-    // `workspace_dir` 404s without the directory, and the wiki source needs it.
     let ws_dir = env.paths().modula.join(slug);
     std::fs::create_dir_all(ws_dir.join("wiki")).unwrap();
     let scheduler = SchedulerHandle::start(
@@ -134,8 +133,7 @@ async fn seed_conversation(f: &Fixture, title: &str, messages: &[&str]) -> Strin
     id
 }
 
-/// A conversation stamped older than every other row. Inserted directly because
-/// the `updated_at` trigger rewrites any UPDATE back to now.
+/// Inserted directly: the `updated_at` trigger rewrites any UPDATE back to now.
 async fn seed_oldest_conversation(f: &Fixture, title: &str, message: &str) -> String {
     let provider = f
         .repos
@@ -208,8 +206,8 @@ async fn a_comment_surfaces_its_task_once_and_never_a_deleted_one() {
 
     let hits = f.search(NEEDLE).await;
     let tasks = Fixture::of_kind(&hits, SearchKind::Task);
-    // Two comments on the live task, but a task is one row; the deleted task's
-    // entries outlive it and must still be filtered out.
+    // A task is one row however many comments match, and a deleted task's
+    // entries outlive it.
     assert_eq!(tasks.len(), 1, "{hits:#?}");
     assert_eq!(tasks[0].id, live);
     assert_eq!(tasks[0].field, "comment");
@@ -234,9 +232,8 @@ async fn deduped_comments_do_not_crowd_out_a_comment_only_task() {
     let titled = seed_task(&f, &format!("{NEEDLE} in the title"), "").await;
     let comment_only = seed_task(&f, "Plain title", "").await;
     seed_comment(&f, &comment_only, &format!("only here is {NEEDLE}")).await;
-    // Newer entries on the already-matched task, enough to fill the per-kind
-    // limit ahead of the one entry that is a task's only way to surface. The
-    // dedupe drops them all, so without the over-fetch it drops the other task.
+    // Enough newer entries on the already-matched task to fill the limit; the
+    // dedupe drops them all, so without the over-fetch the other task is lost.
     for _ in 0..=DEFAULT_LIMIT {
         seed_comment(&f, &titled, &format!("more {NEEDLE}")).await;
     }
@@ -251,8 +248,8 @@ async fn deduped_comments_do_not_crowd_out_a_comment_only_task() {
 async fn a_conversation_matching_only_json_envelope_text_is_dropped() {
     let f = fixture().await;
     let real = seed_conversation(&f, "Chat", &[&format!("we discussed {NEEDLE}")]).await;
-    // "user" is the role of every seeded message, so the SQL LIKE over the raw
-    // blob matches this row even though no message text contains it.
+    // Every seeded message has the role "user", so the raw-blob LIKE matches
+    // even though no message text does.
     seed_conversation(&f, "Chat", &["nothing relevant"]).await;
 
     let hits = f.search("user").await;
@@ -273,9 +270,8 @@ async fn a_conversation_matching_only_json_envelope_text_is_dropped() {
 async fn envelope_only_conversations_do_not_crowd_out_a_real_match() {
     let f = fixture().await;
     let real = seed_oldest_conversation(&f, "Chat", "the user asked about it").await;
-    // Every seeded message carries the role "user", so each of these matches the
-    // SQL LIKE over the raw blob and is then dropped — enough to fill the default
-    // per-kind limit ahead of the older row that really matches.
+    // Enough envelope-only matches to fill the limit ahead of the older row
+    // that really matches.
     for _ in 0..=DEFAULT_LIMIT {
         seed_conversation(&f, "Chat", &["nothing relevant"]).await;
     }
@@ -444,7 +440,6 @@ async fn kinds_filters_and_unknown_kinds_narrow_rather_than_error() {
     assert_eq!(only_tasks.len(), 1);
     assert_eq!(only_tasks[0].kind, "task");
 
-    // An unrecognised kind is skipped, not rejected.
     let mixed = f
         .svc
         .search(
@@ -458,7 +453,6 @@ async fn kinds_filters_and_unknown_kinds_narrow_rather_than_error() {
     assert_eq!(mixed.len(), 1);
     assert_eq!(mixed[0].kind, "project");
 
-    // Asking only for kinds this engine lacks yields nothing at all.
     assert!(f
         .svc
         .search(&f.env.ws, NEEDLE, &["spaceship".to_string()], 0)
@@ -493,7 +487,6 @@ async fn the_limit_is_per_kind_and_clamped() {
     assert_eq!(Fixture::of_kind(&two, SearchKind::Task).len(), 2);
     assert_eq!(Fixture::of_kind(&two, SearchKind::Project).len(), 2);
 
-    // Over the ceiling, the clamp — not the request — decides.
     let clamped = f.svc.search(&f.env.ws, NEEDLE, &[], 1000).await.unwrap();
     assert_eq!(Fixture::of_kind(&clamped, SearchKind::Task).len(), 7);
 }

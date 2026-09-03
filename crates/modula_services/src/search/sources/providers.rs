@@ -1,5 +1,4 @@
-//! Providers: name and type. `config_dir` is a local path, not one of the
-//! content types search covers.
+//! Providers: name and type.
 
 use async_trait::async_trait;
 use sqlx::SqlitePool;

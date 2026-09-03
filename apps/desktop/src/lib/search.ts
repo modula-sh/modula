@@ -1,9 +1,8 @@
 import { BookOpen, Bot, Folder, LayoutGrid, MessageSquare, Server } from "lucide-react";
 import type { SearchKind } from "../types";
 
-/** Icon, group heading and destination for each kind — the single place a new
- * searchable entity has to be taught to the modal. Icons match the sidebar's
- * vocabulary so a result reads as the section it lives in. */
+/** The single place a new searchable entity has to be taught to the modal.
+ * Icons match the sidebar's, so a result reads as the section it lives in. */
 export const SEARCH_KINDS: Record<
   SearchKind,
   { icon: typeof LayoutGrid; label: string; path: (id: string) => string }

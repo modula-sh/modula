@@ -1,5 +1,4 @@
-//! Workspace-wide search over gRPC IPC: the kinds that match, excerpt
-//! highlighting, kind filtering, and that a deleted task drops out.
+//! Workspace-wide search over gRPC IPC.
 
 use anyhow::Result;
 use modula_rpc::v1::{
@@ -9,7 +8,7 @@ use modula_rpc::v1::{
 use modula_test_support::fixtures as common;
 use modula_test_support::Harness;
 
-/// A word none of the seeded defaults contain, so every match is one we made.
+/// A word no seeded row contains, so every match is one we made.
 const NEEDLE: &str = "quixotic";
 
 async fn search(h: &Harness, ws: &str, query: &str, kinds: &[&str]) -> Result<Vec<SearchHit>> {
@@ -34,7 +33,6 @@ async fn search_spans_every_kind_and_respects_deletion() -> Result<()> {
     let h = Harness::start().await?;
     let ws = common::fresh_workspace(&h, "demo").await?;
 
-    // A task matching on its title, and one matching only through a comment.
     let titled = common::create_task(&h, &ws, &format!("A {NEEDLE} task")).await?;
     let commented = common::create_task(&h, &ws, "Ordinary task").await?;
     h.threads()
@@ -74,7 +72,7 @@ async fn search_spans_every_kind_and_respects_deletion() -> Result<()> {
 
     let hits = search(&h, &ws, NEEDLE, &[]).await?;
 
-    // A title match is its own row 1, so it carries no excerpt.
+    // A title match carries no excerpt.
     let tasks = of_kind(&hits, "task");
     let title_hit = tasks
         .iter()
@@ -83,8 +81,7 @@ async fn search_spans_every_kind_and_respects_deletion() -> Result<()> {
     assert_eq!(title_hit.field, "title");
     assert!(title_hit.excerpt.is_empty());
 
-    // A comment has no view of its own, so it surfaces as its owning task with
-    // the matching run highlighted.
+    // A comment surfaces as its owning task.
     let comment_hit = tasks
         .iter()
         .find(|h| h.id == commented)
@@ -105,15 +102,14 @@ async fn search_spans_every_kind_and_respects_deletion() -> Result<()> {
         assert_eq!(of_kind(&hits, kind).len(), 1, "{kind}: {hits:#?}");
     }
 
-    // `kinds` narrows the fan-out.
     let agents = search(&h, &ws, NEEDLE, &["agent"]).await?;
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0].kind, "agent");
 
-    // An empty query is not an error — it is simply no results.
+    // An empty query is no results, not an error.
     assert!(search(&h, &ws, "   ", &[]).await?.is_empty());
 
-    // A deleted task drops out, and so does the comment that pointed at it.
+    // A deleted task drops out, and so does its comment.
     h.tasks()
         .delete(DeleteTaskRequest {
             workspace_id: ws.clone(),

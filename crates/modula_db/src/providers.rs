@@ -66,7 +66,6 @@ impl From<ProviderRecord> for Provider {
     }
 }
 
-/// A provider row that matched a search. See [`ProviderRepository::search`].
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ProviderMatch {
     pub id: String,
@@ -219,7 +218,6 @@ impl ProviderRepository {
         .fetch_all(exec)
         .await?)
     }
-    /// Providers whose name or type matches `query`.
     pub async fn search<'e, E>(
         &self,
         exec: E,

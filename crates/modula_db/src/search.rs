@@ -1,8 +1,7 @@
 //! Shared bits of the per-repository `search` methods.
 
-/// Turn a user query into a `LIKE` pattern, escaping the wildcards so `100%`
-/// does not match everything. Every `search` method pairs this with an explicit
-/// `ESCAPE '\'` clause.
+/// Escapes `LIKE` wildcards so `100%` does not match everything. Pairs with
+/// the explicit `ESCAPE '\'` clause in every `search` method.
 pub(crate) fn like_pattern(query: &str) -> String {
     let mut out = String::with_capacity(query.len() + 2);
     out.push('%');

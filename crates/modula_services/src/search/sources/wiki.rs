@@ -1,6 +1,5 @@
-//! AI wiki: page title, workspace-relative path, and markdown contents. The
-//! only source backed by the filesystem rather than a table, so its cost tracks
-//! content size — see the caps in [`crate::wiki::search`].
+//! AI wiki: page title, workspace-relative path, and markdown contents. Backed
+//! by the filesystem rather than a table, so its cost tracks content size.
 
 use async_trait::async_trait;
 
@@ -31,8 +30,7 @@ impl SearchSource for Wiki {
         Ok(crate::wiki::search(&root, query, limit as usize)
             .into_iter()
             .filter_map(|m| {
-                // The path is the id because that is what the wiki view
-                // navigates by; the parent folder is the subtitle.
+                // The path is the id: it is what the wiki view navigates by.
                 let parent = m.path.rsplit_once('/').map(|(dir, _)| dir.to_string());
                 super::hit(
                     SearchKind::Wiki,

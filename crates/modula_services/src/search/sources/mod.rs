@@ -11,17 +11,13 @@ use modula_types::{SearchHit, SearchKind};
 
 use super::excerpt::{contains, excerpt, RADIUS};
 
-/// Rows to ask SQL for per row we can return, where a source's `LIKE` is
-/// wider than what it renders. `limit` caps results the user sees, so rows
-/// dropped after the query must not spend it.
+/// Extra rows to fetch where a source's `LIKE` is wider than what it renders:
+/// `limit` counts rendered results, so rows dropped later must not spend it.
 const OVERFETCH: i64 = 4;
 
-/// The hit for one row. A title match wins and carries no excerpt — the title
-/// is already row 1 of the result, so repeating it below is noise. Otherwise
-/// the first `bodies` entry containing the query supplies the excerpt, which
-/// makes the slice order the source's field priority. `None` when the row does
-/// not actually match (the SQL `LIKE` can hit a column this source does not
-/// render).
+/// The hit for one row. A title match carries no excerpt; otherwise the first
+/// matching `bodies` entry supplies it, so their order is the field priority.
+/// `None` when the row does not really match — the SQL `LIKE` is wider.
 fn hit(
     kind: SearchKind,
     id: String,

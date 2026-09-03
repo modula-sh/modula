@@ -3,9 +3,8 @@ use std::str::FromStr;
 use modula_rpc::v1 as pb;
 use serde::{Deserialize, Serialize};
 
-/// The searchable entities. Carried on the wire as the lowercase string
-/// [`SearchKind::as_str`] returns, matching `task.source` / `provider.type`;
-/// the enum keeps the engine side typed.
+/// Carried on the wire as the lowercase string [`SearchKind::as_str`] returns,
+/// matching `task.source` / `provider.type`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SearchKind {
     Task,
@@ -45,16 +44,16 @@ impl FromStr for SearchKind {
     }
 }
 
-/// One run of excerpt text, either matched or not. Spans rather than offsets so
-/// no client has to agree with the engine on byte vs. char vs. UTF-16 indexing.
+/// Spans rather than offsets, so no client has to agree with the engine on byte
+/// vs. char vs. UTF-16 indexing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExcerptSpan {
     pub text: String,
     pub is_match: bool,
 }
 
-/// A single result row. `field` names which content type matched ("title",
-/// "comment", "prompt", …); `excerpt` is empty when the title itself matched.
+/// `field` names the content type that matched; `excerpt` is empty when the
+/// title itself matched.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchHit {
     pub kind: String,

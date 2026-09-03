@@ -76,10 +76,8 @@ pub struct ConversationCreate {
     pub context: serde_json::Value,
 }
 
-/// A conversation row that matched a search. `data` is the raw transcript JSON:
-/// only rows that already matched are worth decoding, and the caller must
-/// re-check the decoded messages because `LIKE` also sees the JSON envelope.
-/// See [`ConversationRepository::search`].
+/// `data` is the raw transcript JSON; `LIKE` also sees its envelope, so the
+/// caller must re-check the decoded messages.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ConversationMatch {
     pub id: String,
@@ -258,7 +256,6 @@ impl ConversationRepository {
             .await?;
         Ok(())
     }
-    /// Conversations whose title or raw transcript JSON matches `query`.
     pub async fn search<'e, E>(
         &self,
         exec: E,

@@ -1,8 +1,7 @@
 syntax = "proto3";
 package modula.v1;
 
-// Workspace-wide search over tasks, agents, projects, providers, the AI wiki
-// and conversations. Matching, excerpting and highlighting all happen here so
+// Workspace-wide search. Matching, excerpting and highlighting happen here so
 // every client renders the same results.
 service SearchService {
   rpc Search(SearchRequest) returns (SearchResponse);
@@ -13,8 +12,7 @@ message SearchRequest {
   string query = 2;
   // Kind keys to search; empty means all of them. Unknown keys are ignored.
   repeated string kinds = 3;
-  // Per-kind cap, so one noisy kind cannot starve the rest. 0 means the
-  // server default.
+  // Per-kind cap; 0 means the server default.
   uint32 limit = 4;
 }
 message SearchResponse {
@@ -28,7 +26,7 @@ message SearchHit {
   string title = 3;
   string field = 4;
   optional string subtitle = 5;
-  // Empty when the title itself matched. Render matched spans highlighted.
+  // Empty when the title itself matched.
   repeated ExcerptSpan excerpt = 6;
 }
 

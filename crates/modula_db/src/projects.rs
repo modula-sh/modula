@@ -36,7 +36,6 @@ impl From<ProjectRecord> for Project {
     }
 }
 
-/// A project row that matched a search. See [`ProjectRepository::search`].
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ProjectMatch {
     pub id: String,
@@ -160,7 +159,6 @@ impl ProjectRepository {
         }
         Ok(())
     }
-    /// Projects whose name or path matches `query`.
     pub async fn search<'e, E>(
         &self,
         exec: E,

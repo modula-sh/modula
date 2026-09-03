@@ -283,7 +283,6 @@ async fn insert_seed(
     Ok(())
 }
 
-/// An agent row that matched a search. See [`AgentRepository::search`].
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AgentMatch {
     pub id: String,
@@ -553,7 +552,6 @@ impl AgentRepository {
             .await?,
         )
     }
-    /// Agents whose name, description or prompt matches `query`.
     pub async fn search<'e, E>(
         &self,
         exec: E,

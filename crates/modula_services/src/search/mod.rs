@@ -1,9 +1,5 @@
-//! Workspace-wide search.
-//!
-//! [`SearchService`] fans a query out over one [`SearchSource`] per entity.
-//! A source owns which of its own content types it looks at, how it ranks them
-//! and how a match becomes a [`SearchHit`] — so supporting a new entity means
-//! adding one source and nothing else.
+//! Workspace-wide search: [`SearchService`] fans a query out over one
+//! [`SearchSource`] per entity, so a new entity means one new source.
 
 mod excerpt;
 mod sources;
@@ -21,8 +17,7 @@ use crate::workspaces::WorkspaceService;
 
 pub(crate) use excerpt::contains;
 
-/// Per-kind result cap. The modal groups by kind, so a global cap would let one
-/// noisy kind starve the rest.
+/// Per kind, not global: one noisy kind must not starve the rest.
 const DEFAULT_LIMIT: u32 = 5;
 const MAX_LIMIT: u32 = 25;
 
@@ -39,8 +34,7 @@ pub struct SearchService {
 }
 
 impl SearchService {
-    /// Registration order is response order: tasks and conversations lead
-    /// because they are what the search placeholder names.
+    /// Registration order is response order.
     pub fn new(workspaces: WorkspaceService, repos: &Repositories) -> Self {
         let sources: Vec<Arc<dyn SearchSource>> = vec![
             Arc::new(sources::tasks::Tasks::new(repos)),
@@ -56,9 +50,8 @@ impl SearchService {
         }
     }
 
-    /// `kinds` empty means every kind; unrecognised entries are ignored so a
-    /// client asking for a kind this engine lacks degrades to fewer results
-    /// rather than an error. `limit` is per kind, 0 meaning the default.
+    /// `kinds` empty means every kind, and unknown entries are ignored rather
+    /// than rejected. `limit` is per kind, 0 meaning the default.
     pub async fn search(
         &self,
         ws: &str,
@@ -70,7 +63,6 @@ impl SearchService {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        // Reject unknown workspaces with 404 before any fan-out.
         self.workspaces.workspace_dir(ws).await?;
 
         let wanted: Option<Vec<SearchKind>> =
@@ -89,8 +81,7 @@ impl SearchService {
         )
         .await;
 
-        // A search is a read: one broken source contributes nothing rather than
-        // blanking every other kind.
+        // One broken source must not blank every other kind.
         let mut hits = Vec::new();
         for (kind, result) in results {
             match result {
