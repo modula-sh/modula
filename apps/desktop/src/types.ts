@@ -283,10 +283,18 @@ export interface ConversationMessage {
   ts: string;
 }
 
+export interface QueuedMessage {
+  id: string;
+  content: string;
+}
+
 export interface ConversationDetail extends ConversationSummary {
   session_id: string | null;
   messages: ConversationMessage[];
+  queued: QueuedMessage[];
   created_at: string;
+  /** A provider run is in flight engine-side, even if this window isn't streaming it. */
+  running: boolean;
 }
 
 export interface Snapshot {

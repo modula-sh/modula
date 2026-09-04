@@ -30,6 +30,31 @@ impl From<ChatMessage> for pb::ChatMessage {
     }
 }
 
+/// A message waiting to be sent when the current run ends.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QueuedMessage {
+    pub id: String,
+    pub content: String,
+}
+
+impl From<pb::QueuedMessage> for QueuedMessage {
+    fn from(m: pb::QueuedMessage) -> Self {
+        Self {
+            id: m.id,
+            content: m.content,
+        }
+    }
+}
+
+impl From<QueuedMessage> for pb::QueuedMessage {
+    fn from(m: QueuedMessage) -> Self {
+        Self {
+            id: m.id,
+            content: m.content,
+        }
+    }
+}
+
 /// A conversation with its messages (`dto::conversation` / frontend
 /// `ConversationDetail`). `context` is schemaless and defaults to `{}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,8 +66,11 @@ pub struct Conversation {
     pub context: Value,
     pub session_id: Option<String>,
     pub messages: Vec<ChatMessage>,
+    pub queued: Vec<QueuedMessage>,
     pub created_at: String,
     pub updated_at: String,
+    /// A provider run is in flight right now; filled by the gRPC layer.
+    pub running: bool,
 }
 
 impl From<pb::Conversation> for Conversation {
@@ -55,8 +83,10 @@ impl From<pb::Conversation> for Conversation {
             context: c.context.map(struct_to_json).unwrap_or_else(|| json!({})),
             session_id: c.session_id,
             messages: c.messages.into_iter().map(ChatMessage::from).collect(),
+            queued: c.queued.into_iter().map(QueuedMessage::from).collect(),
             created_at: c.created_at,
             updated_at: c.updated_at,
+            running: c.running,
         }
     }
 }
@@ -71,8 +101,10 @@ impl From<Conversation> for pb::Conversation {
             context: json_to_struct(c.context),
             session_id: c.session_id,
             messages: c.messages.into_iter().map(pb::ChatMessage::from).collect(),
+            queued: c.queued.into_iter().map(pb::QueuedMessage::from).collect(),
             created_at: c.created_at,
             updated_at: c.updated_at,
+            running: c.running,
         }
     }
 }
@@ -150,8 +182,13 @@ mod tests {
                 content: "hi".into(),
                 ts: "2026-01-01T00:00:00Z".into(),
             }],
+            queued: vec![QueuedMessage {
+                id: "q1".into(),
+                content: "next".into(),
+            }],
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
+            running: true,
         }
     }
 
@@ -167,7 +204,9 @@ mod tests {
             "id": "c1", "title": "Chat", "provider_id": "p1", "model": "opus",
             "context": {"task": "t1"}, "session_id": null,
             "messages": [{"role": "user", "content": "hi", "ts": "2026-01-01T00:00:00Z"}],
+            "queued": [{"id": "q1", "content": "next"}],
             "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+            "running": true,
         });
         assert_eq!(serde_json::to_value(conversation()).unwrap(), want);
     }

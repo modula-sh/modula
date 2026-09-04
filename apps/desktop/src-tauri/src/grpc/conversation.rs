@@ -70,6 +70,31 @@ pub async fn conversation_cancel(
     Ok(())
 }
 
+/// Queue a message behind the in-flight run; returns the resulting queue.
+#[tauri::command]
+pub async fn conversation_enqueue(
+    engine: State<'_, ModulaClient>,
+    workspace_id: String,
+    conversation_id: String,
+    message: String,
+) -> Result<Vec<modula_types::QueuedMessage>, String> {
+    Ok(engine
+        .enqueue_message(&workspace_id, &conversation_id, &message)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn conversation_dequeue(
+    engine: State<'_, ModulaClient>,
+    workspace_id: String,
+    conversation_id: String,
+    queued_id: String,
+) -> Result<Vec<modula_types::QueuedMessage>, String> {
+    Ok(engine
+        .dequeue_message(&workspace_id, &conversation_id, &queued_id)
+        .await?)
+}
+
 /// Send a message and forward the run's `ConvEvent` stream to `on_event`. When
 /// the frontend channel is gone (webview reload/navigation) the forward fails
 /// and we drop the stream, which detaches from the run without cancelling it —

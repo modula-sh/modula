@@ -8,6 +8,8 @@
 //! `cancel` (signal the task to kill the child, persist what it has, and exit).
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -28,7 +30,7 @@ use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
 use modula_db::conversations::{ConversationCreate, ConversationRepository};
 use modula_db::Database;
-use modula_types::Conversation;
+use modula_types::{Conversation, QueuedMessage};
 
 pub type ConvKey = (String, String);
 
@@ -178,6 +180,88 @@ impl ConversationService {
         Ok(())
     }
 
+    /// Read-modify-write the queue in one transaction, then publish. An edit
+    /// that leaves the queue unchanged neither writes nor publishes.
+    async fn edit_queue<R>(
+        &self,
+        ws: &str,
+        id: &str,
+        edit: impl FnOnce(&mut Vec<QueuedMessage>) -> R,
+    ) -> ApiResult<(R, Vec<QueuedMessage>)> {
+        let mut tx = self.pool.begin().await?;
+        let before = self.conversations.get(&mut *tx, ws, id).await?.queued;
+        let mut queued = before.clone();
+        let out = edit(&mut queued);
+        if queued != before {
+            self.conversations
+                .set_queued(&mut *tx, ws, id, &queued)
+                .await?;
+            tx.commit().await?;
+            self.publish(ws, CONVERSATION_UPDATE, id).await;
+        }
+        Ok((out, queued))
+    }
+
+    /// Queue `message` behind the in-flight run. Returns the resulting queue.
+    pub async fn enqueue(
+        &self,
+        ws: &str,
+        id: &str,
+        message: &str,
+    ) -> ApiResult<Vec<QueuedMessage>> {
+        let content = message.trim();
+        if content.is_empty() {
+            return Err(ApiError::BadRequest("message is required".into()));
+        }
+        let msg = QueuedMessage {
+            id: Uuid::new_v4().to_string(),
+            content: content.to_string(),
+        };
+        Ok(self.edit_queue(ws, id, |q| q.push(msg)).await?.1)
+    }
+
+    /// Drop a queued message. An unknown `queued_id` is a no-op so two clients
+    /// can tap the same x.
+    pub async fn dequeue(
+        &self,
+        ws: &str,
+        id: &str,
+        queued_id: &str,
+    ) -> ApiResult<Vec<QueuedMessage>> {
+        Ok(self
+            .edit_queue(ws, id, |q| q.retain(|m| m.id != queued_id))
+            .await?
+            .1)
+    }
+
+    /// Take the head of the queue. The caller must already hold the run slot,
+    /// which is what keeps two drains from starting messages out of order.
+    async fn pop_queued(&self, ws: &str, id: &str) -> ApiResult<Option<QueuedMessage>> {
+        Ok(self
+            .edit_queue(ws, id, |q| (!q.is_empty()).then(|| q.remove(0)))
+            .await?
+            .0)
+    }
+
+    /// Put a popped message back at the head after a failed auto-send.
+    async fn requeue(&self, ws: &str, id: &str, msg: QueuedMessage) -> ApiResult<()> {
+        self.edit_queue(ws, id, |q| q.insert(0, msg)).await?;
+        Ok(())
+    }
+
+    /// Cheap pre-check so the common empty-queue drain never claims the run slot.
+    async fn queue_is_empty(&self, ws: &str, id: &str) -> bool {
+        self.conversations
+            .get(&self.pool, ws, id)
+            .await
+            .is_ok_and(|c| c.queued.is_empty())
+    }
+
+    async fn clear_queued(&self, ws: &str, id: &str) -> ApiResult<()> {
+        self.edit_queue(ws, id, |q| q.clear()).await?;
+        Ok(())
+    }
+
     async fn publish(&self, ws: &str, kind: &str, id: &str) {
         self.events.publish(ws, kind, json!({ "id": id })).await;
     }
@@ -218,26 +302,37 @@ pub async fn open_send(
     user_msg: String,
     model_override: Option<String>,
 ) -> ApiResult<ConvStream> {
-    let key = (ws_id.clone(), conv_id.clone());
+    let key = (ws_id, conv_id);
+    let slot = claim_run(&rt, &key).await.ok_or_else(|| {
+        ApiError::Conflict("a turn is already in flight for this conversation".into())
+    })?;
+    run_claimed(rt, key, slot, user_msg, model_override).await
+}
 
+/// Claim the conversation's run slot atomically before any provider work.
+/// `None` means a turn is already in flight.
+async fn claim_run(rt: &ConvRuntime, key: &ConvKey) -> Option<RunSlot> {
     let (tx, _) = broadcast::channel::<WireEvent>(256);
     let slot = RunSlot {
         tx,
         buffer: Arc::new(Mutex::new(Vec::new())),
         cancel: Arc::new(Notify::new()),
     };
-
-    // Claim the conversation slot atomically before any provider work. If a turn
-    // is already in flight this rejects without spawning a second child.
-    if !rt
-        .conv_runs
+    rt.conv_runs
         .insert_if_absent(key.clone(), slot.clone())
         .await
-    {
-        return Err(ApiError::Conflict(
-            "a turn is already in flight for this conversation".into(),
-        ));
-    }
+        .then_some(slot)
+}
+
+/// Run a turn in a slot the caller has already claimed.
+async fn run_claimed(
+    rt: ConvRuntime,
+    key: ConvKey,
+    slot: RunSlot,
+    user_msg: String,
+    model_override: Option<String>,
+) -> ApiResult<ConvStream> {
+    let (ws_id, conv_id) = key.clone();
 
     // Fallible setup runs after the claim, so every error path must release the
     // slot. Do it once here rather than threading cleanup through each `?`.
@@ -264,6 +359,7 @@ pub async fn open_send(
     // `run_to_completion` consumes one; the transition still has to be announced
     // after it returns.
     let ended = events.clone();
+    let drain_rt = rt.clone();
     tokio::spawn(async move {
         run_to_completion(
             slot.clone(),
@@ -281,6 +377,7 @@ pub async fn open_send(
         .await;
         runs.remove(&key).await;
         publish_run(&ended, &ws_id, &conv_id, false).await;
+        drain_queue(drain_rt, ws_id, conv_id).await;
     });
 
     Ok((replay, rx))
@@ -454,8 +551,46 @@ pub async fn cancel(rt: ConvRuntime, ws_id: String, conv_id: String) -> ApiResul
         .get(&key)
         .await
         .ok_or_else(|| ApiError::NotFound("no in-flight run for this conversation".into()))?;
+    // Clear before signalling: the run task drains the queue as it exits, so a
+    // queue emptied afterwards would let the interrupt auto-send a discarded
+    // message.
+    rt.conversations.clear_queued(&key.0, &key.1).await?;
     slot.cancel.notify_one();
     Ok(())
+}
+
+/// Start the next queued turn, if any. The empty check is an early-out only;
+/// the run slot is still claimed before the head is popped, so two drains racing
+/// (a run ending as an idle `Enqueue` drains) cannot start the queue's messages
+/// out of order — the loser leaves the queue to the winner's own end-of-run
+/// drain. A failed send puts the head back.
+///
+/// `open_send` recurses back into this through the task it spawns, so the
+/// returned future is boxed rather than opaque — otherwise the two hidden types
+/// depend on each other and neither can be proven `Send`.
+pub fn drain_queue(
+    rt: ConvRuntime,
+    ws_id: String,
+    conv_id: String,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        let key = (ws_id, conv_id);
+        if rt.conversations.queue_is_empty(&key.0, &key.1).await {
+            return;
+        }
+        let Some(slot) = claim_run(&rt, &key).await else {
+            return;
+        };
+        let Ok(Some(head)) = rt.conversations.pop_queued(&key.0, &key.1).await else {
+            rt.conv_runs.remove(&key).await;
+            return;
+        };
+        if let Err(e) = run_claimed(rt.clone(), key.clone(), slot, head.content.clone(), None).await
+        {
+            tracing::warn!(ws = %key.0, conv = %key.1, error = %e, "queued message not sent");
+            let _ = rt.conversations.requeue(&key.0, &key.1, head).await;
+        }
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

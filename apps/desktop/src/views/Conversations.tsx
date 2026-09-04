@@ -8,6 +8,7 @@ import { ChatInput } from "../components/chat/ChatInput";
 import { ChatInputShell } from "../components/chat/ChatInputShell";
 import { ContextPills } from "../components/chat/ContextPills";
 import { MessageList } from "../components/chat/MessageList";
+import { QueuedMessages } from "../components/chat/QueuedMessages";
 import { SendButton } from "../components/chat/SendButton";
 import { DropdownSelect } from "../components/DropdownMenu";
 import { HeaderSlot } from "../components/HeaderSlot";
@@ -292,6 +293,10 @@ export function ConversationDetailPage() {
     ? (catalog.find((c) => c.id === providerType)?.models ?? [])
     : [];
 
+  // The local stream only turns on once a delta lands, so a run this window
+  // joined mid-tool-use needs the engine's own view to route to the queue.
+  const inFlight = streaming || !!conv?.running;
+
   const handleSend = useCallback(
     (text: string) => {
       // Optimistic — show the user message immediately; the refetch on stream-end
@@ -303,6 +308,42 @@ export function ConversationDetailPage() {
       send(text, selectedModel);
     },
     [send, selectedModel],
+  );
+
+  // The queue lives engine-side; refetch so a change made here or on the phone
+  // lands the same way.
+  const refetchQueue = useCallback(() => {
+    if (ws && id) queryClient.invalidateQueries({ queryKey: conversationKeys.detail(ws, id) });
+  }, [queryClient, ws, id]);
+
+  // ChatInput clears the box before the RPC resolves, so a failure has to be shown
+  // or the message is gone with no signal.
+  const [queueError, setQueueError] = useState<string | null>(null);
+  // Stream errors are held per conversation id; this one is not, so drop it on navigation.
+  useEffect(() => setQueueError(null), [id]);
+  const settleQueue = useCallback(
+    (p: Promise<unknown>) => {
+      p.then(() => setQueueError(null))
+        .catch((e) => setQueueError(errorMessage(e)))
+        .finally(refetchQueue);
+    },
+    [refetchQueue],
+  );
+
+  const handleQueue = useCallback(
+    (text: string) => {
+      if (!id) return;
+      settleQueue(client.conversation.enqueue(ws, id, text));
+    },
+    [ws, id, settleQueue],
+  );
+
+  const handleDequeue = useCallback(
+    (queuedId: string) => {
+      if (!id) return;
+      settleQueue(client.conversation.dequeue(ws, id, queuedId));
+    },
+    [ws, id, settleQueue],
   );
 
   useEffect(() => {
@@ -417,7 +458,7 @@ export function ConversationDetailPage() {
             inFlightText={inFlightText}
             inFlightTools={inFlightTools}
             streaming={streaming}
-            error={error}
+            error={error ?? queueError}
             bottomRef={bottomRef}
             scrollContainerRef={scrollContainerRef}
             onScroll={handleScroll}
@@ -430,10 +471,12 @@ export function ConversationDetailPage() {
 
           <div className="absolute bottom-4 left-0 right-[8px] px-[50px]">
             <div className="max-w-[800px] mx-auto">
+              <QueuedMessages queued={conv?.queued ?? []} onRemove={handleDequeue} />
               <ChatInput
                 onSend={handleSend}
+                onQueue={handleQueue}
                 onCancel={cancel}
-                streaming={streaming}
+                streaming={inFlight}
                 models={availableModels}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}

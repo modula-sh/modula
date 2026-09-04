@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use modula_rpc::v1::{
-    conv_event, AttachConversationRequest, CreateConversationRequest, DeleteConversationRequest,
+    conv_event, AttachConversationRequest, CancelConversationRequest, CreateConversationRequest,
+    DeleteConversationRequest, DequeueMessageRequest, EnqueueMessageRequest,
     GetConversationRequest, ListConversationsRequest, SendMessageRequest,
 };
 use modula_test_support::Harness;
@@ -320,6 +321,216 @@ async fn detach_does_not_kill_run_and_reattach_resumes() -> Result<()> {
         "assistant output not persisted — detach cancelled the run: {:?}",
         detail.messages
     );
+
+    Ok(())
+}
+
+/// Boot an engine whose mock provider streams one delta then sleeps, plus a
+/// workspace and a conversation on a real config dir.
+async fn queue_harness(recipe: &str) -> Result<(Harness, String, String)> {
+    let h = Harness::start_with_env(&[("MODULA_MOCK_RECIPE", recipe)]).await?;
+    let ws = common::fresh_workspace(&h, "demo").await?;
+    let cfg_dir = h.modula_dir.join("fake-claude");
+    std::fs::create_dir_all(&cfg_dir)?;
+    let provider_id = common::create_provider(&h, &ws, "Claude", &cfg_dir).await?;
+    let conv_id = h
+        .conversations()
+        .create(CreateConversationRequest {
+            workspace_id: ws.clone(),
+            provider_id,
+            title: None,
+            model: None,
+            context: None,
+        })
+        .await?
+        .into_inner()
+        .id;
+    Ok((h, ws, conv_id))
+}
+
+fn sleeping_recipe(text: &str, sleep_ms: u64) -> String {
+    serde_json::json!({
+        "stream": [
+            {"type": "system", "subtype": "init", "session_id": "queue-session"},
+            {"type": "stream_event", "event": {"type": "content_block_delta",
+                "delta": {"text": text}}}
+        ],
+        "sleep_ms": sleep_ms
+    })
+    .to_string()
+}
+
+/// MOD-032: messages queued during a run are held engine-side and the head is
+/// auto-sent when the run ends.
+#[tokio::test]
+async fn queued_message_sends_when_run_ends() -> Result<()> {
+    let (h, ws, conv_id) = queue_harness(&sleeping_recipe("first turn", 1500)).await?;
+
+    let stream = h
+        .conversations()
+        .send(SendMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "Begin.".to_string(),
+            model: None,
+        })
+        .await?
+        .into_inner();
+
+    let queued = h
+        .conversations()
+        .enqueue(EnqueueMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "drop me".to_string(),
+        })
+        .await?
+        .into_inner()
+        .queued;
+    assert_eq!(queued.len(), 1);
+    let doomed = queued[0].id.clone();
+
+    for message in ["keep me", "and me"] {
+        h.conversations()
+            .enqueue(EnqueueMessageRequest {
+                workspace_id: ws.clone(),
+                conversation_id: conv_id.clone(),
+                message: message.to_string(),
+            })
+            .await?;
+    }
+
+    let detail = h
+        .conversations()
+        .get(GetConversationRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+        })
+        .await?
+        .into_inner();
+    assert_eq!(
+        detail.queued.len(),
+        3,
+        "all three messages should be queued"
+    );
+    assert!(detail.running, "Get should report the in-flight run");
+
+    let left = h
+        .conversations()
+        .dequeue(DequeueMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            queued_id: doomed,
+        })
+        .await?
+        .into_inner()
+        .queued;
+    let left: Vec<_> = left.iter().map(|m| m.content.clone()).collect();
+    assert_eq!(left, ["keep me", "and me"]);
+
+    drain(stream).await?;
+
+    // The survivors auto-send as their own turns, one after the other.
+    let mut users = Vec::new();
+    for _ in 0..80 {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        let detail = h
+            .conversations()
+            .get(GetConversationRequest {
+                workspace_id: ws.clone(),
+                conversation_id: conv_id.clone(),
+            })
+            .await?
+            .into_inner();
+        if detail.queued.is_empty() {
+            users = detail
+                .messages
+                .iter()
+                .filter(|m| m.role == "user")
+                .map(|m| m.content.clone())
+                .collect();
+            if users.len() == 3 {
+                break;
+            }
+        }
+    }
+    assert_eq!(
+        users,
+        ["Begin.", "keep me", "and me"],
+        "queued messages must auto-send in enqueue order"
+    );
+
+    Ok(())
+}
+
+/// MOD-032: interrupting discards the queue — nothing auto-sends afterwards.
+#[tokio::test]
+async fn cancel_clears_the_queue() -> Result<()> {
+    let (h, ws, conv_id) = queue_harness(&sleeping_recipe("interrupted", 5000)).await?;
+
+    let stream = h
+        .conversations()
+        .send(SendMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "Begin.".to_string(),
+            model: None,
+        })
+        .await?
+        .into_inner();
+
+    h.conversations()
+        .enqueue(EnqueueMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "should never send".to_string(),
+        })
+        .await?;
+
+    h.conversations()
+        .cancel(CancelConversationRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+        })
+        .await?;
+    drain(stream).await?;
+
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    let detail = h
+        .conversations()
+        .get(GetConversationRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+        })
+        .await?
+        .into_inner();
+    assert!(detail.queued.is_empty(), "cancel must empty the queue");
+    assert!(
+        !detail
+            .messages
+            .iter()
+            .any(|m| m.content == "should never send"),
+        "a cancelled queue must not auto-send: {:?}",
+        detail.messages
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn enqueue_empty_message_rejected() -> Result<()> {
+    let (h, ws, conv_id) = queue_harness(&sleeping_recipe("x", 100)).await?;
+
+    let err = h
+        .conversations()
+        .enqueue(EnqueueMessageRequest {
+            workspace_id: ws,
+            conversation_id: conv_id,
+            message: "   ".to_string(),
+        })
+        .await
+        .expect_err("empty message must be rejected");
+    assert_eq!(err.code(), Code::InvalidArgument);
 
     Ok(())
 }

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{json, Value as Json};
 use sqlx::{Executor, Sqlite};
 
-use modula_types::{ChatMessage, Conversation};
+use modula_types::{ChatMessage, Conversation, QueuedMessage};
 
 use crate::{Error, Result};
 
@@ -23,6 +23,7 @@ struct ConversationRecord {
     context: String,
     session_id: Option<String>,
     data: String,
+    queued: String,
     created_at: String,
     updated_at: String,
 }
@@ -58,14 +59,16 @@ impl From<ConversationRecord> for Conversation {
             context,
             session_id: r.session_id,
             messages,
+            queued: serde_json::from_str(&r.queued).unwrap_or_default(),
             created_at: r.created_at,
             updated_at: r.updated_at,
+            running: false,
         }
     }
 }
 
 const SELECT_COLS: &str =
-    "id, title, provider_id, model, context, session_id, data, created_at, updated_at";
+    "id, title, provider_id, model, context, session_id, data, queued, created_at, updated_at";
 
 #[derive(Debug, Deserialize)]
 pub struct ConversationCreate {
@@ -244,6 +247,30 @@ impl ConversationRepository {
         Ok(())
     }
 
+    pub async fn set_queued<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        id: &str,
+        queued: &[QueuedMessage],
+    ) -> Result<()>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        let json = serde_json::to_string(queued).unwrap_or_else(|_| "[]".to_string());
+        let res =
+            sqlx::query("UPDATE conversations SET queued = ? WHERE workspace_id = ? AND id = ?")
+                .bind(json)
+                .bind(ws_id)
+                .bind(id)
+                .execute(exec)
+                .await?;
+        if res.rows_affected() == 0 {
+            return Err(Error::NotFound(format!("unknown conversation: {id}")));
+        }
+        Ok(())
+    }
+
     pub async fn set_title<'e, E>(&self, exec: E, ws_id: &str, id: &str, title: &str) -> Result<()>
     where
         E: Executor<'e, Database = Sqlite>,
@@ -279,5 +306,57 @@ impl ConversationRepository {
         .bind(limit)
         .fetch_all(exec)
         .await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{providers::ProviderRepository, workspaces::WorkspaceRepository};
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn queued_round_trips_through_the_column() {
+        let dir = tempdir().unwrap();
+        let pool = crate::open(&dir.path().join("t.sqlite")).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        let ws = WorkspaceRepository::new()
+            .create(&mut conn, "Modula", None)
+            .await
+            .unwrap();
+        drop(conn);
+        let provider_id = ProviderRepository::new()
+            .create(&pool, &ws, "Claude", "claude", "/tmp", None)
+            .await
+            .unwrap();
+        let convs = ConversationRepository::new();
+        convs
+            .create(
+                &pool,
+                &ws,
+                &ConversationCreate {
+                    id: "c1".into(),
+                    title: None,
+                    provider_id,
+                    model: None,
+                    context: json!({}),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert!(convs.get(&pool, &ws, "c1").await.unwrap().queued.is_empty());
+
+        let queued = vec![QueuedMessage {
+            id: "q1".into(),
+            content: "next".into(),
+        }];
+        convs.set_queued(&pool, &ws, "c1", &queued).await.unwrap();
+        assert_eq!(convs.get(&pool, &ws, "c1").await.unwrap().queued, queued);
+
+        assert!(matches!(
+            convs.set_queued(&pool, &ws, "nope", &queued).await,
+            Err(Error::NotFound(_))
+        ));
     }
 }

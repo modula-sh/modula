@@ -30,7 +30,7 @@ pub use config::{
     AgentArgDef, AgentSchedule, ConfigAgent, ConfigLimits, ConfigProject, ConfigProvider,
     PipelineStatus, WorkspaceConfig,
 };
-pub use conversation::{ChatMessage, ConvEvent, Conversation};
+pub use conversation::{ChatMessage, ConvEvent, Conversation, QueuedMessage};
 pub use event::{event_types, WorkspaceEvent, WorkspaceEventKind};
 pub use integration::{ExternalItem, Integration};
 pub use label::Label;

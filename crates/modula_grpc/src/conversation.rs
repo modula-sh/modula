@@ -5,10 +5,10 @@ use modula_rpc::v1::{
     conv_event, conversation_service_server::ConversationService, AttachConversationRequest,
     CancelConversationRequest, CancelConversationResponse, ConvEvent, Conversation,
     ConversationSummary, CreateConversationRequest, CreateConversationResponse,
-    DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DoneEvent, ErrorEvent,
-    GetConversationRequest, ListConversationsRequest, ListConversationsResponse,
-    SendMessageRequest, SessionEvent, ToolUseEvent, UpdateConversationRequest,
-    UpdateConversationResponse,
+    DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DequeueMessageRequest,
+    DoneEvent, EnqueueMessageRequest, ErrorEvent, GetConversationRequest, ListConversationsRequest,
+    ListConversationsResponse, QueuedMessage, QueuedMessagesResponse, SendMessageRequest,
+    SessionEvent, ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse,
 };
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
@@ -99,6 +99,7 @@ impl ConversationService for ConversationHandler {
                 provider_id: r.provider_id,
                 model: r.model,
                 context: json_to_struct(r.context),
+                queued: r.queued.into_iter().map(QueuedMessage::from).collect(),
                 updated_at: r.updated_at,
             })
             .collect();
@@ -116,7 +117,14 @@ impl ConversationService for ConversationHandler {
             .get(&body.workspace_id, &body.conversation_id)
             .await
             .map_err(to_status)?;
-        Ok(Response::new(Conversation::from(conv)))
+        let mut out = Conversation::from(conv);
+        out.running = self
+            .state
+            .conv_runs
+            .running(&body.workspace_id)
+            .await
+            .contains(&out.id);
+        Ok(Response::new(out))
     }
 
     async fn create(
@@ -223,5 +231,45 @@ impl ConversationService for ConversationHandler {
         .await
         .map_err(to_status)?;
         Ok(Response::new(CancelConversationResponse { ok: true }))
+    }
+
+    async fn enqueue(
+        &self,
+        req: Request<EnqueueMessageRequest>,
+    ) -> Result<Response<QueuedMessagesResponse>, Status> {
+        let body = req.into_inner();
+        let queued = self
+            .state
+            .conversations
+            .enqueue(&body.workspace_id, &body.conversation_id, &body.message)
+            .await
+            .map_err(to_status)?;
+        // Nothing running means the message goes now rather than parking — the
+        // client's idea of "still streaming" is always slightly stale.
+        let conv = self.state.conv.clone();
+        tokio::spawn(conversations::drain_queue(
+            conv,
+            body.workspace_id,
+            body.conversation_id,
+        ));
+        Ok(Response::new(QueuedMessagesResponse {
+            queued: queued.into_iter().map(QueuedMessage::from).collect(),
+        }))
+    }
+
+    async fn dequeue(
+        &self,
+        req: Request<DequeueMessageRequest>,
+    ) -> Result<Response<QueuedMessagesResponse>, Status> {
+        let body = req.into_inner();
+        let queued = self
+            .state
+            .conversations
+            .dequeue(&body.workspace_id, &body.conversation_id, &body.queued_id)
+            .await
+            .map_err(to_status)?;
+        Ok(Response::new(QueuedMessagesResponse {
+            queued: queued.into_iter().map(QueuedMessage::from).collect(),
+        }))
     }
 }

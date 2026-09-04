@@ -1,0 +1,1 @@
+ALTER TABLE conversations ADD COLUMN queued TEXT NOT NULL DEFAULT '[]';
