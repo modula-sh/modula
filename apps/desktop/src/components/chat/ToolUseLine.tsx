@@ -1,6 +1,13 @@
+import { memo } from "react";
 import { formatToolUse } from "../../lib/logFormat";
 
-export function ToolUseLine({ name, input }: { name: string; input: unknown }) {
+export const ToolUseLine = memo(function ToolUseLine({
+  name,
+  input,
+}: {
+  name: string;
+  input: unknown;
+}) {
   const { primary, continuation } = formatToolUse(name, input);
   return (
     <div>
@@ -16,4 +23,4 @@ export function ToolUseLine({ name, input }: { name: string; input: unknown }) {
       ))}
     </div>
   );
-}
+});

@@ -1,9 +1,12 @@
+import { memo } from "react";
 import type { ConversationMessage } from "../../types";
 import { MarkdownContent } from "../MarkdownContent";
 import { MessageMeta } from "./MessageMeta";
 import { ToolUseLine } from "./ToolUseLine";
 
-export function MessageBubble({ msg }: { msg: ConversationMessage }) {
+/** Memoised: message objects are stable until the post-turn refetch, so a
+ * re-render of the list re-parses no markdown. */
+export const MessageBubble = memo(function MessageBubble({ msg }: { msg: ConversationMessage }) {
   if (msg.role === "user") {
     // Outer right-aligns; inner is sized to content so hover only covers
     // the bubble + meta (not the empty space to the left).
@@ -36,4 +39,4 @@ export function MessageBubble({ msg }: { msg: ConversationMessage }) {
       <MessageMeta msg={msg} align="start" />
     </div>
   );
-}
+});

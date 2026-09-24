@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { type RefObject, useMemo } from "react";
 import type { InFlightTool } from "../../contexts/ConversationStreamProvider";
 import type { ConversationMessage } from "../../types";
 import { MarkdownContent } from "../MarkdownContent";
@@ -24,6 +24,13 @@ export function MessageList({
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
 }) {
+  // Held apart from the in-flight tail so streaming doesn't rebuild the
+  // history's elements — React skips those subtrees on an unchanged reference.
+  const history = useMemo(
+    () => messages.map((msg, i) => <MessageBubble key={i} msg={msg} />),
+    [messages],
+  );
+
   return (
     <div
       ref={scrollContainerRef}
@@ -31,9 +38,7 @@ export function MessageList({
       onScroll={onScroll}
     >
       <div className="max-w-[800px] mx-auto py-4 pb-40 space-y-4">
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} />
-        ))}
+        {history}
 
         {(inFlightTools.length > 0 || inFlightText) && (
           <div className="flex flex-col gap-1">
