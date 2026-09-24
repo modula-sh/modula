@@ -31,9 +31,7 @@ impl ProviderRuntime for CodexRuntime {
         cmd
     }
 
-    /// Chat runs use `codex app-server`, which takes turns as JSON-RPC on stdin
-    /// — the only Codex surface where a message can join a running turn. Agent
-    /// runs keep `exec`.
+    /// `app-server`, not `exec`: the only Codex surface a message can join a running turn through.
     fn build_command_chat(&self, _prompt: &str) -> Command {
         app_server()
     }
@@ -42,8 +40,7 @@ impl ProviderRuntime for CodexRuntime {
         app_server()
     }
 
-    /// Requests on one thread run in the order written, so the turn can follow
-    /// the resume without waiting for its reply.
+    /// Requests on one thread run in order, so the turn needn't wait for the resume reply.
     fn chat_open(&self, session_id: Option<&str>) -> Option<Vec<String>> {
         let mut thread = json!({
             "approvalPolicy": "never",
@@ -69,9 +66,7 @@ impl ProviderRuntime for CodexRuntime {
         ])
     }
 
-    /// `turn/start` rather than `turn/steer`: on a thread with a turn running it
-    /// joins that turn, and on one without it starts the next — the same thing a
-    /// message written just as a turn ends needs.
+    /// `turn/start` over `turn/steer`: it joins a running turn or starts the next one.
     fn chat_input(&self, text: &str, session_id: Option<&str>) -> Option<String> {
         Some(rpc(
             "turn/start",
@@ -182,8 +177,7 @@ fn app_server() -> Command {
     cmd
 }
 
-/// One JSON-RPC request line. Ids only need to be unique; nothing reads replies
-/// but errors.
+/// One JSON-RPC request line; only error replies are read.
 fn rpc(method: &str, params: JsonValue) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     format!(
@@ -192,7 +186,6 @@ fn rpc(method: &str, params: JsonValue) -> String {
     )
 }
 
-/// `codex app-server` notifications, and error replies to the requests above.
 fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
     if let Some(message) = v["error"]["message"].as_str() {
         return vec![ChatEvent::Error {

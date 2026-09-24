@@ -6,8 +6,7 @@
 //! and go without affecting the run — they `send` (start a new run), `attach`
 //! (subscribe to an in-flight run + replay everything streamed so far), or
 //! `cancel` (signal the task to kill the child, persist what it has, and exit).
-//! Messages sent mid-run go to the queue; a run whose provider reads stdin takes
-//! them in at its next tool boundary, and the rest start turns of their own.
+//! Queued messages enter a run mid-turn when its provider accepts stdin input.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -57,8 +56,7 @@ pub enum WireEvent {
     Delta {
         text: String,
     },
-    /// A queued message taken into the running turn. Everything before it is
-    /// persisted by the time this is sent, so it is not replayed.
+    /// A queued message taken into the running turn. Not replayed.
     User {
         text: String,
     },
@@ -82,7 +80,6 @@ pub struct RunSlot {
     /// every delta from the start, not just events after it attached.
     buffer: Arc<Mutex<Vec<WireEvent>>>,
     cancel: Arc<Notify>,
-    /// The queue grew while this run is in flight.
     queued: Arc<Notify>,
 }
 
@@ -293,9 +290,8 @@ async fn emit(slot: &RunSlot, event: WireEvent) {
     let _ = slot.tx.send(event);
 }
 
-/// Start the replay over: everything streamed so far is persisted, so a client
-/// attaching from here reads it from the transcript instead. `event` goes only
-/// to clients already attached.
+/// Drop the replay once what it holds is persisted; `event` reaches only
+/// clients already attached.
 async fn restart(slot: &RunSlot, event: WireEvent) {
     let mut buf = slot.buffer.lock().await;
     buf.retain(|e| matches!(e, WireEvent::Session { .. }));
@@ -426,10 +422,9 @@ async fn publish_run(events: &Arc<dyn EventSink>, ws: &str, conv_id: &str, runni
 }
 
 /// Resolve the conversation, persist the user turn, and spawn the provider child.
-/// Returns the running child + its piped streams, the prompt when it is still
-/// waiting on a session id to be written, and the session id if one is already
-/// established (resume vs. first turn). Separated from `open_send` so the caller
-/// can release the conversation slot on any setup error.
+/// Returns the running child + its piped streams, a prompt still waiting on a
+/// session id, and the session id if known. Separated from `open_send` so the
+/// caller can release the conversation slot on any setup error.
 type SendSetup = (
     Arc<dyn ProviderRuntime>,
     tokio::process::Child,
@@ -543,8 +538,7 @@ async fn open_send_setup(
     let mut child = tokio_cmd
         .spawn()
         .map_err(|e| ApiError::Internal(format!("spawn provider: {e}")))?;
-    // Held open for the whole turn so queued messages can enter it; closing it
-    // ends the run. A prompt that needs a session id waits for the provider's.
+    // Held open for the turn so queued messages can enter; closing it ends the run.
     let mut stdin = child.stdin.take();
     let mut held = None;
     if let (Some(opening), Some(pipe)) = (opening, stdin.as_mut()) {
@@ -613,8 +607,8 @@ pub async fn cancel(rt: ConvRuntime, ws_id: String, conv_id: String) -> ApiResul
     Ok(())
 }
 
-/// Move the queue forward: hand it to the run in flight, or start the next
-/// queued turn if there is none. The empty check is an early-out only;
+/// Hand the queue to the run in flight, or start the next queued turn. The
+/// empty check is an early-out only;
 /// the run slot is still claimed before the head is popped, so two drains racing
 /// (a run ending as an idle `Enqueue` drains) cannot start the queue's messages
 /// out of order — the loser leaves the queue to the winner's own end-of-run
@@ -633,7 +627,6 @@ pub fn drain_queue(
         if rt.conversations.queue_is_empty(&key.0, &key.1).await {
             return;
         }
-        // A run that ends before it takes these drains them itself as it exits.
         if let Some(slot) = rt.conv_runs.get(&key).await {
             slot.queued.notify_one();
             return;
@@ -678,11 +671,9 @@ async fn run_to_completion(
     let mut accumulated_tools: Vec<serde_json::Value> = Vec::new();
     let mut canceled = false;
     let mut parser_terminal = false;
-    // Messages written to stdin that the provider has not taken in yet. A turn
-    // ending while one is pending is followed by another that answers it.
+    // Written but not yet acknowledged; a turn ending with one pending is followed by another.
     let mut pending_input = usize::from(stdin.is_some());
-    // A message written while a tool runs is taken in when it returns; written
-    // any other time it could sit unseen until the turn ends, so it stays queued.
+    // Only inject while a tool runs; otherwise the message could wait unseen until the turn ends.
     let mut tools_running = 0usize;
 
     loop {
@@ -783,7 +774,6 @@ async fn run_to_completion(
             }
         }
     }
-    // EOF on stdin lets the provider exit.
     drop(stdin);
 
     persist_and_emit(&convs, &pool, &ws, &cid, &accumulated, &accumulated_tools).await;
@@ -824,9 +814,8 @@ async fn run_to_completion(
     }
 }
 
-/// Write the queue into the running turn, oldest first, and return how many
-/// went in. Each is persisted where it enters — after the reply so far — so the
-/// transcript reads in the order the provider saw it.
+/// Write the queue into the running turn and return how many went in. Each is
+/// persisted after the reply so far, in the order the provider saw it.
 #[allow(clippy::too_many_arguments)]
 async fn inject_queued(
     queue: &ConversationService,

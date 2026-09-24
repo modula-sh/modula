@@ -535,9 +535,7 @@ async fn enqueue_empty_message_rejected() -> Result<()> {
     Ok(())
 }
 
-/// A message queued while a tool runs enters the same turn when the tool
-/// returns: it lands between the reply so far and the rest of it, and leaves
-/// the queue.
+/// A message queued while a tool runs enters the same turn and leaves the queue.
 #[tokio::test]
 async fn queued_message_enters_the_turn_at_a_tool_boundary() -> Result<()> {
     let recipe = serde_json::json!({
@@ -636,9 +634,7 @@ async fn queued_message_enters_the_turn_at_a_tool_boundary() -> Result<()> {
     Ok(())
 }
 
-/// The same through `codex app-server`: the prompt waits for the thread the
-/// server starts, a message queued while a command runs joins the turn, and the
-/// next send resumes that thread.
+/// The same through `codex app-server`, then a resumed turn on the same thread.
 #[tokio::test]
 async fn codex_takes_a_queued_message_mid_turn() -> Result<()> {
     let recipe = serde_json::json!({

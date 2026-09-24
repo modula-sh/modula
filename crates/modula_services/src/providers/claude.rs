@@ -24,11 +24,8 @@ fn base_command() -> Command {
     cmd
 }
 
-/// Chat turns read user messages from stdin, so one written mid-turn is taken in
-/// at the next tool boundary. `--replay-user-messages` echoes each as it is
-/// taken, which is how the run knows none is still pending when a turn ends.
-/// `--include-partial-messages` makes text arrive as `stream_event` partials, so
-/// the assistant envelope only needs consulting for tool_use blocks.
+/// User messages arrive on stdin; `--replay-user-messages` acknowledges each as
+/// it is taken in. Partial messages carry the text, so the envelope is tool_use only.
 fn chat_command() -> Command {
     let mut cmd = base_command();
     cmd.arg("--include-partial-messages")
@@ -55,7 +52,7 @@ impl ProviderRuntime for ClaudeRuntime {
     /// Passes `--session-id <preset_id>` so Claude adopts that uuid as its
     /// session identifier (rather than generating its own). The id is then
     /// returned in every stream event and can be used for `--resume` on
-    /// subsequent turns. The prompt arrives on stdin — see `chat_input`.
+    /// subsequent turns.
     fn build_command_chat_first(&self, _prompt: &str, preset_session_id: &str) -> Option<Command> {
         let mut cmd = chat_command();
         if let Some(m) = &self.model {

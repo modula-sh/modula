@@ -92,7 +92,7 @@ impl GenerationService {
         let mut child = tokio_cmd
             .spawn()
             .map_err(|e| ApiError::Internal(format!("spawn provider: {e}")))?;
-        // Dropped once written: the EOF is what ends the run after one turn.
+        // Dropped once written: EOF ends the run after one turn.
         if let (Some(line), Some(mut stdin)) = (input, child.stdin.take()) {
             stdin
                 .write_all(line.as_bytes())

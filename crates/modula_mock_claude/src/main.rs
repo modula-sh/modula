@@ -4,11 +4,8 @@
 //!   - Optionally appends a line to a workspace-relative file (one mutation
 //!     kind: `append_line`, used by the loop tests to count iterations).
 //!   - Sleeps `sleep_ms`, emits `tail[]`, then exits with `exit_code`.
-//!   - Under `--input-format stream-json`, echoes each stdin line back as a
-//!     replayed user message, the way `--replay-user-messages` does. As
-//!     `codex app-server`, answers `thread/start` with `thread/started` and each
-//!     `turn/start` with a `userMessage` item. Either way the stream waits for
-//!     the first message, as the real CLIs do.
+//!   - Acknowledges stdin messages like `claude --replay-user-messages` or
+//!     `codex app-server`, and waits for the first before streaming.
 //!
 //! All paths resolve relative to the current directory, which the engine sets
 //! to the workspace dir (`<modula>/<slug>`) for every spawn — the same place a
@@ -34,7 +31,6 @@ struct Recipe {
     mutations: Vec<Mutation>,
     #[serde(default)]
     sleep_ms: u64,
-    /// Emitted after `sleep_ms`, so a test can talk to the run in between.
     #[serde(default)]
     tail: Vec<Json>,
     #[serde(default)]

@@ -73,9 +73,8 @@ pub enum ChatEvent {
         name: String,
         input: serde_json::Value,
     },
-    /// A tool finished; `ToolUse` started it.
     ToolResult,
-    /// The provider took a message written to its stdin into the conversation.
+    /// A message written to stdin was taken into the conversation.
     InputAccepted,
     Done,
     Error {
@@ -120,18 +119,14 @@ pub trait ProviderRuntime: Send + Sync {
         self.build_command(prompt, Some(session_id))
     }
 
-    /// Lines a chat run writes to stdin before any message, for CLIs that read
-    /// user messages from stdin while a turn is running. `Some` means the chat
-    /// commands take the prompt through `chat_input` instead of as an argument,
-    /// and queued messages enter the run mid-turn; `None` means one prompt per
-    /// process.
+    /// Lines written to stdin before any message. `Some` means the chat takes its
+    /// messages through `chat_input`, mid-turn included; `None`, one prompt per process.
     fn chat_open(&self, _session_id: Option<&str>) -> Option<Vec<String>> {
         None
     }
 
-    /// The stdin line that hands `text` to a chat run, or `None` while it cannot
-    /// be written yet — a CLI that addresses messages to a session it has not
-    /// announced. The run writes a held prompt once the session id arrives.
+    /// The stdin line carrying `text`, or `None` until the provider announces a
+    /// session id it needs.
     fn chat_input(&self, _text: &str, _session_id: Option<&str>) -> Option<String> {
         None
     }
