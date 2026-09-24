@@ -24,6 +24,21 @@ fn base_command() -> Command {
     cmd
 }
 
+/// Chat turns read user messages from stdin, so one written mid-turn is taken in
+/// at the next tool boundary. `--replay-user-messages` echoes each as it is
+/// taken, which is how the run knows none is still pending when a turn ends.
+/// `--include-partial-messages` makes text arrive as `stream_event` partials, so
+/// the assistant envelope only needs consulting for tool_use blocks.
+fn chat_command() -> Command {
+    let mut cmd = base_command();
+    cmd.arg("--include-partial-messages")
+        .arg("--input-format")
+        .arg("stream-json")
+        .arg("--replay-user-messages")
+        .arg("-p");
+    cmd
+}
+
 impl ProviderRuntime for ClaudeRuntime {
     fn build_command(&self, prompt: &str, session_id: Option<&str>) -> Command {
         let mut cmd = base_command();
@@ -40,32 +55,31 @@ impl ProviderRuntime for ClaudeRuntime {
     /// Passes `--session-id <preset_id>` so Claude adopts that uuid as its
     /// session identifier (rather than generating its own). The id is then
     /// returned in every stream event and can be used for `--resume` on
-    /// subsequent turns.
-    fn build_command_chat_first(&self, prompt: &str, preset_session_id: &str) -> Option<Command> {
-        let mut cmd = base_command();
-        cmd.arg("--include-partial-messages");
+    /// subsequent turns. The prompt arrives on stdin — see `chat_input`.
+    fn build_command_chat_first(&self, _prompt: &str, preset_session_id: &str) -> Option<Command> {
+        let mut cmd = chat_command();
         if let Some(m) = &self.model {
             cmd.arg("--model").arg(m);
         }
         cmd.arg("--session-id").arg(preset_session_id);
-        cmd.arg("-p").arg(prompt);
         Some(cmd)
     }
 
-    /// Adds `--include-partial-messages` (consistent with
-    /// `build_command_chat_first`) so text always arrives via stream_event
-    /// partials and the assistant envelope only needs to be consulted for
-    /// tool_use blocks.
-    fn build_command_chat_resume(&self, prompt: &str, session_id: &str) -> Command {
-        let mut cmd = base_command();
-        cmd.arg("--include-partial-messages")
-            .arg("--resume")
-            .arg(session_id);
+    fn build_command_chat_resume(&self, _prompt: &str, session_id: &str) -> Command {
+        let mut cmd = chat_command();
+        cmd.arg("--resume").arg(session_id);
         if let Some(m) = &self.model {
             cmd.arg("--model").arg(m);
         }
-        cmd.arg("-p").arg(prompt);
         cmd
+    }
+
+    fn chat_input(&self, text: &str) -> Option<String> {
+        let line = serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": text },
+        });
+        Some(format!("{line}\n"))
     }
 
     fn env_vars(&self) -> Vec<(&'static str, OsString)> {
@@ -91,6 +105,14 @@ impl ProviderRuntime for ClaudeRuntime {
                 Some(id) => vec![ChatEvent::Session { id: id.to_string() }],
                 None => vec![],
             },
+            "user" if v["isReplay"].as_bool() == Some(true) => vec![ChatEvent::InputAccepted],
+            "user" => v["message"]["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|block| block["type"].as_str() == Some("tool_result"))
+                .map(|_| ChatEvent::ToolResult)
+                .collect(),
             "stream_event" => {
                 let ev = match v.get("event") {
                     Some(e) => e,
@@ -290,7 +312,32 @@ mod tests {
         let argv = args(&cmd);
         assert!(argv.contains(&std::ffi::OsStr::new("--session-id")));
         assert!(argv.contains(&std::ffi::OsStr::new("uuid-1")));
-        assert_eq!(argv.last(), Some(&std::ffi::OsStr::new("hello")));
+        assert!(argv.contains(&std::ffi::OsStr::new("stream-json")));
+        assert!(!argv.contains(&std::ffi::OsStr::new("hello")));
+    }
+
+    #[test]
+    fn claude_chat_input_is_one_user_line() {
+        let line = claude_rt().chat_input("hi \"there\"").unwrap();
+        assert!(line.ends_with('\n'));
+        let v: JsonValue = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(v["type"], "user");
+        assert_eq!(v["message"]["content"], "hi \"there\"");
+    }
+
+    #[test]
+    fn claude_parse_user_lines() {
+        let replay = r#"{"type":"user","message":{"role":"user","content":"hi"},"isReplay":true}"#;
+        assert!(matches!(
+            claude_rt().parse_stream_line(replay)[..],
+            [ChatEvent::InputAccepted]
+        ));
+        let tool_result =
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}"#;
+        assert!(matches!(
+            claude_rt().parse_stream_line(tool_result)[..],
+            [ChatEvent::ToolResult]
+        ));
     }
 
     #[test]

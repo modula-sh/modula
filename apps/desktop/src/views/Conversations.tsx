@@ -247,7 +247,7 @@ export function ConversationDetailPage() {
     if (conv) setSelectedModel((prev) => (prev === null ? conv.model : prev));
   }, [conv]);
 
-  const { inFlightText, inFlightTools, streaming, error, send, attach, cancel } =
+  const { inFlightText, inFlightTools, streaming, error, injected, send, attach, cancel } =
     useConversationStream(ws, id ?? "");
 
   useEffect(() => {
@@ -267,6 +267,12 @@ export function ConversationDetailPage() {
     }
     prevStreamingRef.current = streaming;
   }, [streaming, ws, id, queryClient]);
+
+  useEffect(() => {
+    if (injected && ws && id) {
+      queryClient.invalidateQueries({ queryKey: conversationKeys.detail(ws, id) });
+    }
+  }, [injected, ws, id, queryClient]);
 
   // Publish config for the layout-level right-sidebar; cleared on unmount.
   useEffect(() => {

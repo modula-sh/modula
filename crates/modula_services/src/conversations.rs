@@ -6,6 +6,8 @@
 //! and go without affecting the run — they `send` (start a new run), `attach`
 //! (subscribe to an in-flight run + replay everything streamed so far), or
 //! `cancel` (signal the task to kill the child, persist what it has, and exit).
+//! Messages sent mid-run go to the queue; a run whose provider reads stdin takes
+//! them in at its next tool boundary, and the rest start turns of their own.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -14,7 +16,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use serde_json::{json, Value as JsonValue};
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 
@@ -45,11 +47,25 @@ pub type ConvStream = (Vec<WireEvent>, broadcast::Receiver<WireEvent>);
 /// the typed gRPC `ConvEvent` by the `ConversationService` handler.
 #[derive(Clone, Debug)]
 pub enum WireEvent {
-    Session { id: String },
-    ToolUse { name: String, input: JsonValue },
-    Delta { text: String },
+    Session {
+        id: String,
+    },
+    ToolUse {
+        name: String,
+        input: JsonValue,
+    },
+    Delta {
+        text: String,
+    },
+    /// A queued message taken into the running turn. Everything before it is
+    /// persisted by the time this is sent, so it is not replayed.
+    User {
+        text: String,
+    },
     Done,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 impl WireEvent {
@@ -66,6 +82,8 @@ pub struct RunSlot {
     /// every delta from the start, not just events after it attached.
     buffer: Arc<Mutex<Vec<WireEvent>>>,
     cancel: Arc<Notify>,
+    /// The queue grew while this run is in flight.
+    queued: Arc<Notify>,
 }
 
 #[derive(Default, Clone)]
@@ -275,6 +293,15 @@ async fn emit(slot: &RunSlot, event: WireEvent) {
     let _ = slot.tx.send(event);
 }
 
+/// Start the replay over: everything streamed so far is persisted, so a client
+/// attaching from here reads it from the transcript instead. `event` goes only
+/// to clients already attached.
+async fn restart(slot: &RunSlot, event: WireEvent) {
+    let mut buf = slot.buffer.lock().await;
+    buf.retain(|e| matches!(e, WireEvent::Session { .. }));
+    let _ = slot.tx.send(event);
+}
+
 /// What a conversation turn needs from the engine. Named here rather than
 /// taking `AppState` so this module sits below the state that composes it.
 #[derive(Clone)]
@@ -317,6 +344,7 @@ async fn claim_run(rt: &ConvRuntime, key: &ConvKey) -> Option<RunSlot> {
         tx,
         buffer: Arc::new(Mutex::new(Vec::new())),
         cancel: Arc::new(Notify::new()),
+        queued: Arc::new(Notify::new()),
     };
     rt.conv_runs
         .insert_if_absent(key.clone(), slot.clone())
@@ -337,7 +365,7 @@ async fn run_claimed(
     // Fallible setup runs after the claim, so every error path must release the
     // slot. Do it once here rather than threading cleanup through each `?`.
     let setup = open_send_setup(&rt, &ws_id, &conv_id, &user_msg, model_override).await;
-    let (runtime, child, stdout, stderr, has_session) = match setup {
+    let (runtime, child, stdin, stdout, stderr, has_session) = match setup {
         Ok(v) => v,
         Err(e) => {
             rt.conv_runs.remove(&key).await;
@@ -365,6 +393,8 @@ async fn run_claimed(
             slot.clone(),
             runtime,
             child,
+            stdin,
+            drain_rt.conversations.clone(),
             stdout,
             stderr,
             convs,
@@ -401,6 +431,7 @@ async fn publish_run(events: &Arc<dyn EventSink>, ws: &str, conv_id: &str, runni
 type SendSetup = (
     Arc<dyn ProviderRuntime>,
     tokio::process::Child,
+    Option<tokio::process::ChildStdin>,
     tokio::process::ChildStdout,
     tokio::process::ChildStderr,
     bool,
@@ -485,9 +516,14 @@ async fn open_send_setup(
         }
     };
 
+    let input = runtime.chat_input(&prompt);
     let ws_dir = rt.workspaces.workspace_dir(ws_id).await?;
     cmd.current_dir(&ws_dir)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("MODULA_WORKSPACE", ws_id)
@@ -503,6 +539,14 @@ async fn open_send_setup(
     let mut child = tokio_cmd
         .spawn()
         .map_err(|e| ApiError::Internal(format!("spawn provider: {e}")))?;
+    // Held open for the whole turn so queued messages can enter it; closing it
+    // ends the run.
+    let mut stdin = child.stdin.take();
+    if let (Some(line), Some(pipe)) = (input, stdin.as_mut()) {
+        pipe.write_all(line.as_bytes())
+            .await
+            .map_err(|e| ApiError::Internal(format!("write provider stdin: {e}")))?;
+    }
     let stdout = child
         .stdout
         .take()
@@ -529,7 +573,7 @@ async fn open_send_setup(
     }
 
     let has_session = existing_session_id.is_some() || preset_session.is_some();
-    Ok((runtime, child, stdout, stderr, has_session))
+    Ok((runtime, child, stdin, stdout, stderr, has_session))
 }
 
 /// Subscribe to an in-flight run. If nothing is running, returns a handle whose
@@ -559,7 +603,8 @@ pub async fn cancel(rt: ConvRuntime, ws_id: String, conv_id: String) -> ApiResul
     Ok(())
 }
 
-/// Start the next queued turn, if any. The empty check is an early-out only;
+/// Move the queue forward: hand it to the run in flight, or start the next
+/// queued turn if there is none. The empty check is an early-out only;
 /// the run slot is still claimed before the head is popped, so two drains racing
 /// (a run ending as an idle `Enqueue` drains) cannot start the queue's messages
 /// out of order — the loser leaves the queue to the winner's own end-of-run
@@ -576,6 +621,11 @@ pub fn drain_queue(
     Box::pin(async move {
         let key = (ws_id, conv_id);
         if rt.conversations.queue_is_empty(&key.0, &key.1).await {
+            return;
+        }
+        // A run that ends before it takes these drains them itself as it exits.
+        if let Some(slot) = rt.conv_runs.get(&key).await {
+            slot.queued.notify_one();
             return;
         }
         let Some(slot) = claim_run(&rt, &key).await else {
@@ -598,6 +648,8 @@ async fn run_to_completion(
     slot: RunSlot,
     runtime: Arc<dyn ProviderRuntime>,
     mut child: tokio::process::Child,
+    mut stdin: Option<tokio::process::ChildStdin>,
+    queue: ConversationService,
     stdout: tokio::process::ChildStdout,
     stderr: tokio::process::ChildStderr,
     convs: ConversationRepository,
@@ -616,12 +668,26 @@ async fn run_to_completion(
     let mut session_captured = initial_session_captured;
     let mut canceled = false;
     let mut parser_terminal = false;
+    // Messages written to stdin that the provider has not taken in yet. A turn
+    // ending while one is pending is followed by another that answers it.
+    let mut pending_input = usize::from(stdin.is_some());
+    // A message written while a tool runs is taken in when it returns; written
+    // any other time it could sit unseen until the turn ends, so it stays queued.
+    let mut tools_running = 0usize;
 
     loop {
         tokio::select! {
             _ = slot.cancel.notified() => {
                 canceled = true;
                 break;
+            }
+            _ = slot.queued.notified(), if tools_running > 0 => {
+                if let Some(pipe) = stdin.as_mut() {
+                    pending_input += inject_queued(
+                        &queue, &runtime, pipe, &slot, &ws, &cid,
+                        &mut accumulated, &mut accumulated_tools,
+                    ).await;
+                }
             }
             res = lines.next_line() => match res {
                 Ok(Some(line)) if line.is_empty() => continue,
@@ -638,17 +704,26 @@ async fn run_to_completion(
                                 emit(&slot, WireEvent::Session { id }).await;
                             }
                             ChatEvent::ToolUse { name, input } => {
+                                tools_running += 1;
                                 accumulated_tools.push(json!({ "name": &name, "input": &input }));
                                 emit(&slot, WireEvent::ToolUse { name, input }).await;
+                            }
+                            ChatEvent::ToolResult => {
+                                tools_running = tools_running.saturating_sub(1);
                             }
                             ChatEvent::Delta { text } => {
                                 accumulated.push_str(&text);
                                 emit(&slot, WireEvent::Delta { text }).await;
                             }
+                            ChatEvent::InputAccepted => {
+                                pending_input = pending_input.saturating_sub(1);
+                            }
                             ChatEvent::Done => {
                                 parser_terminal = true;
-                                terminal = true;
-                                break;
+                                if pending_input == 0 {
+                                    terminal = true;
+                                    break;
+                                }
                             }
                             ChatEvent::Error { message } => {
                                 persist_and_emit(
@@ -667,6 +742,14 @@ async fn run_to_completion(
                     if terminal {
                         break;
                     }
+                    if tools_running > 0 {
+                        if let Some(pipe) = stdin.as_mut() {
+                            pending_input += inject_queued(
+                                &queue, &runtime, pipe, &slot, &ws, &cid,
+                                &mut accumulated, &mut accumulated_tools,
+                            ).await;
+                        }
+                    }
                 }
                 Ok(None) => break,
                 Err(e) => {
@@ -684,6 +767,8 @@ async fn run_to_completion(
             }
         }
     }
+    // EOF on stdin lets the provider exit.
+    drop(stdin);
 
     persist_and_emit(&convs, &pool, &ws, &cid, &accumulated, &accumulated_tools).await;
 
@@ -721,6 +806,54 @@ async fn run_to_completion(
     } else {
         emit(&slot, WireEvent::Done).await;
     }
+}
+
+/// Write the queue into the running turn, oldest first, and return how many
+/// went in. Each is persisted where it enters — after the reply so far — so the
+/// transcript reads in the order the provider saw it.
+#[allow(clippy::too_many_arguments)]
+async fn inject_queued(
+    queue: &ConversationService,
+    runtime: &Arc<dyn ProviderRuntime>,
+    stdin: &mut tokio::process::ChildStdin,
+    slot: &RunSlot,
+    ws: &str,
+    cid: &str,
+    accumulated: &mut String,
+    accumulated_tools: &mut Vec<JsonValue>,
+) -> usize {
+    let mut injected = 0;
+    while let Ok(Some(msg)) = queue.pop_queued(ws, cid).await {
+        let written = match runtime.chat_input(&msg.content) {
+            Some(line) => stdin.write_all(line.as_bytes()).await.is_ok(),
+            None => false,
+        };
+        if !written {
+            let _ = queue.requeue(ws, cid, msg).await;
+            break;
+        }
+        injected += 1;
+        persist_and_emit(
+            &queue.conversations,
+            &queue.pool,
+            ws,
+            cid,
+            accumulated,
+            accumulated_tools,
+        )
+        .await;
+        accumulated.clear();
+        accumulated_tools.clear();
+        if let Err(e) = queue
+            .conversations
+            .append_message(&queue.pool, ws, cid, "user", &msg.content, &[])
+            .await
+        {
+            tracing::error!(ws = %ws, conv = %cid, error = %e, "failed to persist queued message");
+        }
+        restart(slot, WireEvent::User { text: msg.content }).await;
+    }
+    injected
 }
 
 /// Derive a conversation title from the first user message: the first non-empty

@@ -8,7 +8,7 @@ use modula_rpc::v1::{
     DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DequeueMessageRequest,
     DoneEvent, EnqueueMessageRequest, ErrorEvent, GetConversationRequest, ListConversationsRequest,
     ListConversationsResponse, QueuedMessage, QueuedMessagesResponse, SendMessageRequest,
-    SessionEvent, ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse,
+    SessionEvent, ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse, UserEvent,
 };
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
@@ -35,6 +35,7 @@ fn to_conv_event(event: WireEvent) -> ConvEvent {
             input: json_to_struct(input),
         }),
         WireEvent::Delta { text } => conv_event::Event::Delta(DeltaEvent { text }),
+        WireEvent::User { text } => conv_event::Event::User(UserEvent { text }),
         WireEvent::Done => conv_event::Event::Done(DoneEvent {}),
         WireEvent::Error { message } => conv_event::Event::Error(ErrorEvent { message }),
     };

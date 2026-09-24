@@ -3,7 +3,9 @@
 //!   - Emits each `stream[]` entry as one stream-json line to stdout.
 //!   - Optionally appends a line to a workspace-relative file (one mutation
 //!     kind: `append_line`, used by the loop tests to count iterations).
-//!   - Sleeps `sleep_ms`, then exits with `exit_code`.
+//!   - Sleeps `sleep_ms`, emits `tail[]`, then exits with `exit_code`.
+//!   - Under `--input-format stream-json`, echoes each stdin line back as a
+//!     replayed user message, the way `--replay-user-messages` does.
 //!
 //! All paths resolve relative to the current directory, which the engine sets
 //! to the workspace dir (`<modula>/<slug>`) for every spawn — the same place a
@@ -29,6 +31,9 @@ struct Recipe {
     mutations: Vec<Mutation>,
     #[serde(default)]
     sleep_ms: u64,
+    /// Emitted after `sleep_ms`, so a test can talk to the run in between.
+    #[serde(default)]
+    tail: Vec<Json>,
     #[serde(default)]
     exit_code: i32,
 }
@@ -54,10 +59,14 @@ fn main() -> ExitCode {
     record_argv(&ws_dir);
 
     let recipe = load_recipe(&ws_dir);
-    emit_stream(&recipe);
+    if env::args().any(|a| a == "--input-format") {
+        echo_stdin();
+    }
+    emit_stream(&recipe.stream);
     if recipe.sleep_ms > 0 {
         thread::sleep(Duration::from_millis(recipe.sleep_ms));
     }
+    emit_stream(&recipe.tail);
     for m in &recipe.mutations {
         if let Err(e) = apply_mutation(&ws_dir, m) {
             eprintln!("mock-claude: mutation failed for {}: {}", m.file, e);
@@ -126,10 +135,29 @@ fn default_recipe() -> Recipe {
     }
 }
 
-fn emit_stream(recipe: &Recipe) {
-    for event in &recipe.stream {
+fn emit_stream(events: &[Json]) {
+    for event in events {
         println!("{}", serde_json::to_string(event).unwrap_or_default());
     }
+}
+
+/// Echo the prompt before anything else, then every later line as it arrives.
+fn echo_stdin() {
+    let echo = |line: String| {
+        if let Ok(mut v) = serde_json::from_str::<Json>(&line) {
+            v["isReplay"] = Json::Bool(true);
+            println!("{v}");
+        }
+    };
+    if let Some(Ok(first)) = std::io::stdin().lines().next() {
+        echo(first);
+    }
+    thread::spawn(move || {
+        std::io::stdin()
+            .lines()
+            .map_while(Result::ok)
+            .for_each(echo)
+    });
 }
 
 fn record_argv(ws_dir: &Path) {
