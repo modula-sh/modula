@@ -74,7 +74,11 @@ impl ProviderRuntime for ClaudeRuntime {
         cmd
     }
 
-    fn chat_input(&self, text: &str) -> Option<String> {
+    fn chat_open(&self, _session_id: Option<&str>) -> Option<Vec<String>> {
+        Some(Vec::new())
+    }
+
+    fn chat_input(&self, text: &str, _session_id: Option<&str>) -> Option<String> {
         let line = serde_json::json!({
             "type": "user",
             "message": { "role": "user", "content": text },
@@ -318,7 +322,7 @@ mod tests {
 
     #[test]
     fn claude_chat_input_is_one_user_line() {
-        let line = claude_rt().chat_input("hi \"there\"").unwrap();
+        let line = claude_rt().chat_input("hi \"there\"", None).unwrap();
         assert!(line.ends_with('\n'));
         let v: JsonValue = serde_json::from_str(line.trim_end()).unwrap();
         assert_eq!(v["type"], "user");

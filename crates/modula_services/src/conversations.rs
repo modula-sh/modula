@@ -365,7 +365,7 @@ async fn run_claimed(
     // Fallible setup runs after the claim, so every error path must release the
     // slot. Do it once here rather than threading cleanup through each `?`.
     let setup = open_send_setup(&rt, &ws_id, &conv_id, &user_msg, model_override).await;
-    let (runtime, child, stdin, stdout, stderr, has_session) = match setup {
+    let (runtime, child, stdin, held, stdout, stderr, session_id) = match setup {
         Ok(v) => v,
         Err(e) => {
             rt.conv_runs.remove(&key).await;
@@ -394,6 +394,7 @@ async fn run_claimed(
             runtime,
             child,
             stdin,
+            held,
             drain_rt.conversations.clone(),
             stdout,
             stderr,
@@ -402,7 +403,7 @@ async fn run_claimed(
             events,
             ws_id.clone(),
             conv_id.clone(),
-            has_session,
+            session_id,
         )
         .await;
         runs.remove(&key).await;
@@ -425,16 +426,18 @@ async fn publish_run(events: &Arc<dyn EventSink>, ws: &str, conv_id: &str, runni
 }
 
 /// Resolve the conversation, persist the user turn, and spawn the provider child.
-/// Returns the running child + its piped streams and whether a session id is
-/// already established (resume vs. first turn). Separated from `open_send` so the
-/// caller can release the conversation slot on any setup error.
+/// Returns the running child + its piped streams, the prompt when it is still
+/// waiting on a session id to be written, and the session id if one is already
+/// established (resume vs. first turn). Separated from `open_send` so the caller
+/// can release the conversation slot on any setup error.
 type SendSetup = (
     Arc<dyn ProviderRuntime>,
     tokio::process::Child,
     Option<tokio::process::ChildStdin>,
+    Option<String>,
     tokio::process::ChildStdout,
     tokio::process::ChildStderr,
-    bool,
+    Option<String>,
 );
 
 async fn open_send_setup(
@@ -512,14 +515,15 @@ async fn open_send_setup(
         let preset = uuid::Uuid::new_v4().to_string();
         match runtime.build_command_chat_first(&prompt, &preset) {
             Some(c) => (c, Some(preset)),
-            None => (runtime.build_command(&prompt, None), None),
+            None => (runtime.build_command_chat(&prompt), None),
         }
     };
+    let session_id = existing_session_id.clone().or(preset_session.clone());
 
-    let input = runtime.chat_input(&prompt);
+    let opening = runtime.chat_open(session_id.as_deref());
     let ws_dir = rt.workspaces.workspace_dir(ws_id).await?;
     cmd.current_dir(&ws_dir)
-        .stdin(if input.is_some() {
+        .stdin(if opening.is_some() {
             Stdio::piped()
         } else {
             Stdio::null()
@@ -540,12 +544,19 @@ async fn open_send_setup(
         .spawn()
         .map_err(|e| ApiError::Internal(format!("spawn provider: {e}")))?;
     // Held open for the whole turn so queued messages can enter it; closing it
-    // ends the run.
+    // ends the run. A prompt that needs a session id waits for the provider's.
     let mut stdin = child.stdin.take();
-    if let (Some(line), Some(pipe)) = (input, stdin.as_mut()) {
-        pipe.write_all(line.as_bytes())
-            .await
-            .map_err(|e| ApiError::Internal(format!("write provider stdin: {e}")))?;
+    let mut held = None;
+    if let (Some(opening), Some(pipe)) = (opening, stdin.as_mut()) {
+        let prompt_line = runtime.chat_input(&prompt, session_id.as_deref());
+        if prompt_line.is_none() {
+            held = Some(prompt);
+        }
+        for line in opening.iter().chain(&prompt_line) {
+            pipe.write_all(line.as_bytes())
+                .await
+                .map_err(|e| ApiError::Internal(format!("write provider stdin: {e}")))?;
+        }
     }
     let stdout = child
         .stdout
@@ -572,8 +583,7 @@ async fn open_send_setup(
             .await;
     }
 
-    let has_session = existing_session_id.is_some() || preset_session.is_some();
-    Ok((runtime, child, stdin, stdout, stderr, has_session))
+    Ok((runtime, child, stdin, held, stdout, stderr, session_id))
 }
 
 /// Subscribe to an in-flight run. If nothing is running, returns a handle whose
@@ -649,6 +659,7 @@ async fn run_to_completion(
     runtime: Arc<dyn ProviderRuntime>,
     mut child: tokio::process::Child,
     mut stdin: Option<tokio::process::ChildStdin>,
+    mut held: Option<String>,
     queue: ConversationService,
     stdout: tokio::process::ChildStdout,
     stderr: tokio::process::ChildStderr,
@@ -657,7 +668,7 @@ async fn run_to_completion(
     events: Arc<dyn EventSink>,
     ws: String,
     cid: String,
-    initial_session_captured: bool,
+    mut session_id: Option<String>,
 ) {
     let stderr_task = tokio::spawn(providers::drain_stderr(stderr));
 
@@ -665,7 +676,6 @@ async fn run_to_completion(
     let mut lines = reader.lines();
     let mut accumulated = String::new();
     let mut accumulated_tools: Vec<serde_json::Value> = Vec::new();
-    let mut session_captured = initial_session_captured;
     let mut canceled = false;
     let mut parser_terminal = false;
     // Messages written to stdin that the provider has not taken in yet. A turn
@@ -684,7 +694,7 @@ async fn run_to_completion(
             _ = slot.queued.notified(), if tools_running > 0 => {
                 if let Some(pipe) = stdin.as_mut() {
                     pending_input += inject_queued(
-                        &queue, &runtime, pipe, &slot, &ws, &cid,
+                        &queue, &runtime, pipe, session_id.as_deref(), &slot, &ws, &cid,
                         &mut accumulated, &mut accumulated_tools,
                     ).await;
                 }
@@ -695,12 +705,18 @@ async fn run_to_completion(
                     let mut terminal = false;
                     for event in runtime.parse_stream_line(&line) {
                         match event {
-                            ChatEvent::Session { id } if !session_captured => {
+                            ChatEvent::Session { id } if session_id.is_none() => {
                                 let _ = convs.set_session_id(&pool, &ws, &cid, &id).await;
                                 events
                                     .publish(&ws, CONVERSATION_UPDATE, json!({ "id": &cid }))
                                     .await;
-                                session_captured = true;
+                                session_id = Some(id.clone());
+                                let line = held.take().and_then(|p| runtime.chat_input(&p, Some(&id)));
+                                if let (Some(line), Some(pipe)) = (line, stdin.as_mut()) {
+                                    if let Err(e) = pipe.write_all(line.as_bytes()).await {
+                                        tracing::warn!("write provider stdin: {e}");
+                                    }
+                                }
                                 emit(&slot, WireEvent::Session { id }).await;
                             }
                             ChatEvent::ToolUse { name, input } => {
@@ -745,7 +761,7 @@ async fn run_to_completion(
                     if tools_running > 0 {
                         if let Some(pipe) = stdin.as_mut() {
                             pending_input += inject_queued(
-                                &queue, &runtime, pipe, &slot, &ws, &cid,
+                                &queue, &runtime, pipe, session_id.as_deref(), &slot, &ws, &cid,
                                 &mut accumulated, &mut accumulated_tools,
                             ).await;
                         }
@@ -816,6 +832,7 @@ async fn inject_queued(
     queue: &ConversationService,
     runtime: &Arc<dyn ProviderRuntime>,
     stdin: &mut tokio::process::ChildStdin,
+    session_id: Option<&str>,
     slot: &RunSlot,
     ws: &str,
     cid: &str,
@@ -824,7 +841,7 @@ async fn inject_queued(
 ) -> usize {
     let mut injected = 0;
     while let Ok(Some(msg)) = queue.pop_queued(ws, cid).await {
-        let written = match runtime.chat_input(&msg.content) {
+        let written = match runtime.chat_input(&msg.content, session_id) {
             Some(line) => stdin.write_all(line.as_bytes()).await.is_ok(),
             None => false,
         };

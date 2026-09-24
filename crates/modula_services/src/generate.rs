@@ -72,7 +72,7 @@ impl GenerationService {
             Some(c) => c,
             None => runtime.build_command(&prompt, None),
         };
-        let input = runtime.chat_input(&prompt);
+        let input = runtime.chat_input(&prompt, None);
         // No MODULA_WORKSPACE / MODULA_ENGINE_SOCKET: a text generator has no
         // business driving the engine.
         cmd.current_dir(&ws_dir)

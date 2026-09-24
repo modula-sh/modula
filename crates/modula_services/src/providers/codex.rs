@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::Command;
 
-use serde_json::Value as JsonValue;
+use serde_json::{json, Value as JsonValue};
 
 use super::{program, ChatEvent, ProviderRuntime};
 
@@ -29,6 +29,57 @@ impl ProviderRuntime for CodexRuntime {
         }
         cmd.arg(prompt);
         cmd
+    }
+
+    /// Chat runs use `codex app-server`, which takes turns as JSON-RPC on stdin
+    /// — the only Codex surface where a message can join a running turn. Agent
+    /// runs keep `exec`.
+    fn build_command_chat(&self, _prompt: &str) -> Command {
+        app_server()
+    }
+
+    fn build_command_chat_resume(&self, _prompt: &str, _session_id: &str) -> Command {
+        app_server()
+    }
+
+    /// Requests on one thread run in the order written, so the turn can follow
+    /// the resume without waiting for its reply.
+    fn chat_open(&self, session_id: Option<&str>) -> Option<Vec<String>> {
+        let mut thread = json!({
+            "approvalPolicy": "never",
+            "sandbox": "danger-full-access",
+        });
+        if let Some(m) = &self.model {
+            thread["model"] = json!(m);
+        }
+        let open = match session_id {
+            Some(id) => {
+                thread["threadId"] = json!(id);
+                rpc("thread/resume", thread)
+            }
+            None => rpc("thread/start", thread),
+        };
+        Some(vec![
+            rpc(
+                "initialize",
+                json!({ "clientInfo": { "name": "modula", "title": "Modula", "version": env!("CARGO_PKG_VERSION") } }),
+            ),
+            format!("{}\n", json!({ "method": "initialized" })),
+            open,
+        ])
+    }
+
+    /// `turn/start` rather than `turn/steer`: on a thread with a turn running it
+    /// joins that turn, and on one without it starts the next — the same thing a
+    /// message written just as a turn ends needs.
+    fn chat_input(&self, text: &str, session_id: Option<&str>) -> Option<String> {
+        Some(rpc(
+            "turn/start",
+            json!({
+                "threadId": session_id?,
+                "input": [{ "type": "text", "text": text }],
+            }),
+        ))
     }
 
     fn env_vars(&self) -> Vec<(&'static str, OsString)> {
@@ -81,6 +132,9 @@ impl ProviderRuntime for CodexRuntime {
     }
 
     fn parse_line(&self, v: &JsonValue) -> Vec<ChatEvent> {
+        if v.get("method").is_some() || v.get("id").is_some() {
+            return parse_app_server(v);
+        }
         let t = match v["type"].as_str() {
             Some(t) => t,
             None => return vec![],
@@ -119,6 +173,81 @@ impl ProviderRuntime for CodexRuntime {
             "turn.completed" => vec![ChatEvent::Done],
             _ => vec![],
         }
+    }
+}
+
+fn app_server() -> Command {
+    let mut cmd = Command::new(program("codex"));
+    cmd.arg("app-server");
+    cmd
+}
+
+/// One JSON-RPC request line. Ids only need to be unique; nothing reads replies
+/// but errors.
+fn rpc(method: &str, params: JsonValue) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    format!(
+        "{}\n",
+        json!({ "method": method, "id": id, "params": params })
+    )
+}
+
+/// `codex app-server` notifications, and error replies to the requests above.
+fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
+    if let Some(message) = v["error"]["message"].as_str() {
+        return vec![ChatEvent::Error {
+            message: message.to_string(),
+        }];
+    }
+    let p = &v["params"];
+    let item = &p["item"];
+    match v["method"].as_str().unwrap_or("") {
+        "thread/started" => match p["thread"]["id"].as_str() {
+            Some(id) => vec![ChatEvent::Session { id: id.to_string() }],
+            None => vec![],
+        },
+        "item/agentMessage/delta" => match p["delta"].as_str() {
+            Some(text) => vec![ChatEvent::Delta {
+                text: text.to_string(),
+            }],
+            None => vec![],
+        },
+        "item/started" => match item["type"].as_str() {
+            Some("commandExecution") => vec![ChatEvent::ToolUse {
+                name: "Bash".to_string(),
+                input: json!({ "command": item["command"] }),
+            }],
+            Some("fileChange") => vec![ChatEvent::ToolUse {
+                name: "Edit".to_string(),
+                input: json!({ "file_path": item["changes"][0]["path"] }),
+            }],
+            Some("mcpToolCall") => vec![ChatEvent::ToolUse {
+                name: item["tool"].as_str().unwrap_or("").to_string(),
+                input: item["arguments"].clone(),
+            }],
+            _ => vec![],
+        },
+        "item/completed" => match item["type"].as_str() {
+            Some("commandExecution" | "fileChange" | "mcpToolCall") => vec![ChatEvent::ToolResult],
+            Some("userMessage") => vec![ChatEvent::InputAccepted],
+            _ => vec![],
+        },
+        "turn/completed" if p["turn"]["status"].as_str() == Some("failed") => {
+            vec![ChatEvent::Error {
+                message: p["turn"]["error"]["message"]
+                    .as_str()
+                    .unwrap_or("turn failed")
+                    .to_string(),
+            }]
+        }
+        "turn/completed" => vec![ChatEvent::Done],
+        "error" if p["willRetry"].as_bool() != Some(true) => vec![ChatEvent::Error {
+            message: p["error"]["message"]
+                .as_str()
+                .unwrap_or("provider error")
+                .to_string(),
+        }],
+        _ => vec![],
     }
 }
 
@@ -258,6 +387,73 @@ type = "local"
             }
             _ => panic!("expected ToolUse"),
         }
+    }
+
+    #[test]
+    fn codex_chat_opens_app_server_and_resumes_thread() {
+        let rt = CodexRuntime {
+            config_dir: "/tmp".into(),
+            model: Some("gpt-5".to_string()),
+        };
+        assert_eq!(
+            args(&rt.build_command_chat_resume("hi", "t1")),
+            &["app-server"]
+        );
+        let open = rt.chat_open(Some("t1")).unwrap();
+        let resume: JsonValue = serde_json::from_str(open[2].trim_end()).unwrap();
+        assert_eq!(resume["method"], "thread/resume");
+        assert_eq!(resume["params"]["threadId"], "t1");
+        assert_eq!(resume["params"]["model"], "gpt-5");
+        assert_eq!(resume["params"]["sandbox"], "danger-full-access");
+    }
+
+    #[test]
+    fn codex_chat_input_waits_for_the_thread() {
+        assert!(codex_rt().chat_input("hi", None).is_none());
+        let line = codex_rt().chat_input("hi", Some("t1")).unwrap();
+        let v: JsonValue = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(v["method"], "turn/start");
+        assert_eq!(v["params"]["threadId"], "t1");
+        assert_eq!(v["params"]["input"][0]["text"], "hi");
+    }
+
+    #[test]
+    fn codex_parse_app_server_turn() {
+        let rt = codex_rt();
+        let parse = |line: &str| rt.parse_stream_line(line);
+        assert!(matches!(
+            &parse(r#"{"method":"thread/started","params":{"thread":{"id":"t1"}}}"#)[..],
+            [ChatEvent::Session { id }] if id == "t1"
+        ));
+        assert!(matches!(
+            &parse(r#"{"method":"item/agentMessage/delta","params":{"delta":"hi"}}"#)[..],
+            [ChatEvent::Delta { text }] if text == "hi"
+        ));
+        assert!(matches!(
+            &parse(r#"{"method":"item/started","params":{"item":{"type":"commandExecution","command":"ls"}}}"#)[..],
+            [ChatEvent::ToolUse { name, .. }] if name == "Bash"
+        ));
+        assert!(matches!(
+            parse(r#"{"method":"item/completed","params":{"item":{"type":"commandExecution"}}}"#)[..],
+            [ChatEvent::ToolResult]
+        ));
+        assert!(matches!(
+            parse(r#"{"method":"item/completed","params":{"item":{"type":"userMessage"}}}"#)[..],
+            [ChatEvent::InputAccepted]
+        ));
+        assert!(matches!(
+            parse(r#"{"method":"turn/completed","params":{"turn":{"status":"completed"}}}"#)[..],
+            [ChatEvent::Done]
+        ));
+        assert!(matches!(
+            &parse(r#"{"id":"x","error":{"code":-32600,"message":"thread not found"}}"#)[..],
+            [ChatEvent::Error { message }] if message == "thread not found"
+        ));
+        assert!(
+            parse(r#"{"method":"error","params":{"willRetry":true,"error":{"message":"x"}}}"#)
+                .is_empty()
+        );
+        assert!(parse(r#"{"id":"x","result":{}}"#).is_empty());
     }
 
     #[test]

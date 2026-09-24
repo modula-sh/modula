@@ -110,16 +110,29 @@ pub trait ProviderRuntime: Send + Sync {
         None
     }
 
+    /// Command for a first chat turn when `build_command_chat_first` is `None`.
+    fn build_command_chat(&self, prompt: &str) -> Command {
+        self.build_command(prompt, None)
+    }
+
     /// Command for chat resume turns; defaults to the standard resume command.
     fn build_command_chat_resume(&self, prompt: &str, session_id: &str) -> Command {
         self.build_command(prompt, Some(session_id))
     }
 
-    /// The stdin line that hands `text` to a chat run, for CLIs that read user
-    /// messages from stdin while a turn is running. When `Some`, the chat
-    /// commands take the prompt this way instead of as an argument, and queued
-    /// messages enter the run mid-turn; `None` means one prompt per process.
-    fn chat_input(&self, _text: &str) -> Option<String> {
+    /// Lines a chat run writes to stdin before any message, for CLIs that read
+    /// user messages from stdin while a turn is running. `Some` means the chat
+    /// commands take the prompt through `chat_input` instead of as an argument,
+    /// and queued messages enter the run mid-turn; `None` means one prompt per
+    /// process.
+    fn chat_open(&self, _session_id: Option<&str>) -> Option<Vec<String>> {
+        None
+    }
+
+    /// The stdin line that hands `text` to a chat run, or `None` while it cannot
+    /// be written yet — a CLI that addresses messages to a session it has not
+    /// announced. The run writes a held prompt once the session id arrives.
+    fn chat_input(&self, _text: &str, _session_id: Option<&str>) -> Option<String> {
         None
     }
 
