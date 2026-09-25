@@ -6,7 +6,7 @@ use std::process::Command;
 
 use serde_json::{json, Value as JsonValue};
 
-use super::{program, ChatEvent, ProviderRuntime};
+use super::{program, read_jsonc, ChatEvent, ProviderRuntime};
 
 /// `config_dir` is the `.gemini` dir itself; the CLI finds it as `$GEMINI_CLI_HOME/.gemini`.
 pub struct GeminiRuntime {
@@ -95,18 +95,6 @@ impl ProviderRuntime for GeminiRuntime {
             _ => vec![],
         }
     }
-}
-
-/// Best-effort JSONC read of `settings.json`; a missing or unparsable file
-/// degrades to an empty object.
-fn read_jsonc(path: &Path) -> JsonValue {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return JsonValue::Object(Default::default());
-    };
-    jsonc_parser::parse_to_serde_value(&text, &jsonc_parser::ParseOptions::default())
-        .ok()
-        .flatten()
-        .unwrap_or(JsonValue::Object(Default::default()))
 }
 
 fn gemini_mcp_summary(config_dir: &Path) -> JsonValue {

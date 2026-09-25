@@ -55,6 +55,18 @@ fn program(name: &str) -> PathBuf {
     modula_platform::which(name).unwrap_or_else(|| PathBuf::from(name))
 }
 
+/// Best-effort JSONC read (comments tolerated); a missing or unparsable file
+/// degrades to an empty object.
+fn read_jsonc(path: &std::path::Path) -> JsonValue {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return JsonValue::Object(Default::default());
+    };
+    jsonc_parser::parse_to_serde_value(&text, &jsonc_parser::ParseOptions::default())
+        .ok()
+        .flatten()
+        .unwrap_or(JsonValue::Object(Default::default()))
+}
+
 /// One selectable model for a provider type, as served by the catalog API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderModel {

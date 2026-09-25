@@ -20,7 +20,7 @@ async fn gemini_provider_agent_completes() -> Result<()> {
     std::fs::create_dir_all(&cfg_dir)?;
     let cfg_str = cfg_dir.to_string_lossy().to_string();
 
-    // Create an gemini-typed provider.
+    // Create a gemini-typed provider.
     let gm_id = h
         .providers()
         .create(CreateProviderRequest {

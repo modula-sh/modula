@@ -361,7 +361,7 @@ fn exe(name: &str) -> String {
     }
 }
 
-/// Install mock-claude as `claude`, `opencode`, and `codex` under `dir`.
+/// Install mock-claude as `claude`, `opencode`, `codex`, and `gemini` under `dir`.
 /// The mock keys on MODULA_AGENT_NAME for recipe lookup, not argv, so one
 /// binary handles all provider types without change.
 fn install_provider_shims(dir: &Path) -> Result<()> {
