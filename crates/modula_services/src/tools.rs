@@ -7,7 +7,7 @@
 
 use modula_platform as platform;
 
-pub const TOOLS: [&str; 4] = ["gh", "claude", "codex", "opencode"];
+pub const TOOLS: [&str; 5] = ["gh", "claude", "codex", "opencode", "gemini"];
 
 pub fn detect() -> Vec<(&'static str, bool)> {
     TOOLS

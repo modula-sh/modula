@@ -16,11 +16,13 @@ use serde_json::Value as JsonValue;
 
 mod claude;
 mod codex;
+mod gemini;
 mod opencode;
 mod service;
 
 use claude::ClaudeRuntime;
 use codex::CodexRuntime;
+use gemini::GeminiRuntime;
 use opencode::OpenCodeRuntime;
 
 pub use service::{CatalogEntry, CreateParams, CreatedProvider, ProviderService, UpdateParams};
@@ -196,6 +198,7 @@ pub(super) fn build(
         "claude" => Some(Arc::new(ClaudeRuntime { config_dir, model })),
         "opencode" => Some(Arc::new(OpenCodeRuntime { config_dir, model })),
         "codex" => Some(Arc::new(CodexRuntime { config_dir, model })),
+        "gemini" => Some(Arc::new(GeminiRuntime { config_dir, model })),
         _ => None,
     }
 }
@@ -257,8 +260,10 @@ mod tests {
     #[test]
     fn from_provider_hydrates_known_type() {
         let tmp = tempfile::tempdir().unwrap();
-        let p = provider("claude", tmp.path().to_str().unwrap());
-        assert!(ProviderService::runtime_from_provider(&p, Some("opus".to_string())).is_ok());
+        for ptype in ["claude", "gemini"] {
+            let p = provider(ptype, tmp.path().to_str().unwrap());
+            assert!(ProviderService::runtime_from_provider(&p, Some("opus".to_string())).is_ok());
+        }
     }
 
     #[test]
@@ -275,8 +280,8 @@ mod tests {
             id: "opus".to_string(),
             label: "Opus".to_string(),
         }];
-        // Claude and Codex use the trait's default (no discovery mechanism).
-        for ptype in ["claude", "codex"] {
+        // These use the trait's default (no discovery mechanism).
+        for ptype in ["claude", "codex", "gemini"] {
             let rt = ProviderService::runtime_for_type(ptype, "/tmp".into()).unwrap();
             assert_eq!(rt.models(static_models.clone()).await, static_models);
         }
