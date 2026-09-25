@@ -53,14 +53,15 @@ pub fn log_summary(path: &Path) -> Option<LogSummary> {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0)
         };
-        // Gemini reports `stats` instead of `usage`, and no cost.
+        // Gemini reports `stats` instead of `usage`, and no cost. Its
+        // `input_tokens` includes `cached`; `input` is the uncached part.
         if event.get("usage").is_none() {
             if let Some(stats) = event.get("stats") {
                 return Some(LogSummary {
                     cost_usd: 0.0,
                     duration_ms: int(Some(stats), "duration_ms"),
                     tokens: UsageTokens {
-                        input: int(Some(stats), "input_tokens"),
+                        input: int(Some(stats), "input"),
                         output: int(Some(stats), "output_tokens"),
                         cache_creation: 0,
                         cache_read: int(Some(stats), "cached"),
@@ -99,7 +100,7 @@ mod tests {
             concat!(
                 r#"{"type":"init","session_id":"s1","model":"auto"}"#,
                 "\n",
-                r#"{"type":"result","status":"success","stats":{"total_tokens":36787,"input_tokens":34727,"output_tokens":144,"cached":512,"input":34727,"duration_ms":12992,"tool_calls":2,"models":{}}}"#,
+                r#"{"type":"result","status":"success","stats":{"total_tokens":36787,"input_tokens":34727,"output_tokens":144,"cached":512,"input":34215,"duration_ms":12992,"tool_calls":2,"models":{}}}"#,
                 "\n",
             ),
         )
@@ -107,7 +108,7 @@ mod tests {
         let s = log_summary(&path).unwrap();
         assert_eq!(s.cost_usd, 0.0);
         assert_eq!(s.duration_ms, 12992);
-        assert_eq!(s.tokens.input, 34727);
+        assert_eq!(s.tokens.input, 34215);
         assert_eq!(s.tokens.output, 144);
         assert_eq!(s.tokens.cache_read, 512);
     }
