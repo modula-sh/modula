@@ -27,7 +27,7 @@ The engine is split by layer; each crate depends only on the ones below it.
 
 Test-only: `crates/modula_mock_claude` (a `mock-claude` binary that replays JSON
 recipes as stream-json), `crates/modula_test_support` (the `Harness` that boots
-an engine and shims `claude`/`opencode`/`codex` onto `PATH`), and `tests/e2e`
+an engine and shims `claude`/`opencode`/`codex`/`gemini` onto `PATH`), and `tests/e2e`
 (one integration binary per `tests/*.rs`).
 
 **`apps/engine` depends on `apps/cli`, not the reverse** — the engine ships the
@@ -107,7 +107,7 @@ apps/desktop/
 5. **Spawn = pure Rust.** No bash launcher. `services::spawn` invokes the
    provider binary via `ProviderRuntime::build_command` with provider-specific
    env (`CLAUDE_CONFIG_DIR` + optional `MODULA_CLAUDE_MODEL`;
-   `OPENCODE_CONFIG_DIR` / `CODEX_HOME` + optional `MODULA_PROVIDER_MODEL`) plus
+   `OPENCODE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` + optional `MODULA_PROVIDER_MODEL`) plus
    common env (`MODULA_WORKSPACE`, `MODULA_ENGINE_SOCKET`, `MODULA_AGENT_NAME`,
    `MODULA_AGENT_EXTRA`, `MODULA_LOG_TS`, `MODULA_LOOP_ITER`,
    `MODULA_LOOP_TOTAL`) and `setsid`, so the child survives engine restarts.

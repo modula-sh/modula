@@ -9,6 +9,8 @@ export function defaultConfigDir(type: string): string {
       return "~/.config/opencode";
     case "codex":
       return "~/.codex";
+    case "gemini":
+      return "~/.gemini";
     default:
       return "~/.claude";
   }

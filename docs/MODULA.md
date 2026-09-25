@@ -12,7 +12,7 @@ See also: [`CLI.md`](CLI.md) for the `modula` command reference, [`PLUGINS.md`](
 | **Rust** | Pinned via `rust-toolchain.toml` (channel `1.88`) |
 | **Node** | Node 20+ with `pnpm` or `npm` for the desktop frontend |
 | **Git** | 2.20+ (worktree support) |
-| **At least one provider** | `claude`, `opencode`, or `codex` on `PATH` with a configured account |
+| **At least one provider** | `claude`, `opencode`, `codex`, or `gemini` on `PATH` with a configured account |
 
 ## Build from source
 

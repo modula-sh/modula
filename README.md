@@ -20,7 +20,7 @@ Turn tasks into shipped code with agents.
 
 ## From Ticket to Shipped Code, Autonomously
 
-Modula is an agentic orchestration platform that automates your development workflow end to end. Bring your own coding agents (Claude, Codex, OpenCode, and others) and let them run the whole thing in one place, instead of jumping between your terminal, IDE, AI agents, and issue tracker.
+Modula is an agentic orchestration platform that automates your development workflow end to end. Bring your own coding agents (Claude, Codex, OpenCode, Gemini, and others) and let them run the whole thing in one place, instead of jumping between your terminal, IDE, AI agents, and issue tracker.
 
 - **Your whole workflow in one place**: tickets, agents, code, and review, with no tool-switching
 - **Runs on its own**: agents pick up work automatically as it progresses, not when you prompt them
@@ -42,7 +42,7 @@ Modula is an agentic orchestration platform that automates your development work
 | **Parallel variants** | Explore several solutions to the same task at once, then pick the one you like best |
 | **Isolated by default** | Each variant works in its own isolated branch, so parallel attempts never collide |
 | **Configurable workflow** | Tailor the stages a task moves through to fit your process |
-| **Bring your own model** | Claude, Codex, and OpenCode work out of the box, and you choose the model for each |
+| **Bring your own model** | Claude, Codex, OpenCode, and Gemini work out of the box, and you choose the model for each |
 | **Local and self-hosted models** | Point a provider at a local or self-hosted model to keep everything on your machine |
 | **Live progress** | Watch every agent work in real time |
 | **Works with any tracker** | Pull tasks from Jira, Linear, GitHub Issues, or your own source, kept in sync automatically |
@@ -57,6 +57,7 @@ Bring your own coding agents. Supported providers:
 | [Claude Code](https://github.com/anthropics/claude-code) | Fully supported |
 | [OpenCode](https://github.com/opencode-ai/opencode) | Fully supported |
 | [Codex CLI](https://github.com/openai/codex) | Fully supported |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Fully supported |
 | More coming soon | |
 
 ## Install
