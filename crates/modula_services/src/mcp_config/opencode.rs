@@ -80,7 +80,7 @@ impl McpConfigStrategy for OpenCodeStrategy {
             .ok_or_else(|| {
                 ApiError::BadRequest(format!("{}: mcp is not an object", path.display()))
             })?;
-        reconcile_json(servers, desired, entry);
+        reconcile_json(servers, desired, "url", entry);
         write_atomic(&path, &serde_json::to_string_pretty(&root)?)
     }
 }

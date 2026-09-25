@@ -12,6 +12,7 @@ use modula_core::error::ApiResult;
 
 mod claude;
 mod codex;
+mod gemini;
 mod opencode;
 
 /// A managed HTTP MCP server entry. `auth_token`, when present and non-blank,
@@ -40,6 +41,7 @@ pub fn for_type(provider_type: &str) -> Option<Box<dyn McpConfigStrategy>> {
     match provider_type {
         "claude" => Some(Box::new(claude::ClaudeStrategy)),
         "codex" => Some(Box::new(codex::CodexStrategy)),
+        "gemini" => Some(Box::new(gemini::GeminiStrategy)),
         "opencode" => Some(Box::new(opencode::OpenCodeStrategy)),
         _ => None,
     }
@@ -64,16 +66,17 @@ fn auth_token(server: &McpServer) -> Option<String> {
     }
 }
 
-/// Reconcile a serde_json `mcp`/`mcpServers` map (claude + opencode share this
-/// shape; codex uses toml_edit). Managed entries are those carrying a `url`;
-/// the user's command/stdio entries have none and are left alone.
+/// Reconcile a serde_json `mcp`/`mcpServers` map (claude, opencode and gemini
+/// share this shape; codex uses toml_edit). Managed entries are those carrying
+/// `url_key`; the user's other entries lack it and are left alone.
 fn reconcile_json(
     servers: &mut Map<String, Value>,
     desired: &[McpServer],
+    url_key: &str,
     make_entry: impl Fn(&McpServer) -> Value,
 ) {
     let keep: HashSet<&str> = desired.iter().map(|s| s.key.as_str()).collect();
-    servers.retain(|key, cfg| cfg.get("url").is_none() || keep.contains(key.as_str()));
+    servers.retain(|key, cfg| cfg.get(url_key).is_none() || keep.contains(key.as_str()));
     for server in desired {
         servers.insert(server.key.clone(), make_entry(server));
     }
@@ -109,6 +112,7 @@ mod tests {
     fn for_type_dispatch() {
         assert!(for_type("claude").is_some());
         assert!(for_type("codex").is_some());
+        assert!(for_type("gemini").is_some());
         assert!(for_type("opencode").is_some());
         assert!(for_type("unknown").is_none());
     }
@@ -136,5 +140,5 @@ mod tests {
         );
     }
 
-    // Per-strategy round-trip tests live in claude.rs / codex.rs / opencode.rs.
+    // Per-strategy round-trip tests live in each strategy module.
 }
