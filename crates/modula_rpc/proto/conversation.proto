@@ -16,7 +16,8 @@ service ConversationService {
   // Dropping the stream detaches; the run continues.
   rpc Attach(AttachConversationRequest) returns (stream ConvEvent);
   rpc Cancel(CancelConversationRequest) returns (CancelConversationResponse);
-  // Queue a message for after the in-flight run; sends immediately if idle.
+  // Queue a message for the in-flight run; sends immediately if idle. Runs that
+  // accept stdin input take it mid-turn at a tool boundary.
   rpc Enqueue(EnqueueMessageRequest) returns (QueuedMessagesResponse);
   rpc Dequeue(DequeueMessageRequest) returns (QueuedMessagesResponse);
 }
@@ -69,7 +70,14 @@ message ConvEvent {
     DeltaEvent delta = 3;
     DoneEvent done = 4;
     ErrorEvent error = 5;
+    UserEvent user = 6;
   }
+}
+
+// A queued message taken into the run mid-turn; the reply before it is
+// persisted, so clients refetch and restart their in-flight text.
+message UserEvent {
+  string text = 1;
 }
 
 message SessionEvent {

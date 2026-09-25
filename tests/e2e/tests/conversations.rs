@@ -5,7 +5,7 @@
 use anyhow::Result;
 use modula_rpc::v1::{
     conv_event, AttachConversationRequest, CancelConversationRequest, CreateConversationRequest,
-    DeleteConversationRequest, DequeueMessageRequest, EnqueueMessageRequest,
+    CreateProviderRequest, DeleteConversationRequest, DequeueMessageRequest, EnqueueMessageRequest,
     GetConversationRequest, ListConversationsRequest, SendMessageRequest,
 };
 use modula_test_support::Harness;
@@ -531,6 +531,227 @@ async fn enqueue_empty_message_rejected() -> Result<()> {
         .await
         .expect_err("empty message must be rejected");
     assert_eq!(err.code(), Code::InvalidArgument);
+
+    Ok(())
+}
+
+/// A message queued while a tool runs enters the same turn and leaves the queue.
+#[tokio::test]
+async fn queued_message_enters_the_turn_at_a_tool_boundary() -> Result<()> {
+    let recipe = serde_json::json!({
+        "stream": [
+            {"type": "system", "subtype": "init", "session_id": "inject-session"},
+            {"type": "stream_event", "event": {"type": "content_block_delta",
+                "delta": {"text": "before"}}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": "sleep 1"}}
+            ]}}
+        ],
+        "sleep_ms": 1500,
+        "tail": [
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "content": ""}
+            ]}},
+            {"type": "stream_event", "event": {"type": "content_block_delta",
+                "delta": {"text": "after"}}},
+            {"type": "result", "subtype": "success"}
+        ]
+    })
+    .to_string();
+    let (h, ws, conv_id) = queue_harness(&recipe).await?;
+
+    let mut stream = h
+        .conversations()
+        .send(SendMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "Begin.".to_string(),
+            model: None,
+        })
+        .await?
+        .into_inner();
+    while let Some(ev) = stream.message().await? {
+        if matches!(ev.event, Some(conv_event::Event::ToolUse(_))) {
+            break;
+        }
+    }
+
+    h.conversations()
+        .enqueue(EnqueueMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "change course".to_string(),
+        })
+        .await?;
+
+    let mut saw_user = false;
+    while let Some(ev) = stream.message().await? {
+        match ev.event {
+            Some(conv_event::Event::User(u)) => {
+                assert_eq!(u.text, "change course");
+                saw_user = true;
+            }
+            Some(conv_event::Event::Error(e)) => panic!("run errored: {}", e.message),
+            _ => {}
+        }
+    }
+    assert!(
+        saw_user,
+        "attached clients must hear the message enter the run"
+    );
+
+    let detail = h
+        .conversations()
+        .get(GetConversationRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+        })
+        .await?
+        .into_inner();
+    let transcript: Vec<(&str, &str)> = detail
+        .messages
+        .iter()
+        .map(|m| (m.role.as_str(), m.content.as_str()))
+        .collect();
+    assert_eq!(
+        transcript,
+        [
+            ("user", "Begin."),
+            ("assistant", "before"),
+            ("user", "change course"),
+            ("assistant", "after"),
+        ]
+    );
+    assert!(
+        detail.queued.is_empty(),
+        "an injected message leaves the queue"
+    );
+    assert!(
+        !detail.running,
+        "the run must not hang on the injected message"
+    );
+
+    Ok(())
+}
+
+/// The same through `codex app-server`, then a resumed turn on the same thread.
+#[tokio::test]
+async fn codex_takes_a_queued_message_mid_turn() -> Result<()> {
+    let recipe = serde_json::json!({
+        "stream": [
+            {"method": "item/agentMessage/delta", "params": {"delta": "before"}},
+            {"method": "item/started", "params": {"item":
+                {"type": "commandExecution", "command": "sleep 1"}}}
+        ],
+        "sleep_ms": 1500,
+        "tail": [
+            {"method": "item/completed", "params": {"item": {"type": "commandExecution"}}},
+            {"method": "item/agentMessage/delta", "params": {"delta": "after"}},
+            {"method": "turn/completed", "params": {"turn": {"status": "completed"}}}
+        ]
+    })
+    .to_string();
+    let h = Harness::start_with_env(&[("MODULA_MOCK_RECIPE", &recipe)]).await?;
+    let ws = common::fresh_workspace(&h, "demo").await?;
+    let cfg_dir = h.modula_dir.join("fake-codex");
+    std::fs::create_dir_all(&cfg_dir)?;
+    let provider_id = h
+        .providers()
+        .create(CreateProviderRequest {
+            workspace_id: ws.clone(),
+            name: "Codex".into(),
+            r#type: "codex".into(),
+            config_dir: cfg_dir.to_string_lossy().to_string(),
+            description: None,
+            mcp_servers: vec![],
+        })
+        .await?
+        .into_inner()
+        .id;
+    let conv_id = h
+        .conversations()
+        .create(CreateConversationRequest {
+            workspace_id: ws.clone(),
+            provider_id,
+            title: None,
+            model: None,
+            context: None,
+        })
+        .await?
+        .into_inner()
+        .id;
+
+    let mut stream = h
+        .conversations()
+        .send(SendMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "Begin.".to_string(),
+            model: None,
+        })
+        .await?
+        .into_inner();
+    while let Some(ev) = stream.message().await? {
+        if matches!(ev.event, Some(conv_event::Event::ToolUse(_))) {
+            break;
+        }
+    }
+    h.conversations()
+        .enqueue(EnqueueMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "change course".to_string(),
+        })
+        .await?;
+    let (_, done, error) = drain(stream).await?;
+    assert!(done && !error, "the codex turn must finish cleanly");
+
+    let detail = h
+        .conversations()
+        .get(GetConversationRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+        })
+        .await?
+        .into_inner();
+    let transcript: Vec<(&str, &str)> = detail
+        .messages
+        .iter()
+        .map(|m| (m.role.as_str(), m.content.as_str()))
+        .collect();
+    assert_eq!(
+        transcript,
+        [
+            ("user", "Begin."),
+            ("assistant", "before"),
+            ("user", "change course"),
+            ("assistant", "after"),
+        ]
+    );
+    assert_eq!(detail.session_id.as_deref(), Some("mock-thread"));
+    assert!(detail.queued.is_empty());
+
+    let stream = h
+        .conversations()
+        .send(SendMessageRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+            message: "Again.".to_string(),
+            model: None,
+        })
+        .await?
+        .into_inner();
+    let (_, done, error) = drain(stream).await?;
+    assert!(done && !error, "the resumed codex turn must finish cleanly");
+    let detail = h
+        .conversations()
+        .get(GetConversationRequest {
+            workspace_id: ws.clone(),
+            conversation_id: conv_id.clone(),
+        })
+        .await?
+        .into_inner();
+    assert_eq!(detail.messages.len(), 6);
 
     Ok(())
 }

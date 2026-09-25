@@ -3,7 +3,9 @@
 //!   - Emits each `stream[]` entry as one stream-json line to stdout.
 //!   - Optionally appends a line to a workspace-relative file (one mutation
 //!     kind: `append_line`, used by the loop tests to count iterations).
-//!   - Sleeps `sleep_ms`, then exits with `exit_code`.
+//!   - Sleeps `sleep_ms`, emits `tail[]`, then exits with `exit_code`.
+//!   - Acknowledges stdin messages like `claude --replay-user-messages` or
+//!     `codex app-server`, and waits for the first before streaming.
 //!
 //! All paths resolve relative to the current directory, which the engine sets
 //! to the workspace dir (`<modula>/<slug>`) for every spawn — the same place a
@@ -30,6 +32,8 @@ struct Recipe {
     #[serde(default)]
     sleep_ms: u64,
     #[serde(default)]
+    tail: Vec<Json>,
+    #[serde(default)]
     exit_code: i32,
 }
 
@@ -54,10 +58,14 @@ fn main() -> ExitCode {
     record_argv(&ws_dir);
 
     let recipe = load_recipe(&ws_dir);
-    emit_stream(&recipe);
+    if env::args().any(|a| a == "--input-format" || a == "app-server") {
+        serve_stdin();
+    }
+    emit_stream(&recipe.stream);
     if recipe.sleep_ms > 0 {
         thread::sleep(Duration::from_millis(recipe.sleep_ms));
     }
+    emit_stream(&recipe.tail);
     for m in &recipe.mutations {
         if let Err(e) = apply_mutation(&ws_dir, m) {
             eprintln!("mock-claude: mutation failed for {}: {}", m.file, e);
@@ -126,10 +134,47 @@ fn default_recipe() -> Recipe {
     }
 }
 
-fn emit_stream(recipe: &Recipe) {
-    for event in &recipe.stream {
+fn emit_stream(events: &[Json]) {
+    for event in events {
         println!("{}", serde_json::to_string(event).unwrap_or_default());
     }
+}
+
+/// Answer stdin in the background, returning once the first message is in.
+fn serve_stdin() {
+    let codex = env::args().any(|a| a == "app-server");
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        for line in std::io::stdin().lines().map_while(Result::ok) {
+            let Ok(mut v) = serde_json::from_str::<Json>(&line) else {
+                continue;
+            };
+            let is_message = !codex || v["method"] == "turn/start";
+            let reply = if !codex {
+                v["isReplay"] = Json::Bool(true);
+                Some(v)
+            } else {
+                match v["method"].as_str() {
+                    Some("thread/start") => Some(serde_json::json!({
+                        "method": "thread/started",
+                        "params": { "thread": { "id": "mock-thread" } },
+                    })),
+                    Some("turn/start") => Some(serde_json::json!({
+                        "method": "item/completed",
+                        "params": { "item": { "type": "userMessage", "content": v["params"]["input"] } },
+                    })),
+                    _ => None,
+                }
+            };
+            if let Some(reply) = reply {
+                println!("{reply}");
+            }
+            if is_message {
+                let _ = tx.send(());
+            }
+        }
+    });
+    let _ = rx.recv();
 }
 
 fn record_argv(ws_dir: &Path) {

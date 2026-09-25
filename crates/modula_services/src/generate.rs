@@ -5,7 +5,7 @@
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -72,10 +72,15 @@ impl GenerationService {
             Some(c) => c,
             None => runtime.build_command(&prompt, None),
         };
+        let input = runtime.chat_input(&prompt, None);
         // No MODULA_WORKSPACE / MODULA_ENGINE_SOCKET: a text generator has no
         // business driving the engine.
         cmd.current_dir(&ws_dir)
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         for (k, v) in runtime.env_vars() {
@@ -87,6 +92,13 @@ impl GenerationService {
         let mut child = tokio_cmd
             .spawn()
             .map_err(|e| ApiError::Internal(format!("spawn provider: {e}")))?;
+        // Dropped once written: EOF ends the run after one turn.
+        if let (Some(line), Some(mut stdin)) = (input, child.stdin.take()) {
+            stdin
+                .write_all(line.as_bytes())
+                .await
+                .map_err(|e| ApiError::Internal(format!("write provider stdin: {e}")))?;
+        }
         let stdout = child
             .stdout
             .take()

@@ -11,6 +11,8 @@ export interface ChatStreamState {
   inFlightTools: InFlightTool[];
   streaming: boolean;
   error: string | null;
+  // Bumped when a queued message enters the run, which persists the reply so far.
+  injected: number;
 }
 
 const EMPTY: ChatStreamState = {
@@ -18,6 +20,7 @@ const EMPTY: ChatStreamState = {
   inFlightTools: [],
   streaming: false,
   error: null,
+  injected: 0,
 };
 
 interface StreamApi {
@@ -39,6 +42,7 @@ type ConvEvent =
   | { kind: "session"; id: string }
   | { kind: "tooluse"; name: string; input: unknown }
   | { kind: "delta"; text: string }
+  | { kind: "user"; text: string }
   | { kind: "done" }
   | { kind: "error"; message: string }
   | { kind: "unknown" };
@@ -102,6 +106,16 @@ export function ConversationStreamProvider({ children }: { children: React.React
           const acc = (textAcc.current.get(convId) ?? "") + ev.text;
           textAcc.current.set(convId, acc);
           patch(convId, (s) => ({ ...s, inFlightText: acc, streaming: true }));
+        } else if (ev.kind === "user") {
+          textAcc.current.set(convId, "");
+          toolsAcc.current.set(convId, []);
+          patch(convId, (s) => ({
+            ...s,
+            inFlightText: "",
+            inFlightTools: [],
+            streaming: true,
+            injected: s.injected + 1,
+          }));
         } else if (ev.kind === "done") {
           finishOk();
         } else if (ev.kind === "error") {
@@ -193,6 +207,7 @@ export function useConversationStream(ws: string, convId: string) {
     inFlightTools: state.inFlightTools,
     streaming: state.streaming,
     error: state.error,
+    injected: state.injected,
     send: useCallback(
       (text: string, model?: string | null) => ctx.api.send(ws, convId, text, model),
       [ctx.api, ws, convId],

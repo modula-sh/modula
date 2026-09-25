@@ -73,6 +73,9 @@ pub enum ChatEvent {
         name: String,
         input: serde_json::Value,
     },
+    ToolResult,
+    /// A message written to stdin was taken into the conversation.
+    InputAccepted,
     Done,
     Error {
         message: String,
@@ -106,9 +109,26 @@ pub trait ProviderRuntime: Send + Sync {
         None
     }
 
+    /// Command for a first chat turn when `build_command_chat_first` is `None`.
+    fn build_command_chat(&self, prompt: &str) -> Command {
+        self.build_command(prompt, None)
+    }
+
     /// Command for chat resume turns; defaults to the standard resume command.
     fn build_command_chat_resume(&self, prompt: &str, session_id: &str) -> Command {
         self.build_command(prompt, Some(session_id))
+    }
+
+    /// Lines written to stdin before any message. `Some` means the chat takes its
+    /// messages through `chat_input`, mid-turn included; `None`, one prompt per process.
+    fn chat_open(&self, _session_id: Option<&str>) -> Option<Vec<String>> {
+        None
+    }
+
+    /// The stdin line carrying `text`, or `None` until the provider announces a
+    /// session id it needs.
+    fn chat_input(&self, _text: &str, _session_id: Option<&str>) -> Option<String> {
+        None
     }
 
     /// Environment variables for spawned provider processes (config-dir

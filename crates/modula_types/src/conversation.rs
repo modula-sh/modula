@@ -120,6 +120,8 @@ pub enum ConvEvent {
     ToolUse { name: String, input: Value },
     #[serde(rename = "delta")]
     Delta { text: String },
+    #[serde(rename = "user")]
+    User { text: String },
     #[serde(rename = "done")]
     Done,
     #[serde(rename = "error")]
@@ -138,6 +140,7 @@ impl From<pb::ConvEvent> for ConvEvent {
                 input: t.input.map(struct_to_json).unwrap_or(Value::Null),
             },
             Some(Event::Delta(d)) => ConvEvent::Delta { text: d.text },
+            Some(Event::User(u)) => ConvEvent::User { text: u.text },
             Some(Event::Done(_)) => ConvEvent::Done,
             Some(Event::Error(err)) => ConvEvent::Error {
                 message: err.message,
@@ -157,6 +160,7 @@ impl From<ConvEvent> for pb::ConvEvent {
                 input: json_to_struct(input),
             })),
             ConvEvent::Delta { text } => Some(Event::Delta(pb::DeltaEvent { text })),
+            ConvEvent::User { text } => Some(Event::User(pb::UserEvent { text })),
             ConvEvent::Done => Some(Event::Done(pb::DoneEvent {})),
             ConvEvent::Error { message } => Some(Event::Error(pb::ErrorEvent { message })),
             ConvEvent::Unknown => None,
