@@ -1,22 +1,21 @@
-# Modula — Dashboard repo (Rust)
+# Modula: dashboard repo (Rust)
 
-One-binary desktop app for the Modula AI software factory. Structured state lives
-in a single global SQLite DB at `~/.modula/db.sqlite`; markdown artifacts (spec
-folders, logs, wiki) live under `~/.modula/<workspace>/`.
+One-binary desktop app for the Modula AI software factory.
 
-The engine serves gRPC over a local IPC socket — no TCP port. The desktop app and
-the `modula` CLI are both clients of it.
+- Structured state lives in one global SQLite DB at `~/.modula/db.sqlite`.
+- Markdown artifacts (spec folders, logs, wiki) live under `~/.modula/<workspace>/`.
+- The engine serves gRPC over a local IPC socket, not a TCP port. The desktop app and the `modula` CLI are both its clients.
 
 ## Read before editing
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — crate layout, where things
-  live, and the rules that govern edits. **Start here.**
-- [`docs/PLUGINS.md`](docs/PLUGINS.md) — the plugin seam and the
-  open-source/proprietary split (`plugins/remote`, `../modula-plugins`).
-- [`docs/CLI.md`](docs/CLI.md) — the `modula` command reference.
-- [`docs/MODULA.md`](docs/MODULA.md) — requirements, packaging, configuration.
+| Doc | Covers |
+| --- | --- |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Crate layout, where things live, and the rules for edits. **Start here.** |
+| [`docs/PLUGINS.md`](docs/PLUGINS.md) | The plugin seam and the open-source/proprietary split (`plugins/remote`, `../modula-plugins`). |
+| [`docs/CLI.md`](docs/CLI.md) | The `modula` command reference. |
+| [`docs/MODULA.md`](docs/MODULA.md) | Requirements, packaging, configuration. |
 
-## Run / dev
+## Run and develop
 
 ```bash
 bash scripts/dev.sh                          # engine + Vite + Tauri shell
@@ -28,25 +27,24 @@ cargo test --workspace -- --test-threads=1   # single-threaded: each E2E test bo
 cargo tauri dev --manifest-path apps/desktop/src-tauri/Cargo.toml   # shell only
 ```
 
-## Before committing
+## Pass CI before committing
 
-Run what CI gates on, or the PR will fail:
+Run what CI gates on, or the PR fails.
 
-- Rust: `cargo fmt --all`, then `cargo clippy --workspace --all-targets -- -D warnings`
-- Frontend (`apps/desktop`): `pnpm exec biome check --write .`, then `pnpm build`
+- Rust: `cargo fmt --all`, then `cargo clippy --workspace --all-targets -- -D warnings`.
+- Frontend (`apps/desktop`): `pnpm exec biome check --write .`, then `pnpm build`.
 
-### Commit messages
+### Write the commit message
 
-- Conventional Commits: `<type>[optional scope]: <description>` (`feat`, `fix`,
-  `docs`, `refactor`, `chore`, `test`, `perf`, `ci`).
-- One line; add a short body only when the *why* isn't obvious from the diff.
+- Use Conventional Commits: `<type>[optional scope]: <description>`. Types: `feat`, `fix`, `docs`, `refactor`, `chore`, `test`, `perf`, `ci`.
+- Write one line. Add a short body only when the diff doesn't show the *why*.
 - No `Co-Authored-By` trailer.
 
-```
+```text
 feat(conversations): derive chat title from first user message
 fix(spawn): validate provider config_dir before launching child
 ```
 
-### Pull requests
+### Write the pull request
 
-Concise: what changed and why, not a play-by-play. No co-author line.
+State what changed and why, not a play-by-play. No co-author line.

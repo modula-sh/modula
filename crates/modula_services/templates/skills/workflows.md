@@ -1,41 +1,38 @@
 ## Skill: Workflows & Roadmap
 
-The roadmap moves a task through a config-driven pipeline. **Never hardcode
-status keys** — read the valid keys from config:
+The roadmap moves a task through a pipeline defined in config. **Never hardcode status keys.** Read them from config:
 
-    modula config get        # the `pipeline` section lists every status key
+```sh
+modula config get        # the `pipeline` section lists every status key
+```
 
-### Claiming and transitioning
+### Claim and transition work
 
-Claim work by advancing the roadmap (task-level) and/or a variant status before
-doing anything else, so concurrent runs don't double-work.
+Claim work before doing anything else, so concurrent runs don't duplicate it. Claim by advancing the roadmap (task-level) status, a variant status, or both.
 
-    # Roadmap (task-level) status. A body with status / notes / depends_on
-    # routes to the roadmap; the task's current pipeline status is shown in
-    # `modula task get`.
-    modula task patch <task-id> '{"status":"<key>"}'
+```sh
+# Set the roadmap status. A body with status, notes, or depends_on routes to the roadmap.
+modula task patch <task-id> '{"status":"<key>"}'
 
-    # Read the task's current roadmap status.
-    modula task get <task-id>
+# Read the task's current roadmap status.
+modula task get <task-id>
+```
 
-### Typical pipeline flow
+### Follow the pipeline
 
-`planning` → `ready_for_research` → `researching` → `ready_for_workers`
-(per-variant) → `in_progress` → `ready_for_review` → `in_review` →
-`ready_for_acceptance` → human acceptance. Each agent advances only the
-transitions it owns; check your role's instructions for which.
+`planning` → `ready_for_research` → `researching` → `ready_for_workers` (per variant) → `in_progress` → `ready_for_review` → `in_review` → `ready_for_acceptance` → human acceptance.
 
-### Status semantics
+Each agent advances only the transitions it owns. Your role's instructions list yours.
 
-- `needs_clarification` — soft pause; a human answers and flips the task back to
-  `ready_for_research`.
-- `blocked` — hard stop; the task can't proceed as written. Set it with a
-  `notes` body explaining why (`'{"status":"blocked","notes":"…"}'`); don't
-  abandon the row silently.
+### Pause or stop a task
 
-### Discipline
+| Status | Meaning |
+| --- | --- |
+| `needs_clarification` | Soft pause. A human answers and sets the task back to `ready_for_research`. |
+| `blocked` | Hard stop: the task can't proceed as written. Set it with a `notes` body that says why: `'{"status":"blocked","notes":"…"}'`. Never abandon the task silently. |
 
-- Make **one** roadmap-claim write per run (only if not already claimed).
-- Only emit transitions your role is allowed to make.
-- After your writes, the dispatcher routes the resulting events to the next
-  agent — don't spawn anything yourself.
+### Rules
+
+- Make **one** roadmap claim per run, and only if the task isn't already claimed.
+- Emit only the transitions your role owns.
+- The dispatcher routes your writes to the next agent. Never spawn agents yourself.
