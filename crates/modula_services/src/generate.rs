@@ -67,7 +67,8 @@ impl GenerationService {
 
         let prompt = compose_prompt(&params.instruction, params.field_label.as_deref());
         // Only the chat-first command passes Claude's `--include-partial-messages`,
-        // without which it emits no deltas. codex/opencode return None here.
+        // without which it emits no deltas. gemini also returns Some (preset
+        // `--session-id`); codex/opencode return None.
         let mut cmd = match runtime.build_command_chat_first(&prompt, &Uuid::new_v4().to_string()) {
             Some(c) => c,
             None => runtime.build_command(&prompt, None),

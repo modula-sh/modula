@@ -251,3 +251,51 @@ async fn opencode_mcp_roundtrip() -> Result<()> {
     assert_eq!(err.code(), Code::InvalidArgument);
     Ok(())
 }
+
+#[tokio::test]
+async fn gemini_mcp_roundtrip() -> Result<()> {
+    let h = Harness::start().await?;
+    let ws = common::fresh_workspace(&h, "demo").await?;
+    let dir = h.modula_dir.join(".gemini");
+    std::fs::create_dir_all(&dir)?;
+    let file = dir.join("settings.json");
+    std::fs::write(
+        &file,
+        serde_json::to_string_pretty(&json!({
+            "general": { "vimMode": true },
+            "mcpServers": {
+                "local-tool": { "command": "node", "args": ["x.js"] }
+            }
+        }))?,
+    )?;
+
+    let id = create_typed(
+        &h,
+        &ws,
+        "p-gemini",
+        "gemini",
+        &dir,
+        vec![mcp("atlassian", ATLASSIAN_URL, Some("tok-1"))],
+    )
+    .await?;
+
+    let servers = get_mcp(&h, &ws, &id).await?;
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0].url, ATLASSIAN_URL);
+    assert_eq!(servers[0].auth_token.as_deref(), Some("Bearer tok-1"));
+
+    // Streamable HTTP is `httpUrl` (plain `url` means SSE to Gemini).
+    let disk: Json = serde_json::from_str(&std::fs::read_to_string(&file)?)?;
+    assert_eq!(disk["general"]["vimMode"], true);
+    assert_eq!(disk["mcpServers"]["local-tool"]["command"], "node");
+    let atl = &disk["mcpServers"]["atlassian"];
+    assert_eq!(atl["httpUrl"], ATLASSIAN_URL);
+    assert!(atl.get("url").is_none());
+    assert_eq!(atl["headers"]["Authorization"], "Bearer tok-1");
+
+    put_mcp(&h, &ws, &id, vec![]).await?;
+    let disk: Json = serde_json::from_str(&std::fs::read_to_string(&file)?)?;
+    assert!(disk["mcpServers"].get("atlassian").is_none());
+    assert_eq!(disk["mcpServers"]["local-tool"]["command"], "node");
+    Ok(())
+}

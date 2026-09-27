@@ -52,7 +52,7 @@ export function ProviderFields({
       </Field>
       <Field
         label="Type"
-        description="Which CLI tool this provider drives (claude, codex, opencode)."
+        description="Which CLI tool this provider drives (claude, codex, opencode, gemini)."
       >
         <DropdownSelect
           variant="field"
@@ -68,7 +68,11 @@ export function ProviderFields({
       </Field>
       <Field
         label="Config dir"
-        description="Directory the provider reads its config and credentials from."
+        description={
+          state.type === "gemini"
+            ? "Gemini reads a directory named .gemini, e.g. ~/.gemini."
+            : "Directory the provider reads its config and credentials from."
+        }
       >
         <FileInput
           value={state.config_dir}

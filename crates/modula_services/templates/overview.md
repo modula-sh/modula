@@ -375,13 +375,13 @@ The engine is the only spawner of agents. For each invocation (manual, scheduled
 - Builds the env:
   - `MODULA_WORKSPACE` — the workspace id (also the directory name)
   - `MODULA_ENGINE_SOCKET` — path to the engine's local IPC socket (the `modula` CLI resolves it automatically)
-  - `CLAUDE_CONFIG_DIR` / `OPENCODE_CONFIG_DIR` — the resolved provider's config dir (name depends on provider type)
+  - `CLAUDE_CONFIG_DIR` / `OPENCODE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` — the resolved provider's config dir (name depends on provider type; `GEMINI_CLI_HOME` is the parent of the `.gemini` dir)
   - `MODULA_AGENT_EXTRA` — rendered "Inputs for this run" block, built from the agent's declared `args[]`
   - `MODULA_LOG_TS` — log file naming
   - `MODULA_LOOP_ITER` + `MODULA_LOOP_TOTAL` — 1-based current iteration and configured total (both `1` for non-looping agents)
-  - Optional `MODULA_CLAUDE_MODEL` (claude) / `MODULA_PROVIDER_MODEL` (opencode)
+  - Optional `MODULA_CLAUDE_MODEL` (claude) / `MODULA_PROVIDER_MODEL` (opencode, codex, gemini)
 - Opens a log file at `<workspace>/logs/<agent>[-<tag>]-<ts>.log`.
-- Spawns the provider binary (e.g. `claude` or `opencode run`) via `ProviderRuntime::build_command`, as a detached child (`setsid`). The process survives engine restarts.
+- Spawns the provider binary (e.g. `claude`, `opencode run`, or `gemini -p`) via `ProviderRuntime::build_command`, as a detached child (`setsid`). The process survives engine restarts.
 
 Providers are rows in the `providers` table — each entry pairs an opaque `id` (UUID) with a human-readable `name` (e.g. "claude-personal"), a config dir, and a provider type. Many agents can share one provider.
 

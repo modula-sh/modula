@@ -1,5 +1,6 @@
 import { ClaudeIcon } from "../components/icons/ClaudeIcon";
 import { CodexIcon } from "../components/icons/CodexIcon";
+import { GeminiIcon } from "../components/icons/GeminiIcon";
 import { GenericProviderIcon } from "../components/icons/GenericProviderIcon";
 import { OpenCodeIcon } from "../components/icons/OpenCodeIcon";
 
@@ -16,6 +17,7 @@ export const PROVIDER_TYPES: ProviderType[] = [
   { id: "claude", label: "Claude", color: "#D97757", Icon: ClaudeIcon },
   { id: "codex", label: "Codex", color: "#000000", Icon: CodexIcon },
   { id: "opencode", label: "OpenCode", color: "#4B4646", Icon: OpenCodeIcon },
+  { id: "gemini", label: "Gemini", color: "#8E75B2", Icon: GeminiIcon },
 ];
 
 const BY_ID: Record<string, ProviderType> = Object.fromEntries(

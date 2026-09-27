@@ -5,25 +5,32 @@ use serde_json::{json, Map, Value};
 use super::{auth_token, reconcile_json, write_atomic, McpConfigStrategy, McpServer};
 use modula_core::error::{ApiError, ApiResult};
 
-pub struct ClaudeStrategy;
+pub struct GeminiStrategy;
 
-const FILE: &str = ".claude.json";
+const FILE: &str = "settings.json";
 
+/// Gemini picks the transport by key: `httpUrl` is streamable HTTP, `url` is
+/// SSE. We only manage `httpUrl` entries so a hand-written SSE server survives.
+const URL_KEY: &str = "httpUrl";
+
+/// Parse JSONC (Gemini tolerates comments in settings.json).
 fn parse(text: &str) -> ApiResult<Value> {
-    serde_json::from_str(text).map_err(|e| ApiError::BadRequest(format!("{FILE}: {e}")))
+    let parsed: Option<Value> =
+        jsonc_parser::parse_to_serde_value(text, &jsonc_parser::ParseOptions::default())
+            .map_err(|e| ApiError::BadRequest(format!("{FILE}: {e}")))?;
+    Ok(parsed.unwrap_or_else(|| Value::Object(Map::new())))
 }
 
 fn entry(server: &McpServer) -> Value {
     let mut e = Map::new();
-    e.insert("type".into(), json!("http"));
-    e.insert("url".into(), json!(server.url));
+    e.insert(URL_KEY.into(), json!(server.url));
     if let Some(token) = auth_token(server) {
         e.insert("headers".into(), json!({ "Authorization": token }));
     }
     Value::Object(e)
 }
 
-impl McpConfigStrategy for ClaudeStrategy {
+impl McpConfigStrategy for GeminiStrategy {
     fn read(&self, config_dir: &Path) -> ApiResult<Vec<McpServer>> {
         let path = config_dir.join(FILE);
         if !path.is_file() {
@@ -36,7 +43,7 @@ impl McpConfigStrategy for ClaudeStrategy {
         Ok(servers
             .iter()
             .filter_map(|(key, cfg)| {
-                let url = cfg.get("url").and_then(Value::as_str)?;
+                let url = cfg.get(URL_KEY).and_then(Value::as_str)?;
                 let auth_token = cfg
                     .get("headers")
                     .and_then(|h| h.get("Authorization"))
@@ -65,7 +72,7 @@ impl McpConfigStrategy for ClaudeStrategy {
             .or_insert_with(|| Value::Object(Map::new()))
             .as_object_mut()
             .ok_or_else(|| ApiError::BadRequest(format!("{FILE}: mcpServers is not an object")))?;
-        reconcile_json(servers, desired, "url", entry);
+        reconcile_json(servers, desired, URL_KEY, entry);
         write_atomic(&path, &serde_json::to_string_pretty(&root)?)
     }
 }
@@ -94,21 +101,20 @@ mod tests {
             "https://mcp.atlassian.com/v1/mcp",
             Some("tok"),
         )];
-        ClaudeStrategy.apply(tmp.path(), &want).unwrap();
+        GeminiStrategy.apply(tmp.path(), &want).unwrap();
 
         let v = read_file(tmp.path());
-        assert_eq!(v["mcpServers"]["atlassian"]["type"], "http");
         assert_eq!(
-            v["mcpServers"]["atlassian"]["url"],
+            v["mcpServers"]["atlassian"]["httpUrl"],
             "https://mcp.atlassian.com/v1/mcp"
         );
-        // The token is stored with a Bearer prefix.
+        assert!(v["mcpServers"]["atlassian"].get("url").is_none());
         assert_eq!(
             v["mcpServers"]["atlassian"]["headers"]["Authorization"],
             "Bearer tok"
         );
         assert_eq!(
-            ClaudeStrategy.read(tmp.path()).unwrap(),
+            GeminiStrategy.read(tmp.path()).unwrap(),
             vec![srv(
                 "atlassian",
                 "https://mcp.atlassian.com/v1/mcp",
@@ -120,7 +126,7 @@ mod tests {
     #[test]
     fn no_token_omits_headers() {
         let tmp = tempfile::tempdir().unwrap();
-        ClaudeStrategy
+        GeminiStrategy
             .apply(
                 tmp.path(),
                 &[srv("linear", "https://mcp.linear.app/mcp", None)],
@@ -131,89 +137,58 @@ mod tests {
     }
 
     #[test]
-    fn preserves_unrelated_keys_and_command_servers() {
+    fn preserves_unrelated_keys_stdio_and_sse_servers() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join(FILE),
-            serde_json::to_string(&json!({
-                "numStartups": 7,
-                "projects": { "/x": { "foo": 1 } },
-                "mcpServers": {
-                    "local-tool": { "command": "npx", "args": ["x"] },
-                    "old": { "type": "http", "url": "https://old.example/mcp" }
-                }
-            }))
-            .unwrap(),
+            r#"{
+  // user settings
+  "security": { "auth": { "selectedType": "oauth-personal" } },
+  "mcpServers": {
+    "local": { "command": "npx", "args": ["x"] },
+    "sse": { "url": "https://sse.example/sse" },
+    "old": { "httpUrl": "https://old.example/mcp" }
+  }
+}"#,
         )
         .unwrap();
 
-        ClaudeStrategy
+        GeminiStrategy
             .apply(
                 tmp.path(),
-                &[srv(
-                    "github",
-                    "https://api.githubcopilot.com/mcp/",
-                    Some("g"),
-                )],
+                &[srv("github", "https://api.githubcopilot.com/mcp/", None)],
             )
             .unwrap();
 
         let v = read_file(tmp.path());
-        assert_eq!(v["numStartups"], 7);
-        assert_eq!(v["projects"]["/x"]["foo"], 1);
-        // command server survives; managed url server 'old' (absent from desired) is gone.
-        assert_eq!(v["mcpServers"]["local-tool"]["command"], "npx");
+        assert_eq!(v["security"]["auth"]["selectedType"], "oauth-personal");
+        assert_eq!(v["mcpServers"]["local"]["command"], "npx");
+        assert_eq!(v["mcpServers"]["sse"]["url"], "https://sse.example/sse");
         assert!(v["mcpServers"].get("old").is_none());
         assert_eq!(
-            v["mcpServers"]["github"]["url"],
-            "https://api.githubcopilot.com/mcp/"
-        );
-        // read returns only the managed (url-based) entry.
-        assert_eq!(
-            ClaudeStrategy.read(tmp.path()).unwrap(),
-            vec![srv(
-                "github",
-                "https://api.githubcopilot.com/mcp/",
-                Some("Bearer g")
-            )]
-        );
-    }
-
-    #[test]
-    fn edit_url_and_token() {
-        let tmp = tempfile::tempdir().unwrap();
-        ClaudeStrategy
-            .apply(tmp.path(), &[srv("k", "https://a", Some("t1"))])
-            .unwrap();
-        ClaudeStrategy
-            .apply(tmp.path(), &[srv("k", "https://b", Some("t2"))])
-            .unwrap();
-        let v = read_file(tmp.path());
-        assert_eq!(v["mcpServers"]["k"]["url"], "https://b");
-        assert_eq!(
-            v["mcpServers"]["k"]["headers"]["Authorization"],
-            "Bearer t2"
+            GeminiStrategy.read(tmp.path()).unwrap(),
+            vec![srv("github", "https://api.githubcopilot.com/mcp/", None)]
         );
     }
 
     #[test]
     fn delete_clears_all_managed() {
         let tmp = tempfile::tempdir().unwrap();
-        ClaudeStrategy
+        GeminiStrategy
             .apply(
                 tmp.path(),
                 &[srv("a", "https://a", None), srv("b", "https://b", None)],
             )
             .unwrap();
-        ClaudeStrategy.apply(tmp.path(), &[]).unwrap();
-        assert!(ClaudeStrategy.read(tmp.path()).unwrap().is_empty());
+        GeminiStrategy.apply(tmp.path(), &[]).unwrap();
+        assert!(GeminiStrategy.read(tmp.path()).unwrap().is_empty());
     }
 
     #[test]
     fn malformed_file_errors_without_clobbering() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join(FILE), "{ not json").unwrap();
-        let err = ClaudeStrategy.apply(tmp.path(), &[]).unwrap_err();
+        let err = GeminiStrategy.apply(tmp.path(), &[]).unwrap_err();
         assert!(matches!(err, ApiError::BadRequest(_)));
         assert_eq!(
             std::fs::read_to_string(tmp.path().join(FILE)).unwrap(),
@@ -224,7 +199,9 @@ mod tests {
     #[test]
     fn missing_dir_reads_empty() {
         let tmp = tempfile::tempdir().unwrap();
-        let missing = tmp.path().join("nope");
-        assert!(ClaudeStrategy.read(&missing).unwrap().is_empty());
+        assert!(GeminiStrategy
+            .read(&tmp.path().join("nope"))
+            .unwrap()
+            .is_empty());
     }
 }

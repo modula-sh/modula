@@ -1,6 +1,6 @@
 //! Per-agent-run cost + token parsing. Reads the `type: result` event that
-//! Claude emits at the end of every stream-json run. Pure log-file helpers with
-//! no repo/business logic — `RunService::usage` drives them over its runs.
+//! Claude and Gemini emit at the end of every stream-json run. Pure log-file
+//! helpers with no repo/business logic — `RunService::usage` drives them over its runs.
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -48,29 +48,68 @@ pub fn log_summary(path: &Path) -> Option<LogSummary> {
         if event.get("type").and_then(|v| v.as_str()) != Some("result") {
             continue;
         }
-        let usage = event.get("usage");
-        let token = |key: &str| {
-            usage
-                .and_then(|u| u.get(key))
+        let int = |v: Option<&JsonValue>, key: &str| {
+            v.and_then(|u| u.get(key))
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0)
         };
+        // Gemini reports `stats` instead of `usage`, and no cost. Its
+        // `input_tokens` includes `cached`; `input` is the uncached part.
+        if event.get("usage").is_none() {
+            if let Some(stats) = event.get("stats") {
+                return Some(LogSummary {
+                    cost_usd: 0.0,
+                    duration_ms: int(Some(stats), "duration_ms"),
+                    tokens: UsageTokens {
+                        input: int(Some(stats), "input"),
+                        output: int(Some(stats), "output_tokens"),
+                        cache_creation: 0,
+                        cache_read: int(Some(stats), "cached"),
+                    },
+                });
+            }
+        }
+        let usage = event.get("usage");
         return Some(LogSummary {
             cost_usd: event
                 .get("total_cost_usd")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0),
-            duration_ms: event
-                .get("duration_ms")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
+            duration_ms: int(Some(&event), "duration_ms"),
             tokens: UsageTokens {
-                input: token("input_tokens"),
-                output: token("output_tokens"),
-                cache_creation: token("cache_creation_input_tokens"),
-                cache_read: token("cache_read_input_tokens"),
+                input: int(usage, "input_tokens"),
+                output: int(usage, "output_tokens"),
+                cache_creation: int(usage, "cache_creation_input_tokens"),
+                cache_read: int(usage, "cache_read_input_tokens"),
             },
         });
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_summary_reads_gemini_stats() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("run.log");
+        fs::write(
+            &path,
+            concat!(
+                r#"{"type":"init","session_id":"s1","model":"auto"}"#,
+                "\n",
+                r#"{"type":"result","status":"success","stats":{"total_tokens":36787,"input_tokens":34727,"output_tokens":144,"cached":512,"input":34215,"duration_ms":12992,"tool_calls":2,"models":{}}}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        let s = log_summary(&path).unwrap();
+        assert_eq!(s.cost_usd, 0.0);
+        assert_eq!(s.duration_ms, 12992);
+        assert_eq!(s.tokens.input, 34215);
+        assert_eq!(s.tokens.output, 144);
+        assert_eq!(s.tokens.cache_read, 512);
+    }
 }

@@ -6,7 +6,7 @@ use std::process::Command;
 
 use serde_json::Value as JsonValue;
 
-use super::{program, BoxFuture, ChatEvent, ProviderModel, ProviderRuntime};
+use super::{program, read_jsonc, BoxFuture, ChatEvent, ProviderModel, ProviderRuntime};
 
 pub struct OpenCodeRuntime {
     pub config_dir: PathBuf,
@@ -137,18 +137,6 @@ fn parse_opencode_models(stdout: &str) -> Vec<String> {
         })
         .map(str::to_string)
         .collect()
-}
-
-/// Best-effort JSONC read (comments tolerated) for opencode's `opencode.jsonc`;
-/// a missing or unparsable file degrades to an empty object.
-fn read_jsonc(path: &Path) -> JsonValue {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return JsonValue::Object(Default::default());
-    };
-    jsonc_parser::parse_to_serde_value(&text, &jsonc_parser::ParseOptions::default())
-        .ok()
-        .flatten()
-        .unwrap_or(JsonValue::Object(Default::default()))
 }
 
 fn opencode_mcp_summary(config_dir: &Path) -> JsonValue {

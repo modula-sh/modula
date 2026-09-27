@@ -1,6 +1,6 @@
 //! E2E test harness — boots the engine binary against a tempdir-rooted
 //! workspace root over a unique per-test local IPC socket, prepends provider
-//! shims (`claude`, `opencode`, `codex` → mock-claude) to PATH, and hands out
+//! shims (`claude`, `opencode`, `codex`, `gemini` → mock-claude) to PATH, and hands out
 //! connected gRPC service clients.
 //!
 //! Build artifacts are picked up from the workspace target dir. Each test gets
@@ -361,7 +361,7 @@ fn exe(name: &str) -> String {
     }
 }
 
-/// Install mock-claude as `claude`, `opencode`, and `codex` under `dir`.
+/// Install mock-claude as `claude`, `opencode`, `codex`, and `gemini` under `dir`.
 /// The mock keys on MODULA_AGENT_NAME for recipe lookup, not argv, so one
 /// binary handles all provider types without change.
 fn install_provider_shims(dir: &Path) -> Result<()> {
@@ -374,7 +374,7 @@ fn install_provider_shims(dir: &Path) -> Result<()> {
             mock.display()
         );
     }
-    for name in ["claude", "opencode", "codex"] {
+    for name in ["claude", "opencode", "codex", "gemini"] {
         let shim = dir.join(exe(name));
         #[cfg(unix)]
         std::os::unix::fs::symlink(&mock, &shim)

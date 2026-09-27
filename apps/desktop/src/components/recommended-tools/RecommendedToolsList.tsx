@@ -3,6 +3,7 @@ import { useSystemTools } from "../../queries/system";
 import { errorMessage } from "../../services/client";
 import { ClaudeIcon } from "../icons/ClaudeIcon";
 import { CodexIcon } from "../icons/CodexIcon";
+import { GeminiIcon } from "../icons/GeminiIcon";
 import { GitHubCliIcon } from "../icons/GitHubCliIcon";
 import { OpenCodeIcon } from "../icons/OpenCodeIcon";
 import { openUrl } from "../openUrl";
@@ -15,6 +16,7 @@ const TOOLS: Record<
   claude: { name: "Claude", Icon: ClaudeIcon, installUrl: "https://code.claude.com/docs/en/setup" },
   codex: { name: "Codex", Icon: CodexIcon, installUrl: "https://developers.openai.com/codex/cli" },
   opencode: { name: "OpenCode", Icon: OpenCodeIcon, installUrl: "https://opencode.ai" },
+  gemini: { name: "Gemini CLI", Icon: GeminiIcon, installUrl: "https://geminicli.com" },
 };
 
 /**
