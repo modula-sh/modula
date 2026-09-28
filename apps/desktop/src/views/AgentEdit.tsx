@@ -21,6 +21,7 @@ import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useFeedback } from "../hooks/useFeedback";
 import { contextLabel } from "../lib/contextArgs";
 import type { ProviderModel } from "../lib/providerCatalog";
+import { ProviderTypeIcon } from "../lib/providerTypes";
 import { linesToRules, parseRules, serializeRules } from "../lib/rules";
 import { useAgent, useAgentSkills } from "../queries/agent";
 import { useProviderCatalog } from "../queries/catalog";
@@ -345,7 +346,11 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
               onChange={(v) => patch("provider_id", v)}
               options={[
                 { value: "", label: "Select a provider…" },
-                ...providers.map((p) => ({ value: p.id, label: p.name })),
+                ...providers.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  icon: <ProviderTypeIcon type={p.type} size="2xs" title={p.name} />,
+                })),
               ]}
             />
           </FormField>
