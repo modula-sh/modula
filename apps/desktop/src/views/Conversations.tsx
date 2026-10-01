@@ -6,6 +6,7 @@ import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
 import { Button } from "../components/Button";
 import { ChatInput } from "../components/chat/ChatInput";
 import { ChatInputShell } from "../components/chat/ChatInputShell";
+import { ChatRightSidebar } from "../components/chat/ChatRightSidebar";
 import { ContextPills } from "../components/chat/ContextPills";
 import { MessageList } from "../components/chat/MessageList";
 import { QueuedMessages } from "../components/chat/QueuedMessages";
@@ -13,12 +14,13 @@ import { SendButton } from "../components/chat/SendButton";
 import { DropdownSelect } from "../components/DropdownMenu";
 import { HeaderSlot } from "../components/HeaderSlot";
 import { IconButton } from "../components/IconButton";
-import { useChatSidebar } from "../contexts/ChatSidebarContext";
+import { ChatSidebarPortal, useChatSidebar } from "../contexts/ChatSidebarContext";
 import { useConversationStream } from "../contexts/ConversationStreamProvider";
 import { useSnapshot } from "../contexts/SnapshotContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { ProviderTypeIcon } from "../lib/providerTypes";
 import { useLocalStorage } from "../lib/useLocalStorage";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { useProviderCatalog } from "../queries/catalog";
 import { conversationKeys, useConversation } from "../queries/conversation";
 import { client, errorMessage } from "../services/client";
@@ -62,9 +64,7 @@ export function ConversationsView() {
   }, [providers, providerId]);
 
   // Reset model when provider changes — the previous pick may not exist for the new type.
-  useEffect(() => {
-    setModel(null);
-  }, [providerId]);
+  useResetOnChange(providerId, () => setModel(null));
 
   const providerType = providers.find((p) => p.id === providerId)?.type ?? null;
   const availableModels = providerType
@@ -199,6 +199,8 @@ export function ConversationsView() {
 
 // ─── Thread (/conversations/:id) ───────────────────────────────────────────
 
+const NO_CONTEXT: ConversationContext = {};
+
 export function ConversationDetailPage() {
   const ws = useContext(WorkspaceContext);
   const { snap } = useSnapshot();
@@ -218,11 +220,7 @@ export function ConversationDetailPage() {
     `modula.chat.model.${ws}.${id ?? ""}`,
     null,
   );
-  const {
-    open: sidebarOpen,
-    toggle: toggleSidebar,
-    setConfig: setChatSidebarConfig,
-  } = useChatSidebar();
+  const { open: sidebarOpen, toggle: toggleSidebar } = useChatSidebar();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
@@ -242,10 +240,10 @@ export function ConversationDetailPage() {
 
   // Sync server-loaded messages into local state (which also holds optimistic
   // sends); on first load adopt the conversation's persisted model.
-  useEffect(() => {
+  useResetOnChange(conv, () => {
     setMessages(conv ? conv.messages : []);
     if (conv) setSelectedModel((prev) => (prev === null ? conv.model : prev));
-  }, [conv]);
+  });
 
   const { inFlightText, inFlightTools, streaming, error, injected, send, attach, cancel } =
     useConversationStream(ws, id ?? "");
@@ -273,23 +271,6 @@ export function ConversationDetailPage() {
       queryClient.invalidateQueries({ queryKey: conversationKeys.detail(ws, id) });
     }
   }, [injected, ws, id, queryClient]);
-
-  // Publish config for the layout-level right-sidebar; cleared on unmount.
-  useEffect(() => {
-    setChatSidebarConfig({
-      workspace: ws,
-      context: conv?.context ?? {},
-      refreshNonce: sidebarNonce,
-    });
-  }, [
-    ws,
-    conv?.context?.project,
-    conv?.context?.task,
-    conv?.context?.variant,
-    sidebarNonce,
-    setChatSidebarConfig,
-  ]);
-  useEffect(() => () => setChatSidebarConfig(null), [setChatSidebarConfig]);
 
   const provider = conv
     ? (snap?.config?.providers.find((p) => p.id === conv.provider_id) ?? null)
@@ -326,7 +307,7 @@ export function ConversationDetailPage() {
   // or the message is gone with no signal.
   const [queueError, setQueueError] = useState<string | null>(null);
   // Stream errors are held per conversation id; this one is not, so drop it on navigation.
-  useEffect(() => setQueueError(null), [id]);
+  useResetOnChange(id, () => setQueueError(null));
   const settleQueue = useCallback(
     (p: Promise<unknown>) => {
       p.then(() => setQueueError(null))
@@ -359,11 +340,15 @@ export function ConversationDetailPage() {
     }
   }, [conv, initialMsg, handleSend]);
 
-  useEffect(() => {
+  // Keyed so only a conversation change resets, before the positioning below.
+  const positionedKeyRef = useRef(scrollKey);
+  useLayoutEffect(() => {
+    if (positionedKeyRef.current === scrollKey) return;
+    positionedKeyRef.current = scrollKey;
     initialPositionedRef.current = false;
     userScrolledRef.current = false;
     lastLength.current = 0;
-  }, [ws, id]);
+  }, [scrollKey]);
 
   // Position synchronously before paint to avoid a top-then-bottom scroll flash.
   useLayoutEffect(() => {
@@ -456,6 +441,13 @@ export function ConversationDetailPage() {
           )}
         </IconButton>
       </HeaderSlot>
+      <ChatSidebarPortal>
+        <ChatRightSidebar
+          workspace={ws}
+          context={conv?.context ?? NO_CONTEXT}
+          refreshNonce={sidebarNonce}
+        />
+      </ChatSidebarPortal>
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">

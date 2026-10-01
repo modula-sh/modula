@@ -10,6 +10,7 @@ import { PromptModal } from "../components/PromptModal";
 import { Spinner } from "../components/Spinner";
 import { useShortcut } from "../contexts/ShortcutsContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { useWikiFile, useWikiTree, wikiKeys } from "../queries/wiki";
 import type { WikiFile, WikiFileBody, WikiNode } from "../services/client";
 import { client, errorMessage } from "../services/client";
@@ -107,9 +108,7 @@ export function WikiView() {
 
   // Sync the editable draft from the server copy whenever it (re)loads, and
   // clear it when no file is selected (the query is disabled, `file` undefined).
-  useEffect(() => {
-    setDraft(file ? file.content : null);
-  }, [file]);
+  useResetOnChange(file, () => setDraft(file ? file.content : null));
 
   // Reset selection on workspace switch. The ref guard keeps this off the mount
   // pass, where it would clear a page just deep-linked to.

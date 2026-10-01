@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useResetOnChange } from "../../lib/useResetOnChange";
 import { client } from "../../services/client";
 import type { ProviderMcpEntry, ProviderSummary } from "../../types";
 import type { McpRowState, ProviderFormState } from "./ProviderFields";
@@ -62,9 +63,7 @@ export function useProviderForm(detail: ProviderSummary | null) {
     detail ? formStateFrom(detail) : emptyFormState(),
   );
 
-  useEffect(() => {
-    setState(detail ? formStateFrom(detail) : emptyFormState());
-  }, [detail]);
+  useResetOnChange(detail, () => setState(detail ? formStateFrom(detail) : emptyFormState()));
 
   const patch = useCallback(<K extends keyof ProviderFormState>(k: K, v: ProviderFormState[K]) => {
     setState((s) => ({ ...s, [k]: v }));

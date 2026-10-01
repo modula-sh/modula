@@ -1,7 +1,21 @@
 import { createContext } from "react";
+import type { WorkspaceInfo } from "../types";
 
-/** Current workspace id, available to descendants via useContext. Empty
- * string means "no workspace selected yet" — happens briefly on first load
- * before `WorkspaceService.List` returns. The `useWorkspaceState` hook auto-selects
- * the first available workspace once the list arrives. */
+/** The workspace a subtree belongs to. Each visited workspace mounts its own
+ * layout, so this is fixed for the life of that subtree. */
 export const WorkspaceContext = createContext<string>("");
+
+/** The active workspace, the list, and the switcher, shared by every layout. */
+interface WorkspaceSwitcherValue {
+  active: string;
+  workspaces: WorkspaceInfo[];
+  setWorkspace: (ws: string) => void;
+  refreshWorkspaces: () => void;
+}
+
+export const WorkspaceSwitcherContext = createContext<WorkspaceSwitcherValue>({
+  active: "",
+  workspaces: [],
+  setWorkspace: () => {},
+  refreshWorkspaces: () => {},
+});

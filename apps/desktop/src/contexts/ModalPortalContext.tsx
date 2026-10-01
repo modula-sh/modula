@@ -1,4 +1,5 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext } from "react";
+import { useKeptElement } from "../lib/useKeptElement";
 
 const Ctx = createContext<HTMLDivElement | null>(null);
 
@@ -9,7 +10,7 @@ export function ModalPortalProvider({
   className?: string;
   children: React.ReactNode;
 }) {
-  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const [node, setNode] = useKeptElement<HTMLDivElement>();
   return (
     <Ctx.Provider value={node}>
       <div ref={setNode} className={className}>

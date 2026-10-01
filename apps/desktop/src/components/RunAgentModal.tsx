@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Feedback } from "../hooks/useFeedback";
 import { contextLabel } from "../lib/contextArgs";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import type { AgentConfig } from "../types";
 import { BaseModal } from "./BaseModal";
 import { Button } from "./Button";
@@ -25,9 +26,9 @@ export function RunAgentModal({
 }) {
   const [inputs, setInputs] = useState<Record<string, string>>({});
 
-  useEffect(() => {
+  useResetOnChange(open, () => {
     if (open) setInputs({});
-  }, [open]);
+  });
 
   const requiredOk = agent.args.every((a) => {
     if (!a.required) return true;

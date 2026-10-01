@@ -789,6 +789,16 @@ function buildTheme(padding: string, fontSize: string, height: string, overflowY
   });
 }
 
+/** Effect cleanup that destroys the view only on a real unmount: an <Activity>
+ * hide runs cleanups too, but leaves the host in the document. */
+function teardown(host: HTMLElement, viewRef: { current: EditorView | null }) {
+  return () => {
+    if (host.isConnected) return;
+    viewRef.current?.destroy();
+    viewRef.current = null;
+  };
+}
+
 export function MarkdownEditor({
   value,
   onChange,
@@ -816,10 +826,13 @@ export function MarkdownEditor({
   cbs.current = { onChange, onSave };
 
   useEffect(() => {
-    if (!hostRef.current) return;
+    const host = hostRef.current;
+    if (!host) return;
+    // Survived an <Activity> hide: reuse it, with its scroll, selection and undo.
+    if (viewRef.current) return teardown(host, viewRef);
     const view = new EditorView({
       doc: value,
-      parent: hostRef.current,
+      parent: host,
       extensions: [
         // Vim must come before other keymaps so it can override them.
         ...(vimMode ? [vim()] : []),
@@ -853,10 +866,7 @@ export function MarkdownEditor({
       ],
     });
     viewRef.current = view;
-    return () => {
-      view.destroy();
-      viewRef.current = null;
-    };
+    return teardown(host, viewRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

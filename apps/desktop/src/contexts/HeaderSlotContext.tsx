@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from "react";
+import { useKeptElement } from "../lib/useKeptElement";
 
 type Ctx = {
   el: HTMLElement | null;
@@ -19,8 +20,8 @@ const HeaderSlotContext = createContext<Ctx>({
 });
 
 export function HeaderSlotProvider({ children }: { children: React.ReactNode }) {
-  const [el, setEl] = useState<HTMLElement | null>(null);
-  const [centerEl, setCenterEl] = useState<HTMLElement | null>(null);
+  const [el, setEl] = useKeptElement<HTMLElement>();
+  const [centerEl, setCenterEl] = useKeptElement<HTMLElement>();
   const [centerActive, setCenterActive] = useState(false);
   return (
     <HeaderSlotContext.Provider

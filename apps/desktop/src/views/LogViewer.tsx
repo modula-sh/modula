@@ -9,23 +9,33 @@ export function LogViewer({ name }: { name: string }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const tail = useRef<{ key: string; channel: Channel<string> } | null>(null);
 
   useEffect(() => {
     if (!ws) return;
-    setEntries([]);
-    // One newline-terminated line per chunk from the engine's log-tail stream.
-    const channel = new Channel<string>();
-    channel.onmessage = (chunk) => {
-      const parsed = parseEvent(chunk.trimEnd());
-      if (parsed.length === 0) return;
-      setEntries((prev) => [...prev, ...parsed]);
-    };
-    invoke("log_stream", { workspaceId: ws, logName: name, onChunk: channel }).catch(() => {
-      // Stream ended or the engine went away; nothing to surface here.
-    });
-    // Detaching the channel ends the tail on the engine without affecting the run.
+    const key = `${ws}/${name}`;
+    if (tail.current?.key !== key) {
+      // Detaching the channel ends the tail on the engine without affecting the run.
+      if (tail.current) tail.current.channel.onmessage = () => {};
+      setEntries([]);
+      // One newline-terminated line per chunk from the engine's log-tail stream.
+      const channel = new Channel<string>();
+      channel.onmessage = (chunk) => {
+        const parsed = parseEvent(chunk.trimEnd());
+        if (parsed.length === 0) return;
+        setEntries((prev) => [...prev, ...parsed]);
+      };
+      invoke("log_stream", { workspaceId: ws, logName: name, onChunk: channel }).catch(() => {
+        // Stream ended or the engine went away; nothing to surface here.
+      });
+      tail.current = { key, channel };
+    }
+    const host = scrollRef.current;
     return () => {
-      channel.onmessage = () => {};
+      // Still in the document means hidden, not unmounted: keep tailing.
+      if (host?.isConnected || !tail.current) return;
+      tail.current.channel.onmessage = () => {};
+      tail.current = null;
     };
   }, [ws, name]);
 

@@ -1,5 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext } from "react";
 import { createPortal } from "react-dom";
+import { useKeptElement } from "../lib/useKeptElement";
 
 const Ctx = createContext<{ el: HTMLElement | null; setEl: (el: HTMLElement | null) => void }>({
   el: null,
@@ -9,7 +10,7 @@ const Ctx = createContext<{ el: HTMLElement | null; setEl: (el: HTMLElement | nu
 /** A second content card beside the main one, filled by whichever route wants
  * one. The target sits outside the main card because that is the whole point. */
 export function AsideCardProvider({ children }: { children: React.ReactNode }) {
-  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [el, setEl] = useKeptElement<HTMLElement>();
   return <Ctx.Provider value={{ el, setEl }}>{children}</Ctx.Provider>;
 }
 

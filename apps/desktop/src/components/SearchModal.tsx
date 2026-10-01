@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { SEARCH_KINDS } from "../lib/search";
 import { useDebouncedValue } from "../lib/useDebounced";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { useSearch } from "../queries/search";
 import type { SearchHit, SearchKind } from "../types";
 import { BaseModal } from "./BaseModal";
@@ -33,11 +34,13 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
 
   const hits = data ?? [];
 
-  useEffect(() => {
-    setActive(0);
-  }, [debounced]);
+  useResetOnChange(debounced, () => setActive(0));
 
+  // Once per `active`, so showing a hidden workspace again doesn't re-scroll.
+  const scrolledTo = useRef<number | null>(null);
   useEffect(() => {
+    if (scrolledTo.current === active) return;
+    scrolledTo.current = active;
     activeRef.current?.scrollIntoView({ block: "nearest" });
   }, [active]);
 

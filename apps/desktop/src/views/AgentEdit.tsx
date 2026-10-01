@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AgentIdenticon } from "../components/AgentIdenticon";
 import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
@@ -23,6 +23,7 @@ import { contextLabel } from "../lib/contextArgs";
 import type { ProviderModel } from "../lib/providerCatalog";
 import { ProviderTypeIcon } from "../lib/providerTypes";
 import { linesToRules, parseRules, serializeRules } from "../lib/rules";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { useAgent, useAgentSkills } from "../queries/agent";
 import { useProviderCatalog } from "../queries/catalog";
 import { useProviders } from "../queries/provider";
@@ -145,9 +146,7 @@ function AgentForm({ detail }: { detail: AgentDetail | null }) {
   const optionalSkills = skillCatalog.filter((s) => !s.hidden);
 
   // Re-seed when a different detail arrives (workspace switch, refetch).
-  useEffect(() => {
-    setState(detail ? formStateFrom(detail) : emptyFormState());
-  }, [detail]);
+  useResetOnChange(detail, () => setState(detail ? formStateFrom(detail) : emptyFormState()));
 
   function toggleSkill(slug: string) {
     setState((s) => ({

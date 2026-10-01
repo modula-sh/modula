@@ -1,6 +1,6 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, ChevronUp, FileDiff, GitCommitHorizontal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useRightPanel } from "../../contexts/RightPanelProvider";
 import { useSnapshot } from "../../contexts/SnapshotContext";
@@ -27,7 +27,7 @@ interface ProjectTarget {
 
 // Right-side metadata pane: per-project working-tree diffs + recent commits,
 // scoped to whatever the conversation is about.
-export function ChatRightSidebar({
+export const ChatRightSidebar = memo(function ChatRightSidebar({
   workspace,
   context,
   refreshNonce,
@@ -220,7 +220,7 @@ export function ChatRightSidebar({
       </div>
     </aside>
   );
-}
+});
 
 function PanelSection({
   label,
