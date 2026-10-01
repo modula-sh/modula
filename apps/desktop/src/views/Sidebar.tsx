@@ -30,6 +30,7 @@ import { useSnapshot } from "../contexts/SnapshotContext";
 import { useAppUpdate } from "../hooks/useAppUpdate";
 import { useResetOnChange } from "../lib/useResetOnChange";
 import { client } from "../services/client";
+import { isMac } from "../tauri/window";
 import type { ConversationSummary, WorkspaceInfo } from "../types";
 
 export type NavItem = {
@@ -394,7 +395,16 @@ export function Sidebar({
         <nav className="flex-1 flex flex-col min-h-0 p-2 overflow-x-hidden">
           <div className="shrink-0 space-y-0.5">
             <SidebarItem
-              item={{ label: "Search", icon: <Search size={16} />, onClick: onOpenSearch }}
+              item={{
+                label: "Search",
+                icon: <Search size={16} />,
+                onClick: onOpenSearch,
+                trailing: (
+                  <kbd className="mr-1 px-1 py-px rounded border border-edge font-inter text-[10px] text-fg-subtle">
+                    {isMac() ? "⌘K" : "Ctrl K"}
+                  </kbd>
+                ),
+              }}
               depth={0}
               sidebarOpen={open}
             />
