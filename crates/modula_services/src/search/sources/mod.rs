@@ -6,6 +6,7 @@ pub(super) mod projects;
 pub(super) mod providers;
 pub(super) mod tasks;
 pub(super) mod wiki;
+pub(super) mod workspaces;
 
 use modula_types::{SearchHit, SearchKind};
 

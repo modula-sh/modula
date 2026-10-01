@@ -20,7 +20,7 @@ message SearchResponse {
 }
 
 message SearchHit {
-  // One of: task, agent, project, provider, wiki, conversation.
+  // One of: task, agent, project, provider, wiki, conversation, workspace.
   string kind = 1;
   string id = 2;
   string title = 3;

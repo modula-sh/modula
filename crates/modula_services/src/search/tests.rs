@@ -283,6 +283,49 @@ async fn envelope_only_conversations_do_not_crowd_out_a_real_match() {
 }
 
 #[tokio::test]
+async fn other_workspaces_match_by_name_and_description() {
+    let f = fixture().await;
+    let mut conn = f.env.pool.acquire().await.unwrap();
+    let named = f
+        .repos
+        .workspaces
+        .create(&mut conn, &format!("{NEEDLE} labs"), None)
+        .await
+        .unwrap();
+    let described = f
+        .repos
+        .workspaces
+        .create(&mut conn, "Marketing", Some(&format!("the {NEEDLE} site")))
+        .await
+        .unwrap();
+    drop(conn);
+
+    let hits = f.search(NEEDLE).await;
+    let found = Fixture::of_kind(&hits, SearchKind::Workspace);
+    assert_eq!(found.len(), 2, "{hits:#?}");
+    let by_name = found.iter().find(|h| h.id == named).unwrap();
+    assert_eq!(by_name.field, "title");
+    let by_description = found.iter().find(|h| h.id == described).unwrap();
+    assert_eq!(by_description.field, "description");
+    assert!(!by_description.excerpt.is_empty());
+
+    // The workspace being searched is where you already are, so it never matches.
+    let own = f
+        .repos
+        .workspaces
+        .get(&f.env.pool, &f.env.ws)
+        .await
+        .unwrap();
+    let hits = f.search(&own.name).await;
+    assert!(
+        Fixture::of_kind(&hits, SearchKind::Workspace)
+            .iter()
+            .all(|h| h.id != f.env.ws),
+        "{hits:#?}"
+    );
+}
+
+#[tokio::test]
 async fn agents_projects_and_providers_match_their_own_content_types() {
     let f = fixture().await;
     let provider = f

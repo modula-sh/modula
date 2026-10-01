@@ -1,12 +1,14 @@
-import { BookOpen, Bot, Folder, LayoutGrid, MessageSquare, Server } from "lucide-react";
+import { BookOpen, Bot, Folder, Layers, LayoutGrid, MessageSquare, Server } from "lucide-react";
 import type { SearchKind } from "../types";
 
 /** The single place a new searchable entity has to be taught to the modal.
  * Icons match the sidebar's, so a result reads as the section it lives in. */
 export const SEARCH_KINDS: Record<
   SearchKind,
-  { icon: typeof LayoutGrid; label: string; path: (id: string) => string }
+  /** `path` is absent for a workspace, which is switched to rather than routed to. */
+  { icon: typeof LayoutGrid; label: string; path?: (id: string) => string }
 > = {
+  workspace: { icon: Layers, label: "Workspaces" },
   task: { icon: LayoutGrid, label: "Tasks", path: (id) => `/tasks/${id}` },
   conversation: {
     icon: MessageSquare,

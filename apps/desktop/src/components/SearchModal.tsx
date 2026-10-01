@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { WorkspaceContext } from "../contexts/WorkspaceContext";
+import { WorkspaceContext, WorkspaceSwitcherContext } from "../contexts/WorkspaceContext";
 import { SEARCH_KINDS } from "../lib/search";
 import { useDebouncedValue } from "../lib/useDebounced";
 import { useResetOnChange } from "../lib/useResetOnChange";
@@ -25,6 +25,7 @@ function groupByKind(hits: SearchHit[]) {
 
 export function SearchModal({ onClose }: { onClose: () => void }) {
   const ws = useContext(WorkspaceContext);
+  const { setWorkspace } = useContext(WorkspaceSwitcherContext);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const debounced = useDebouncedValue(query.trim(), DEBOUNCE_MS);
@@ -45,7 +46,9 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
   }, [active]);
 
   function open(hit: SearchHit) {
-    navigate(SEARCH_KINDS[hit.kind].path(hit.id));
+    const { path } = SEARCH_KINDS[hit.kind];
+    if (path) navigate(path(hit.id));
+    else setWorkspace(hit.id);
     onClose();
   }
 
@@ -75,14 +78,14 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Search tasks, conversations, agents..."
+        placeholder="Search workspaces, tasks, conversations, agents..."
         className="w-full bg-transparent border-0 focus:outline-none px-4 py-3 text-sm text-fg placeholder-fg-subtle"
       />
       <div className="border-b border-edge" />
       <div className="max-h-[50vh] overflow-y-auto p-1.5">
         {debounced.length === 0 ? (
           <div className="px-2.5 py-6 text-center text-xs text-fg-subtle">
-            Search tasks, chats, agents, projects, providers and the wiki.
+            Search workspaces, tasks, chats, agents, projects, providers and the wiki.
           </div>
         ) : isFetching && hits.length === 0 ? (
           <div className="flex justify-center py-6">

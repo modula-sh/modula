@@ -13,6 +13,7 @@ pub enum SearchKind {
     Provider,
     Wiki,
     Conversation,
+    Workspace,
 }
 
 impl SearchKind {
@@ -24,6 +25,7 @@ impl SearchKind {
             Self::Provider => "provider",
             Self::Wiki => "wiki",
             Self::Conversation => "conversation",
+            Self::Workspace => "workspace",
         }
     }
 }
@@ -39,6 +41,7 @@ impl FromStr for SearchKind {
             "provider" => Ok(Self::Provider),
             "wiki" => Ok(Self::Wiki),
             "conversation" => Ok(Self::Conversation),
+            "workspace" => Ok(Self::Workspace),
             _ => Err(()),
         }
     }
@@ -148,6 +151,7 @@ mod tests {
             SearchKind::Provider,
             SearchKind::Wiki,
             SearchKind::Conversation,
+            SearchKind::Workspace,
         ] {
             assert_eq!(Ok(kind), kind.as_str().parse());
         }
