@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { NavigationType, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { IconButton } from "../components/IconButton";
 import { WindowControls } from "../components/WindowControls";
 import { useSidebarContext } from "../contexts/SidebarContext";
@@ -10,25 +11,17 @@ import { windowButtons } from "../tauri/window";
 export function Titlebar() {
   const { open, toggle } = useSidebarContext();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  // `location` is read so back/forward recompute on every navigation.
-  const historyIdx = (window.history.state?.idx as number | undefined) ?? 0;
-  void location;
+  const { canBack, canForward } = useHistoryBounds();
 
   return (
     // z-60 keeps the window buttons live above modals; pl clears the macOS lights.
     <header
       className={`relative z-[60] shrink-0 h-[35px] flex items-center gap-1 font-inter select-none ${windowButtons() === "system" ? "pl-[84px]" : "pl-2"}`}
     >
-      <IconButton onClick={() => navigate(-1)} disabled={historyIdx <= 0} title="Back">
+      <IconButton onClick={() => navigate(-1)} disabled={!canBack} title="Back">
         <ChevronLeft size={16} />
       </IconButton>
-      <IconButton
-        onClick={() => navigate(1)}
-        disabled={historyIdx >= window.history.length - 1}
-        title="Forward"
-      >
+      <IconButton onClick={() => navigate(1)} disabled={!canForward} title="Forward">
         <ChevronRight size={16} />
       </IconButton>
       <IconButton
@@ -47,4 +40,23 @@ export function Titlebar() {
       <WindowControls />
     </header>
   );
+}
+
+/** Back/forward availability. The workspace's memory router keeps its history
+ * index private, so mirror the entry stack from location keys. */
+function useHistoryBounds() {
+  const { key } = useLocation();
+  const action = useNavigationType();
+  const [h, setH] = useState({ keys: [key], idx: 0 });
+  if (h.keys[h.idx] !== key) {
+    if (action === NavigationType.Push) {
+      setH({ keys: [...h.keys.slice(0, h.idx + 1), key], idx: h.idx + 1 });
+    } else if (action === NavigationType.Replace) {
+      setH({ keys: h.keys.map((k, i) => (i === h.idx ? key : k)), idx: h.idx });
+    } else {
+      const idx = h.keys.indexOf(key);
+      setH(idx >= 0 ? { keys: h.keys, idx } : { keys: [key], idx: 0 });
+    }
+  }
+  return { canBack: h.idx > 0, canForward: h.idx < h.keys.length - 1 };
 }

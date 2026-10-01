@@ -19,7 +19,13 @@ export function PairDeviceModal({ onClose }: { onClose: () => void }) {
   const mint = useMutation({ mutationFn: () => client.remote.beginPairing() });
   const { mutate } = mint;
 
-  useEffect(() => mutate(), [mutate]);
+  // Once per open: a second mint would swap out the code on screen.
+  const minted = useRef(false);
+  useEffect(() => {
+    if (minted.current) return;
+    minted.current = true;
+    mutate();
+  }, [mutate]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);

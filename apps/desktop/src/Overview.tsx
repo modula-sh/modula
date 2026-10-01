@@ -378,320 +378,431 @@ export default function Overview({ workspace }: { workspace: string }) {
   const snap = useSnapshot(workspace);
   const { mode } = useThemeContext();
 
-  // Snap held in a ref so the scene-construction effect (which reruns on
-  // theme change) can rebuild with the latest data without depending on
-  // `snap` directly — depending on snap would tear the scene down on every
-  // SSE tick.
+  // Snap held in a ref so a scene built on theme change starts from the latest
+  // data without the build effect depending on `snap`.
   const snapRef = useRef<Snapshot | null>(null);
   useEffect(() => {
     snapRef.current = snap;
   }, [snap]);
 
+  // Built once per theme; hiding the workspace only pauses the render loop.
+  const sceneRef = useRef<OverviewScene | null>(null);
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-    while (mount.firstChild) mount.removeChild(mount.firstChild);
-    const palette = PALETTES[mode];
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    const canvas = renderer.domElement;
-    canvas.style.cssText = "display:block;position:absolute;inset:0;width:100%;height:100%;";
-    mount.appendChild(canvas);
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(palette.bg);
-
-    const lookTarget = new THREE.Vector3(0, 0.5, 0);
-    const camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.1, 400);
-    camera.position.copy(lookTarget).add(new THREE.Vector3(50, 50, 50));
-    camera.lookAt(lookTarget);
-
-    // World extents we want visible at any aspect ratio.
-    const TARGET_W = 34;
-    const TARGET_H = 15;
-    function fit() {
-      if (!mount) return;
-      const w = mount.clientWidth || 1;
-      const h = mount.clientHeight || 1;
-      renderer.setSize(w, h, false);
-      const aspect = w / h;
-      const d = Math.max(TARGET_H / 2, TARGET_W / (2 * aspect));
-      camera.left = -d * aspect;
-      camera.right = d * aspect;
-      camera.top = d;
-      camera.bottom = -d;
-      camera.updateProjectionMatrix();
+    if (sceneRef.current?.mode !== mode) {
+      sceneRef.current?.dispose();
+      sceneRef.current = buildScene(mount, mode, snapRef.current);
     }
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(mount);
+    const scene = sceneRef.current;
+    scene.start();
+    return () => {
+      scene.stop();
+      // Still in the document means hidden, not unmounted: keep the scene.
+      if (mount.isConnected) return;
+      scene.dispose();
+      sceneRef.current = null;
+    };
+  }, [mode]);
 
-    // Flat lighting — slabs/tiles get just enough shading to read as solid.
-    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.25);
-    dir.position.set(8, 14, 6);
-    scene.add(dir);
+  useEffect(() => {
+    if (snap) sceneRef.current?.rebuild(snap);
+  }, [snap]);
 
-    scene.add(new THREE.GridHelper(40, 40, palette.grid, palette.grid));
+  return (
+    <main className="flex-1 relative overflow-hidden bg-bg">
+      <div ref={mountRef} className="absolute inset-0" />
+      <HUD snap={snap} mode={mode} />
+    </main>
+  );
+}
 
-    // Stations + flow line are dynamic too: they're rebuilt every snapshot
-    // because the pipeline lives in the DB and may change between ticks.
-    const SLAB_W = 4.2;
-    const SLAB_H = 0.12;
-    const SLAB_D = 3.6;
+interface OverviewScene {
+  mode: ThemeMode;
+  start(): void;
+  stop(): void;
+  rebuild(s: Snapshot): void;
+  dispose(): void;
+}
 
-    const dynGroup = new THREE.Group();
-    scene.add(dynGroup);
+function buildScene(mount: HTMLDivElement, mode: ThemeMode, seed: Snapshot | null): OverviewScene {
+  while (mount.firstChild) mount.removeChild(mount.firstChild);
+  const palette = PALETTES[mode];
 
-    function clearDynamic() {
-      while (dynGroup.children.length) {
-        const c = dynGroup.children[0];
-        dynGroup.remove(c);
-        c.traverse?.((o: THREE.Object3D) => {
-          const m = o as THREE.Mesh;
-          if (m.geometry) m.geometry.dispose?.();
-          const mat = m.material;
-          if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
-          else mat?.dispose?.();
-        });
-      }
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  const canvas = renderer.domElement;
+  canvas.style.cssText = "display:block;position:absolute;inset:0;width:100%;height:100%;";
+  mount.appendChild(canvas);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(palette.bg);
+
+  const lookTarget = new THREE.Vector3(0, 0.5, 0);
+  const camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.1, 400);
+  camera.position.copy(lookTarget).add(new THREE.Vector3(50, 50, 50));
+  camera.lookAt(lookTarget);
+
+  // World extents we want visible at any aspect ratio.
+  const TARGET_W = 34;
+  const TARGET_H = 15;
+  function fit() {
+    if (!mount) return;
+    const w = mount.clientWidth || 1;
+    const h = mount.clientHeight || 1;
+    renderer.setSize(w, h, false);
+    const aspect = w / h;
+    const d = Math.max(TARGET_H / 2, TARGET_W / (2 * aspect));
+    camera.left = -d * aspect;
+    camera.right = d * aspect;
+    camera.top = d;
+    camera.bottom = -d;
+    camera.updateProjectionMatrix();
+  }
+  const ro = new ResizeObserver(fit);
+
+  // Flat lighting — slabs/tiles get just enough shading to read as solid.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.25);
+  dir.position.set(8, 14, 6);
+  scene.add(dir);
+
+  scene.add(new THREE.GridHelper(40, 40, palette.grid, palette.grid));
+
+  // Stations + flow line are dynamic too: they're rebuilt every snapshot
+  // because the pipeline lives in the DB and may change between ticks.
+  const SLAB_W = 4.2;
+  const SLAB_H = 0.12;
+  const SLAB_D = 3.6;
+
+  const dynGroup = new THREE.Group();
+  scene.add(dynGroup);
+
+  function clearDynamic() {
+    while (dynGroup.children.length) {
+      const c = dynGroup.children[0];
+      dynGroup.remove(c);
+      c.traverse?.((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose?.();
+        const mat = m.material;
+        if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
+        else mat?.dispose?.();
+      });
+    }
+  }
+
+  function rebuildFromSnapshot(s: Snapshot) {
+    clearDynamic();
+
+    // Stations — derived from the pipeline config block.
+    const pipeline = s.config?.pipeline ?? [];
+    const stations = buildStations(pipeline);
+
+    // Pipeline flow line connecting station centers.
+    if (stations.length >= 2) {
+      const FIRST_X = stations[0].x;
+      const LAST_X = stations[stations.length - 1].x;
+      const flow = new THREE.Mesh(
+        new THREE.BoxGeometry(LAST_X - FIRST_X, 0.012, 0.06),
+        new THREE.MeshBasicMaterial({ color: palette.flowLine }),
+      );
+      flow.position.set((FIRST_X + LAST_X) / 2, 0.006, 0);
+      dynGroup.add(flow);
     }
 
-    function rebuildFromSnapshot(s: Snapshot) {
-      clearDynamic();
+    // Station slabs — low rectangle + perimeter edge + labels.
+    const stationEdgeMat = new THREE.MeshBasicMaterial({ color: palette.stationEdge });
+    stations.forEach((st) => {
+      const g = new THREE.Group();
+      g.position.set(st.x, 0, 0);
 
-      // Stations — derived from the pipeline config block.
-      const pipeline = s.config?.pipeline ?? [];
-      const stations = buildStations(pipeline);
+      const slab = new THREE.Mesh(
+        new THREE.BoxGeometry(SLAB_W, SLAB_H, SLAB_D),
+        new THREE.MeshStandardMaterial({
+          color: palette.stationBase,
+          roughness: 0.85,
+          metalness: 0.05,
+        }),
+      );
+      slab.position.y = SLAB_H / 2;
+      g.add(slab);
 
-      // Pipeline flow line connecting station centers.
-      if (stations.length >= 2) {
-        const FIRST_X = stations[0].x;
-        const LAST_X = stations[stations.length - 1].x;
-        const flow = new THREE.Mesh(
-          new THREE.BoxGeometry(LAST_X - FIRST_X, 0.012, 0.06),
-          new THREE.MeshBasicMaterial({ color: palette.flowLine }),
+      const eY = SLAB_H + 0.005;
+      const eT = 0.025;
+      const eH = 0.008;
+      const front = new THREE.Mesh(new THREE.BoxGeometry(SLAB_W, eH, eT), stationEdgeMat);
+      front.position.set(0, eY, SLAB_D / 2);
+      g.add(front);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(SLAB_W, eH, eT), stationEdgeMat);
+      back.position.set(0, eY, -SLAB_D / 2);
+      g.add(back);
+      const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, SLAB_D), stationEdgeMat);
+      leftEdge.position.set(-SLAB_W / 2, eY, 0);
+      g.add(leftEdge);
+      const rightEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, SLAB_D), stationEdgeMat);
+      rightEdge.position.set(SLAB_W / 2, eY, 0);
+      g.add(rightEdge);
+
+      const codeLbl = makeTextSprite(st.code, palette.textCode, 28, 700);
+      codeLbl.position.set(0, 1.4, 2.05);
+      g.add(codeLbl);
+      const nameLbl = makeTextSprite(st.name, palette.textName, 56, 700);
+      nameLbl.position.set(0, 0.85, 2.05);
+      g.add(nameLbl);
+
+      dynGroup.add(g);
+    });
+
+    // Project rail — derive from this workspace's config.
+    const projectNames = (s.config?.projects ?? [])
+      .map((p) => p?.name)
+      .filter((n): n is string => typeof n === "string" && n.length > 0);
+    const projects = layoutProjects(projectNames);
+    const projectByName = new Map(projects.map((p) => [p.name, p]));
+
+    const plaqueEdgeMat = new THREE.MeshBasicMaterial({ color: palette.stationEdge });
+    for (const p of projects) {
+      const g = new THREE.Group();
+      g.position.set(p.x, 0, PROJECT_Z);
+
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(PLAQUE_W, PLAQUE_H, PLAQUE_D),
+        new THREE.MeshStandardMaterial({
+          color: palette.stationBase,
+          roughness: 0.85,
+          metalness: 0.05,
+        }),
+      );
+      body.position.y = PLAQUE_H / 2;
+      g.add(body);
+
+      const eY = PLAQUE_H + 0.005;
+      const eT = 0.025;
+      const eH = 0.008;
+      const front = new THREE.Mesh(new THREE.BoxGeometry(PLAQUE_W, eH, eT), plaqueEdgeMat);
+      front.position.set(0, eY, PLAQUE_D / 2);
+      g.add(front);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(PLAQUE_W, eH, eT), plaqueEdgeMat);
+      back.position.set(0, eY, -PLAQUE_D / 2);
+      g.add(back);
+      const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, PLAQUE_D), plaqueEdgeMat);
+      leftEdge.position.set(-PLAQUE_W / 2, eY, 0);
+      g.add(leftEdge);
+      const rightEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, PLAQUE_D), plaqueEdgeMat);
+      rightEdge.position.set(PLAQUE_W / 2, eY, 0);
+      g.add(rightEdge);
+
+      const code = makeTextSprite(p.code, palette.textCode, 24, 700);
+      code.position.set(0, 1.05, 0);
+      g.add(code);
+      const nameLbl = makeTextSprite(p.name, palette.textMeta, 38, 700);
+      nameLbl.position.set(0, 0.55, 0);
+      g.add(nameLbl);
+
+      dynGroup.add(g);
+    }
+
+    const roadmapByTask = new Map<string, RoadmapItem>();
+    s.roadmap.forEach((r) => roadmapByTask.set(r.task, r));
+
+    // Resolve every agent to a task id once (handles workers that ship
+    // only --spec/--branch). Longest ids first inside the helper.
+    const sortedTaskIds = s.tasks.map((t) => t.id).sort((x, y) => y.length - x.length);
+    const agentTaskId = new Map<number, string | null>();
+    for (const a of s.agents) {
+      agentTaskId.set(a.pid, taskIdForAgent(a, sortedTaskIds));
+    }
+
+    const tasksWithAgent = new Set<string>();
+    for (const a of s.agents) {
+      const tid = agentTaskId.get(a.pid);
+      if (tid) tasksWithAgent.add(tid);
+    }
+
+    const byStation = new Map<string, { task: Task; status: string | null; state: TaskState }[]>();
+    // Task id → display name (external_id like "ENG-1234" when present,
+    // otherwise the title). Used to label agent tiles by their task.
+    const taskNiceName = new Map<string, string>();
+    for (const t of s.tasks) {
+      taskNiceName.set(t.id, t.external_id ?? t.title);
+      const { station, status } = stationForTask(t.id, roadmapByTask, stations);
+      const arr = byStation.get(station.key) ?? [];
+      arr.push({ task: t, status, state: taskState(t, status, pipeline) });
+      byStation.set(station.key, arr);
+    }
+
+    // Agent → station: follow the agent's task (if any) to its roadmap
+    // status, then to the station that owns that status. Agents with no
+    // task (e.g. jira-scan, project-manager) dock at the leftmost station.
+    const agentsByStation = new Map<string, Agent[]>();
+    const FALLBACK_STATION = stations[0];
+    for (const a of s.agents) {
+      let stationKey: string = FALLBACK_STATION?.key ?? INBOX_KEY;
+      const tid = agentTaskId.get(a.pid);
+      if (tid) {
+        const r = roadmapByTask.get(tid);
+        if (r) {
+          const st = stations.find((x) => x.statuses.includes(r.status));
+          if (st) stationKey = st.key;
+        }
+      }
+      const arr = agentsByStation.get(stationKey) ?? [];
+      arr.push(a);
+      agentsByStation.set(stationKey, arr);
+    }
+
+    const COLS = 5;
+    const ROWS = 5;
+    const MAX_VISIBLE = COLS * ROWS;
+    const TILE_W = 0.36;
+    const TILE_H = 0.05;
+    const COL_S = 0.62;
+    const ROW_S = 0.55;
+    const TILE_BASE_Y = SLAB_H + 0.005;
+    const TILE_BASE_Z = -1.2;
+
+    // Filled as tasks render so agents drawn later can wire back to them.
+    const taskPos = new Map<string, { px: number; py: number; pz: number }>();
+
+    for (const station of stations) {
+      const tasks = byStation.get(station.key) ?? [];
+      const agents = agentsByStation.get(station.key) ?? [];
+
+      // Front-edge accent — one severity wins, in priority order.
+      let accent: number | null = null;
+      if (tasks.some((t) => t.state === "blocked")) accent = palette.taskBlocked;
+      else if (tasks.some((t) => t.state === "rework")) accent = palette.taskRework;
+      else if (agents.length > 0) accent = palette.stationLive;
+
+      if (accent !== null) {
+        const accentMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(SLAB_W, 0.018, 0.06),
+          new THREE.MeshBasicMaterial({ color: accent }),
         );
-        flow.position.set((FIRST_X + LAST_X) / 2, 0.006, 0);
-        dynGroup.add(flow);
+        accentMesh.position.set(station.x, SLAB_H + 0.018, SLAB_D / 2);
+        dynGroup.add(accentMesh);
       }
 
-      // Station slabs — low rectangle + perimeter edge + labels.
-      const stationEdgeMat = new THREE.MeshBasicMaterial({ color: palette.stationEdge });
-      stations.forEach((st) => {
-        const g = new THREE.Group();
-        g.position.set(st.x, 0, 0);
+      // Tasks — flat tiles in a 5x5 grid on the slab top.
+      const visible = tasks.slice(0, MAX_VISIBLE);
+      visible.forEach((entry, i) => {
+        const col = i % COLS;
+        const row = Math.floor(i / COLS);
+        const px = station.x + (col - (COLS - 1) / 2) * COL_S;
+        const py = TILE_BASE_Y + TILE_H / 2;
+        const pz = TILE_BASE_Z + row * ROW_S;
 
-        const slab = new THREE.Mesh(
-          new THREE.BoxGeometry(SLAB_W, SLAB_H, SLAB_D),
-          new THREE.MeshStandardMaterial({
-            color: palette.stationBase,
-            roughness: 0.85,
-            metalness: 0.05,
-          }),
+        const tile = new THREE.Mesh(
+          new THREE.BoxGeometry(TILE_W, TILE_H, TILE_W),
+          new THREE.MeshBasicMaterial({ color: taskColor(palette, entry.state) }),
         );
-        slab.position.y = SLAB_H / 2;
-        g.add(slab);
+        tile.position.set(px, py, pz);
+        dynGroup.add(tile);
+        taskPos.set(entry.task.id, { px, py, pz });
 
-        const eY = SLAB_H + 0.005;
-        const eT = 0.025;
-        const eH = 0.008;
-        const front = new THREE.Mesh(new THREE.BoxGeometry(SLAB_W, eH, eT), stationEdgeMat);
-        front.position.set(0, eY, SLAB_D / 2);
-        g.add(front);
-        const back = new THREE.Mesh(new THREE.BoxGeometry(SLAB_W, eH, eT), stationEdgeMat);
-        back.position.set(0, eY, -SLAB_D / 2);
-        g.add(back);
-        const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, SLAB_D), stationEdgeMat);
-        leftEdge.position.set(-SLAB_W / 2, eY, 0);
-        g.add(leftEdge);
-        const rightEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, SLAB_D), stationEdgeMat);
-        rightEdge.position.set(SLAB_W / 2, eY, 0);
-        g.add(rightEdge);
+        // "Agent on it" marker — a thin vertical pin above the tile.
+        if (tasksWithAgent.has(entry.task.id)) {
+          const pinH = 0.4;
+          const pin = new THREE.Mesh(
+            new THREE.BoxGeometry(0.025, pinH, 0.025),
+            new THREE.MeshBasicMaterial({ color: palette.agentPin }),
+          );
+          pin.position.set(px, py + TILE_H / 2 + pinH / 2, pz);
+          dynGroup.add(pin);
+        }
 
-        const codeLbl = makeTextSprite(st.code, palette.textCode, 28, 700);
-        codeLbl.position.set(0, 1.4, 2.05);
-        g.add(codeLbl);
-        const nameLbl = makeTextSprite(st.name, palette.textName, 56, 700);
-        nameLbl.position.set(0, 0.85, 2.05);
-        g.add(nameLbl);
-
-        dynGroup.add(g);
+        // Wires to each project this task has worktrees in.
+        const touched = entry.task.projects_touched ?? [];
+        for (const projName of touched) {
+          const proj = projectByName.get(projName);
+          if (!proj) continue;
+          const RISE_Y = 0.42;
+          const points = [
+            new THREE.Vector3(px, py + TILE_H / 2 + 0.005, pz),
+            new THREE.Vector3(px, RISE_Y, pz),
+            new THREE.Vector3(proj.x, RISE_Y, PROJECT_Z + PLAQUE_D / 2),
+            new THREE.Vector3(proj.x, PLAQUE_H + 0.005, PROJECT_Z + PLAQUE_D / 2),
+          ];
+          const geom = new THREE.BufferGeometry().setFromPoints(points);
+          const wire = new THREE.Line(
+            geom,
+            new THREE.LineBasicMaterial({
+              color: palette.agentEdge,
+              transparent: true,
+              opacity: tasksWithAgent.has(entry.task.id) ? 0.7 : 0.35,
+            }),
+          );
+          dynGroup.add(wire);
+        }
       });
 
-      // Project rail — derive from this workspace's config.
-      const projectNames = (s.config?.projects ?? [])
-        .map((p) => p?.name)
-        .filter((n): n is string => typeof n === "string" && n.length > 0);
-      const projects = layoutProjects(projectNames);
-      const projectByName = new Map(projects.map((p) => [p.name, p]));
-
-      const plaqueEdgeMat = new THREE.MeshBasicMaterial({ color: palette.stationEdge });
-      for (const p of projects) {
-        const g = new THREE.Group();
-        g.position.set(p.x, 0, PROJECT_Z);
-
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(PLAQUE_W, PLAQUE_H, PLAQUE_D),
-          new THREE.MeshStandardMaterial({
-            color: palette.stationBase,
-            roughness: 0.85,
-            metalness: 0.05,
-          }),
-        );
-        body.position.y = PLAQUE_H / 2;
-        g.add(body);
-
-        const eY = PLAQUE_H + 0.005;
-        const eT = 0.025;
-        const eH = 0.008;
-        const front = new THREE.Mesh(new THREE.BoxGeometry(PLAQUE_W, eH, eT), plaqueEdgeMat);
-        front.position.set(0, eY, PLAQUE_D / 2);
-        g.add(front);
-        const back = new THREE.Mesh(new THREE.BoxGeometry(PLAQUE_W, eH, eT), plaqueEdgeMat);
-        back.position.set(0, eY, -PLAQUE_D / 2);
-        g.add(back);
-        const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, PLAQUE_D), plaqueEdgeMat);
-        leftEdge.position.set(-PLAQUE_W / 2, eY, 0);
-        g.add(leftEdge);
-        const rightEdge = new THREE.Mesh(new THREE.BoxGeometry(eT, eH, PLAQUE_D), plaqueEdgeMat);
-        rightEdge.position.set(PLAQUE_W / 2, eY, 0);
-        g.add(rightEdge);
-
-        const code = makeTextSprite(p.code, palette.textCode, 24, 700);
-        code.position.set(0, 1.05, 0);
-        g.add(code);
-        const nameLbl = makeTextSprite(p.name, palette.textMeta, 38, 700);
-        nameLbl.position.set(0, 0.55, 0);
-        g.add(nameLbl);
-
-        dynGroup.add(g);
+      // Count label sits under the station name, in front of the slab.
+      if (tasks.length > 0) {
+        const overflow = tasks.length > MAX_VISIBLE ? ` +${tasks.length - MAX_VISIBLE}` : "";
+        const txt = `${String(tasks.length).padStart(2, "0")}${overflow}`;
+        const lbl = makeTextSprite(txt, palette.textMeta, 36, 700);
+        lbl.position.set(station.x, 0.35, 2.05);
+        dynGroup.add(lbl);
       }
 
-      const roadmapByTask = new Map<string, RoadmapItem>();
-      s.roadmap.forEach((r) => roadmapByTask.set(r.task, r));
-
-      // Resolve every agent to a task id once (handles workers that ship
-      // only --spec/--branch). Longest ids first inside the helper.
-      const sortedTaskIds = s.tasks.map((t) => t.id).sort((x, y) => y.length - x.length);
-      const agentTaskId = new Map<number, string | null>();
-      for (const a of s.agents) {
-        agentTaskId.set(a.pid, taskIdForAgent(a, sortedTaskIds));
-      }
-
-      const tasksWithAgent = new Set<string>();
-      for (const a of s.agents) {
-        const tid = agentTaskId.get(a.pid);
-        if (tid) tasksWithAgent.add(tid);
-      }
-
-      const byStation = new Map<
-        string,
-        { task: Task; status: string | null; state: TaskState }[]
-      >();
-      // Task id → display name (external_id like "ENG-1234" when present,
-      // otherwise the title). Used to label agent tiles by their task.
-      const taskNiceName = new Map<string, string>();
-      for (const t of s.tasks) {
-        taskNiceName.set(t.id, t.external_id ?? t.title);
-        const { station, status } = stationForTask(t.id, roadmapByTask, stations);
-        const arr = byStation.get(station.key) ?? [];
-        arr.push({ task: t, status, state: taskState(t, status, pipeline) });
-        byStation.set(station.key, arr);
-      }
-
-      // Agent → station: follow the agent's task (if any) to its roadmap
-      // status, then to the station that owns that status. Agents with no
-      // task (e.g. jira-scan, project-manager) dock at the leftmost station.
-      const agentsByStation = new Map<string, Agent[]>();
-      const FALLBACK_STATION = stations[0];
-      for (const a of s.agents) {
-        let stationKey: string = FALLBACK_STATION?.key ?? INBOX_KEY;
-        const tid = agentTaskId.get(a.pid);
-        if (tid) {
-          const r = roadmapByTask.get(tid);
-          if (r) {
-            const st = stations.find((x) => x.statuses.includes(r.status));
-            if (st) stationKey = st.key;
-          }
-        }
-        const arr = agentsByStation.get(stationKey) ?? [];
-        arr.push(a);
-        agentsByStation.set(stationKey, arr);
-      }
-
-      const COLS = 5;
-      const ROWS = 5;
-      const MAX_VISIBLE = COLS * ROWS;
-      const TILE_W = 0.36;
-      const TILE_H = 0.05;
-      const COL_S = 0.62;
-      const ROW_S = 0.55;
-      const TILE_BASE_Y = SLAB_H + 0.005;
-      const TILE_BASE_Z = -1.2;
-
-      // Filled as tasks render so agents drawn later can wire back to them.
-      const taskPos = new Map<string, { px: number; py: number; pz: number }>();
-
-      for (const station of stations) {
-        const tasks = byStation.get(station.key) ?? [];
-        const agents = agentsByStation.get(station.key) ?? [];
-
-        // Front-edge accent — one severity wins, in priority order.
-        let accent: number | null = null;
-        if (tasks.some((t) => t.state === "blocked")) accent = palette.taskBlocked;
-        else if (tasks.some((t) => t.state === "rework")) accent = palette.taskRework;
-        else if (agents.length > 0) accent = palette.stationLive;
-
-        if (accent !== null) {
-          const accentMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(SLAB_W, 0.018, 0.06),
-            new THREE.MeshBasicMaterial({ color: accent }),
-          );
-          accentMesh.position.set(station.x, SLAB_H + 0.018, SLAB_D / 2);
-          dynGroup.add(accentMesh);
-        }
-
-        // Tasks — flat tiles in a 5x5 grid on the slab top.
-        const visible = tasks.slice(0, MAX_VISIBLE);
-        visible.forEach((entry, i) => {
-          const col = i % COLS;
-          const row = Math.floor(i / COLS);
-          const px = station.x + (col - (COLS - 1) / 2) * COL_S;
-          const py = TILE_BASE_Y + TILE_H / 2;
-          const pz = TILE_BASE_Z + row * ROW_S;
+      // Agents — flat tiles in front of the slab. Single accent stripe.
+      if (agents.length > 0) {
+        const A_W = 0.95;
+        const A_H = 0.08;
+        const A_D = 0.55;
+        const A_SPACING = 1.05;
+        const A_Z = 3.7;
+        agents.forEach((agent, i) => {
+          const offset = (i - (agents.length - 1) / 2) * A_SPACING;
+          const px = station.x + offset;
 
           const tile = new THREE.Mesh(
-            new THREE.BoxGeometry(TILE_W, TILE_H, TILE_W),
-            new THREE.MeshBasicMaterial({ color: taskColor(palette, entry.state) }),
+            new THREE.BoxGeometry(A_W, A_H, A_D),
+            new THREE.MeshStandardMaterial({
+              color: palette.agentTile,
+              roughness: 0.85,
+              metalness: 0.05,
+            }),
           );
-          tile.position.set(px, py, pz);
+          tile.position.set(px, A_H / 2, A_Z);
           dynGroup.add(tile);
-          taskPos.set(entry.task.id, { px, py, pz });
 
-          // "Agent on it" marker — a thin vertical pin above the tile.
-          if (tasksWithAgent.has(entry.task.id)) {
-            const pinH = 0.4;
-            const pin = new THREE.Mesh(
-              new THREE.BoxGeometry(0.025, pinH, 0.025),
-              new THREE.MeshBasicMaterial({ color: palette.agentPin }),
-            );
-            pin.position.set(px, py + TILE_H / 2 + pinH / 2, pz);
-            dynGroup.add(pin);
+          const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(A_W, 0.018, 0.03),
+            new THREE.MeshBasicMaterial({ color: palette.agentEdge }),
+          );
+          stripe.position.set(px, A_H + 0.005, A_Z + A_D / 2 - 0.018);
+          dynGroup.add(stripe);
+
+          const roleLbl = makeTextSprite(shortLabelForAgent(agent.name), palette.textMeta, 26, 700);
+          roleLbl.position.set(px, A_H + 0.22, A_Z);
+          dynGroup.add(roleLbl);
+
+          const taskLabel = agent.task ? (taskNiceName.get(agent.task) ?? "-") : "-";
+          const tkt = makeTextSprite(taskLabel, palette.textPrimary, 36, 700);
+          tkt.position.set(px, A_H + 0.55, A_Z);
+          dynGroup.add(tkt);
+
+          const e = elapsedShort(agent.started_at);
+          if (e) {
+            const eLbl = makeTextSprite(e, palette.textSubtle, 22, 600);
+            eLbl.position.set(px, A_H + 0.85, A_Z);
+            dynGroup.add(eLbl);
           }
 
-          // Wires to each project this task has worktrees in.
-          const touched = entry.task.projects_touched ?? [];
-          for (const projName of touched) {
-            const proj = projectByName.get(projName);
-            if (!proj) continue;
+          // Wire agent → task. Mirrors the task→project bend: rise
+          // from the front edge of the agent tile, jog over the slab to
+          // the task's column, then drop onto the task's tile.
+          const tid = agentTaskId.get(agent.pid);
+          const tpos = tid ? taskPos.get(tid) : null;
+          if (tpos) {
             const RISE_Y = 0.42;
             const points = [
-              new THREE.Vector3(px, py + TILE_H / 2 + 0.005, pz),
-              new THREE.Vector3(px, RISE_Y, pz),
-              new THREE.Vector3(proj.x, RISE_Y, PROJECT_Z + PLAQUE_D / 2),
-              new THREE.Vector3(proj.x, PLAQUE_H + 0.005, PROJECT_Z + PLAQUE_D / 2),
+              new THREE.Vector3(px, A_H + 0.005, A_Z - A_D / 2),
+              new THREE.Vector3(px, RISE_Y, A_Z - A_D / 2),
+              new THREE.Vector3(tpos.px, RISE_Y, tpos.pz),
+              new THREE.Vector3(tpos.px, tpos.py + TILE_H / 2 + 0.005, tpos.pz),
             ];
             const geom = new THREE.BufferGeometry().setFromPoints(points);
             const wire = new THREE.Line(
@@ -699,118 +810,45 @@ export default function Overview({ workspace }: { workspace: string }) {
               new THREE.LineBasicMaterial({
                 color: palette.agentEdge,
                 transparent: true,
-                opacity: tasksWithAgent.has(entry.task.id) ? 0.7 : 0.35,
+                opacity: 0.7,
               }),
             );
             dynGroup.add(wire);
           }
         });
-
-        // Count label sits under the station name, in front of the slab.
-        if (tasks.length > 0) {
-          const overflow = tasks.length > MAX_VISIBLE ? ` +${tasks.length - MAX_VISIBLE}` : "";
-          const txt = `${String(tasks.length).padStart(2, "0")}${overflow}`;
-          const lbl = makeTextSprite(txt, palette.textMeta, 36, 700);
-          lbl.position.set(station.x, 0.35, 2.05);
-          dynGroup.add(lbl);
-        }
-
-        // Agents — flat tiles in front of the slab. Single accent stripe.
-        if (agents.length > 0) {
-          const A_W = 0.95;
-          const A_H = 0.08;
-          const A_D = 0.55;
-          const A_SPACING = 1.05;
-          const A_Z = 3.7;
-          agents.forEach((agent, i) => {
-            const offset = (i - (agents.length - 1) / 2) * A_SPACING;
-            const px = station.x + offset;
-
-            const tile = new THREE.Mesh(
-              new THREE.BoxGeometry(A_W, A_H, A_D),
-              new THREE.MeshStandardMaterial({
-                color: palette.agentTile,
-                roughness: 0.85,
-                metalness: 0.05,
-              }),
-            );
-            tile.position.set(px, A_H / 2, A_Z);
-            dynGroup.add(tile);
-
-            const stripe = new THREE.Mesh(
-              new THREE.BoxGeometry(A_W, 0.018, 0.03),
-              new THREE.MeshBasicMaterial({ color: palette.agentEdge }),
-            );
-            stripe.position.set(px, A_H + 0.005, A_Z + A_D / 2 - 0.018);
-            dynGroup.add(stripe);
-
-            const roleLbl = makeTextSprite(
-              shortLabelForAgent(agent.name),
-              palette.textMeta,
-              26,
-              700,
-            );
-            roleLbl.position.set(px, A_H + 0.22, A_Z);
-            dynGroup.add(roleLbl);
-
-            const taskLabel = agent.task ? (taskNiceName.get(agent.task) ?? "-") : "-";
-            const tkt = makeTextSprite(taskLabel, palette.textPrimary, 36, 700);
-            tkt.position.set(px, A_H + 0.55, A_Z);
-            dynGroup.add(tkt);
-
-            const e = elapsedShort(agent.started_at);
-            if (e) {
-              const eLbl = makeTextSprite(e, palette.textSubtle, 22, 600);
-              eLbl.position.set(px, A_H + 0.85, A_Z);
-              dynGroup.add(eLbl);
-            }
-
-            // Wire agent → task. Mirrors the task→project bend: rise
-            // from the front edge of the agent tile, jog over the slab to
-            // the task's column, then drop onto the task's tile.
-            const tid = agentTaskId.get(agent.pid);
-            const tpos = tid ? taskPos.get(tid) : null;
-            if (tpos) {
-              const RISE_Y = 0.42;
-              const points = [
-                new THREE.Vector3(px, A_H + 0.005, A_Z - A_D / 2),
-                new THREE.Vector3(px, RISE_Y, A_Z - A_D / 2),
-                new THREE.Vector3(tpos.px, RISE_Y, tpos.pz),
-                new THREE.Vector3(tpos.px, tpos.py + TILE_H / 2 + 0.005, tpos.pz),
-              ];
-              const geom = new THREE.BufferGeometry().setFromPoints(points);
-              const wire = new THREE.Line(
-                geom,
-                new THREE.LineBasicMaterial({
-                  color: palette.agentEdge,
-                  transparent: true,
-                  opacity: 0.7,
-                }),
-              );
-              dynGroup.add(wire);
-            }
-          });
-        }
       }
     }
+  }
 
-    let raf = 0;
-    function tick() {
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
-    }
+  let raf = 0;
+  function tick() {
+    renderer.render(scene, camera);
     raf = requestAnimationFrame(tick);
+  }
 
-    // Theme rebuilds tear the scene down and recreate it; seed with the
-    // most recent snapshot so the user sees data immediately rather than
-    // waiting for the next SSE tick.
-    rebuildFromSnapshot(snapRef.current ?? { tasks: [], roadmap: [], agents: [], ts: "" });
-    (mount as HTMLDivElement & { __rebuild?: (s: Snapshot) => void }).__rebuild =
-      rebuildFromSnapshot;
+  // Seed with the most recent snapshot so the user sees data immediately
+  // rather than waiting for the next event.
+  let built: Snapshot | null = null;
+  function rebuild(s: Snapshot) {
+    if (s === built) return;
+    built = s;
+    rebuildFromSnapshot(s);
+  }
+  rebuild(seed ?? { tasks: [], roadmap: [], agents: [], ts: "" });
 
-    return () => {
+  return {
+    mode,
+    rebuild,
+    start() {
+      fit();
+      ro.observe(mount);
+      tick();
+    },
+    stop() {
       cancelAnimationFrame(raf);
       ro.disconnect();
+    },
+    dispose() {
       renderer.dispose();
       scene.traverse((obj) => {
         const m = obj as THREE.Mesh;
@@ -820,21 +858,8 @@ export default function Overview({ workspace }: { workspace: string }) {
         else mat?.dispose?.();
       });
       if (mount.contains(canvas)) mount.removeChild(canvas);
-    };
-  }, [mode]);
-
-  useEffect(() => {
-    if (!snap) return;
-    const m = mountRef.current as (HTMLDivElement & { __rebuild?: (s: Snapshot) => void }) | null;
-    m?.__rebuild?.(snap);
-  }, [snap]);
-
-  return (
-    <main className="flex-1 relative overflow-hidden bg-bg">
-      <div ref={mountRef} className="absolute inset-0" />
-      <HUD snap={snap} mode={mode} />
-    </main>
-  );
+    },
+  };
 }
 
 function HUD({ snap, mode }: { snap: Snapshot | null; mode: ThemeMode }) {

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Feedback } from "../hooks/useFeedback";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { BaseModal } from "./BaseModal";
 import { Button } from "./Button";
 import { FeedbackText } from "./FeedbackText";
@@ -22,12 +23,12 @@ export function NewWorkspaceModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
-  useEffect(() => {
+  useResetOnChange(open, () => {
     if (open) {
       setName("");
       setDescription("");
     }
-  }, [open]);
+  });
 
   const disabled = busy || !name.trim();
   const submit = () => onCreate({ name, description });

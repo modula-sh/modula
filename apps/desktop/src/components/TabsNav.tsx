@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { useHeaderCenterActivate } from "../contexts/HeaderSlotContext";
 import { HeaderCenterSlot, HeaderSlot } from "./HeaderSlot";
@@ -10,7 +10,8 @@ import { HeaderCenterSlot, HeaderSlot } from "./HeaderSlot";
  * doesn't stay marked active on a sibling sub-route. */
 export function TabsNav({ right }: { right?: React.ReactNode } = {}) {
   const setCenterActive = useHeaderCenterActivate();
-  useEffect(() => {
+  // Before paint, so showing a hidden workspace doesn't flash the plain header.
+  useLayoutEffect(() => {
     setCenterActive(true);
     return () => setCenterActive(false);
   }, [setCenterActive]);

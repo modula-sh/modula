@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createMemoryRouter, Navigate, type RouteObject } from "react-router-dom";
 import { AgentEditPage } from "./views/AgentEdit";
 import { AgentsView } from "./views/Agents";
 import { ConversationDetailPage, ConversationsView } from "./views/Conversations";
@@ -9,15 +9,15 @@ import { ProjectsView } from "./views/Projects";
 import { ProviderEditPage } from "./views/ProviderEdit";
 import { ProvidersView } from "./views/Providers";
 import { RoadmapView } from "./views/Roadmap";
-import { RootLayout } from "./views/RootLayout";
 import { SettingsView } from "./views/Settings";
 import { TaskDetailPage, TasksView } from "./views/Tasks";
 import { UsageView } from "./views/Usage";
 import { WikiView } from "./views/Wiki";
+import { WorkspaceLayout } from "./views/WorkspaceLayout";
 
-/** All routes. Single source of truth. The layout route owns app-wide state
- * (workspace, snapshot, selection, pipeline) and renders the Header; child
- * routes render into its <Outlet />.
+/** One workspace's routes. Each visited workspace gets its own memory router,
+ * so it keeps its location and history while another is on screen.
+ * `WorkspaceLayout` renders the chrome and the matched child into its <Outlet />.
  *
  * URL conventions:
  *   /                  — redirects to /tasks
@@ -36,60 +36,70 @@ import { WikiView } from "./views/Wiki";
  *   /providers         — providers CRUD
  *   /overview          — three.js operations grid
  */
-export const router = createBrowserRouter([
+const routes: RouteObject[] = [
+  { index: true, element: <Navigate to="/tasks" replace /> },
   {
-    path: "/",
-    element: <RootLayout />,
+    path: "tasks",
     children: [
-      { index: true, element: <Navigate to="/tasks" replace /> },
-      {
-        path: "tasks",
-        children: [
-          { index: true, element: <TasksView /> },
-          { path: ":id", element: <TaskDetailPage /> },
-        ],
-      },
-      { path: "roadmap", element: <RoadmapView /> },
-      {
-        path: "agents",
-        children: [
-          { index: true, element: <AgentsView /> },
-          { path: "new", element: <AgentEditPage /> },
-          { path: "edit/:id", element: <AgentEditPage /> },
-          { path: "logs", element: <LogsView /> },
-          { path: "logs/:log", element: <LogPage /> },
-          { path: "usage", element: <UsageView /> },
-        ],
-      },
-      {
-        path: "projects",
-        children: [
-          { index: true, element: <ProjectsView /> },
-          { path: "new", element: <ProjectEditPage /> },
-          { path: "edit/:id", element: <ProjectEditPage /> },
-        ],
-      },
-      {
-        path: "providers",
-        children: [
-          { index: true, element: <ProvidersView /> },
-          { path: "new", element: <ProviderEditPage /> },
-          { path: "edit/:id", element: <ProviderEditPage /> },
-        ],
-      },
-      { path: "wiki", element: <WikiView /> },
-      { path: "overview", element: <OverviewRoute /> },
-      { path: "settings", element: <SettingsView /> },
-      {
-        path: "conversations",
-        children: [
-          { index: true, element: <ConversationsView /> },
-          { path: ":id", element: <ConversationDetailPage /> },
-        ],
-      },
-
-      // Catch-all → tasks.
-      { path: "*", element: <Navigate to="/tasks" replace /> },
+      { index: true, element: <TasksView /> },
+      { path: ":id", element: <TaskDetailPage /> },
     ],
   },
-]);
+  { path: "roadmap", element: <RoadmapView /> },
+  {
+    path: "agents",
+    children: [
+      { index: true, element: <AgentsView /> },
+      { path: "new", element: <AgentEditPage /> },
+      { path: "edit/:id", element: <AgentEditPage /> },
+      { path: "logs", element: <LogsView /> },
+      { path: "logs/:log", element: <LogPage /> },
+      { path: "usage", element: <UsageView /> },
+    ],
+  },
+  {
+    path: "projects",
+    children: [
+      { index: true, element: <ProjectsView /> },
+      { path: "new", element: <ProjectEditPage /> },
+      { path: "edit/:id", element: <ProjectEditPage /> },
+    ],
+  },
+  {
+    path: "providers",
+    children: [
+      { index: true, element: <ProvidersView /> },
+      { path: "new", element: <ProviderEditPage /> },
+      { path: "edit/:id", element: <ProviderEditPage /> },
+    ],
+  },
+  { path: "wiki", element: <WikiView /> },
+  { path: "overview", element: <OverviewRoute /> },
+  { path: "settings", element: <SettingsView /> },
+  {
+    path: "conversations",
+    children: [
+      { index: true, element: <ConversationsView /> },
+      { path: ":id", element: <ConversationDetailPage /> },
+    ],
+  },
+
+  // Catch-all → tasks.
+  { path: "*", element: <Navigate to="/tasks" replace /> },
+];
+
+type WorkspaceRouter = ReturnType<typeof createMemoryRouter>;
+
+const routers = new Map<string, WorkspaceRouter>();
+
+export function workspaceRouter(ws: string): WorkspaceRouter {
+  let router = routers.get(ws);
+  if (!router) {
+    router = createMemoryRouter(
+      [{ path: "/", element: <WorkspaceLayout workspace={ws} />, children: routes }],
+      { initialEntries: ["/tasks"] },
+    );
+    routers.set(ws, router);
+  }
+  return router;
+}

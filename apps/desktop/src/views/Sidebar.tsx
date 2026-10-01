@@ -15,7 +15,7 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ContextMenu } from "../components/ContextMenu";
@@ -28,6 +28,7 @@ import { useStreamingConvIds } from "../contexts/ConversationStreamProvider";
 import { useSidebarContext } from "../contexts/SidebarContext";
 import { useSnapshot } from "../contexts/SnapshotContext";
 import { useAppUpdate } from "../hooks/useAppUpdate";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { client } from "../services/client";
 import type { ConversationSummary, WorkspaceInfo } from "../types";
 
@@ -92,9 +93,9 @@ function SidebarItem({
 
   const [expanded, setExpanded] = useState(hasActiveChild || !!item.defaultOpen);
 
-  useEffect(() => {
+  useResetOnChange(hasActiveChild, () => {
     if (hasActiveChild) setExpanded(true);
-  }, [hasActiveChild]);
+  });
 
   const indent = depth > 0 ? "pl-8 pr-3" : "px-3";
   const rowLayout = sidebarOpen
@@ -259,7 +260,7 @@ export function Sidebar({
   onSwitchWorkspace: (ws: string) => void;
   onRefreshWorkspaces: () => void;
   onOpenSearch: () => void;
-  /** RootLayout measures the nav's live width for the auto-collapse decision. */
+  /** WorkspaceLayout measures the nav's live width for the auto-collapse decision. */
   ref?: React.Ref<HTMLElement>;
 }) {
   const { open } = useSidebarContext();

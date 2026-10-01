@@ -41,6 +41,7 @@ import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useFeedback } from "../hooks/useFeedback";
 import { toneDotClasses } from "../lib/pipeline";
 import { externalStatusTextClass, sourceLabel, variantStatusTone } from "../lib/task";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { useVariantPr } from "../queries/diff";
 import { taskKeys, useTaskAgentSettings, useTaskBranches } from "../queries/task";
 import { threadKeys, useThreads } from "../queries/thread";
@@ -180,9 +181,7 @@ export function TaskDetail({
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   // Switching tasks always resets the form to the new task's values.
-  useEffect(() => {
-    setForm(taskToForm(task));
-  }, [task.id]);
+  useResetOnChange(task.id, () => setForm(taskToForm(task)));
   // For same-id updates (snapshot reflecting our own save, or someone else's
   // edit), only sync if the form has no in-flight local edits.
   useEffect(() => {
@@ -711,7 +710,7 @@ function AgentLoopSetting({
   onSave: (amount: number) => void;
 }) {
   const [val, setVal] = useState(String(amount));
-  useEffect(() => setVal(String(amount)), [amount]);
+  useResetOnChange(amount, () => setVal(String(amount)));
   const commit = () => {
     const n = Math.max(1, Math.min(100, parseInt(val, 10) || 1));
     setVal(String(n));
@@ -1186,11 +1185,18 @@ function ThreadEntryView({ entry, taskId }: { entry: ThreadEntry; taskId: string
     el.style.height = `${el.scrollHeight}px`;
   }, [editing, draft]);
 
-  // On entering edit mode, focus with the caret at the end.
+  // On entering edit mode, focus with the caret at the end. Once per entry:
+  // effects also re-run when a hidden workspace is shown again.
+  const focused = useRef(false);
   useEffect(() => {
-    if (!editing) return;
+    if (!editing) {
+      focused.current = false;
+      return;
+    }
+    if (focused.current) return;
     const el = textareaRef.current;
     if (!el) return;
+    focused.current = true;
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
   }, [editing]);

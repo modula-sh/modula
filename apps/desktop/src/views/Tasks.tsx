@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Download, Plus } from "lucide-react";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
 import { BaseModal } from "../components/BaseModal";
@@ -16,6 +16,7 @@ import { useSnapshot } from "../contexts/SnapshotContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { pipelineLabel, pipelineStatusFor, pipelineTone, toneDotClasses } from "../lib/pipeline";
 import { externalStatusTextClass, variantStatusTone } from "../lib/task";
+import { useResetOnChange } from "../lib/useResetOnChange";
 import { client, errorMessage } from "../services/client";
 import type { Agent, RoadmapItem, Task } from "../types";
 import { logPath } from "./Logs";
@@ -323,13 +324,13 @@ function NewTaskForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useResetOnChange(open, () => {
     if (open) {
       setTitle("");
       setDescription("");
       setError(null);
     }
-  }, [open]);
+  });
 
   async function save() {
     if (!title.trim()) return;

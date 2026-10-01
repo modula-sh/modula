@@ -33,13 +33,10 @@ export function DiffPanel({
   const queryClient = useQueryClient();
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const { setTitle } = useRightPanel();
-  // Track whether we've already scrolled to focusFile so polling refreshes
-  // don't keep yanking the user back to the original anchor.
-  const scrolledRef = useRef(false);
-
-  useEffect(() => {
-    scrolledRef.current = false;
-  }, [focusFile, focusGroup, workspace, project, branch]);
+  // The focus target already scrolled to, so polling refreshes don't keep
+  // yanking the user back to the anchor.
+  const focusKey = `${workspace}/${project}/${branch ?? ""}/${focusGroup ?? ""}::${focusFile ?? ""}`;
+  const scrolledRef = useRef<string | null>(null);
 
   const stageMutation = useMutation({
     mutationFn: ({ leaf, files }: { leaf: "stage" | "unstage"; files: string[] }) =>
@@ -60,13 +57,13 @@ export function DiffPanel({
   }, [data, setTitle]);
 
   useLayoutEffect(() => {
-    if (!data || !focusFile || scrolledRef.current) return;
+    if (!data || !focusFile || scrolledRef.current === focusKey) return;
     const key = `${focusGroup ?? ""}::${focusFile}`;
     const el = fileRefs.current.get(key);
     if (!el) return;
-    scrolledRef.current = true;
+    scrolledRef.current = focusKey;
     el.scrollIntoView({ behavior: "auto", block: "start" });
-  }, [data, focusFile, focusGroup]);
+  }, [data, focusFile, focusGroup, focusKey]);
 
   const postFiles = useCallback(
     (leaf: "stage" | "unstage", files: string[]) => stageMutation.mutate({ leaf, files }),

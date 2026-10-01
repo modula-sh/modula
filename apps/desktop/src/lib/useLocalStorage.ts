@@ -17,7 +17,11 @@ export function useLocalStorage<T>(key: string, initial: T): [T, Dispatch<SetSta
     lastKey.current = key;
     setValue(read(key, initial));
   }
+  // Write only changes: re-running on a stale copy would clobber a newer value.
+  const written = useRef<{ key: string; value: T } | null>(null);
   useEffect(() => {
+    if (written.current?.key === key && Object.is(written.current.value, value)) return;
+    written.current = { key, value };
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {}

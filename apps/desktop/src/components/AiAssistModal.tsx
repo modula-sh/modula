@@ -28,8 +28,15 @@ export function AiAssistModal({
   const ref = useRef<HTMLTextAreaElement>(null);
   const disabled = !prompt.trim() || !providerId;
 
+  // Once per open: effects also re-run when a hidden workspace is shown again.
+  const focused = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      focused.current = false;
+      return;
+    }
+    if (focused.current) return;
+    focused.current = true;
     const el = ref.current;
     el?.focus();
     el?.setSelectionRange(el.value.length, el.value.length);
