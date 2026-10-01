@@ -7,9 +7,10 @@ use modula_rpc::json::json_to_struct;
 use modula_rpc::v1::{
     AttachConversationRequest, CancelConversationRequest, ConvEvent as PbConvEvent,
     CreateConversationRequest, DeleteConversationRequest, DequeueMessageRequest,
-    EnqueueMessageRequest, GetConversationRequest, SendMessageRequest, UpdateConversationRequest,
+    EnqueueMessageRequest, GetConversationRequest, ListMessagesRequest, SendMessageRequest,
+    UpdateConversationRequest,
 };
-use modula_types::{ConvEvent, Conversation, QueuedMessage};
+use modula_types::{ChatMessage, ConvEvent, Conversation, QueuedMessage};
 use serde_json::Value;
 use tokio_stream::{Stream, StreamExt};
 
@@ -25,10 +26,12 @@ fn conv_event_stream(
 }
 
 impl ModulaClient {
+    /// The conversation with its newest `message_limit` messages, or all of them.
     pub async fn get_conversation(
         &self,
         workspace_id: &str,
         conversation_id: &str,
+        message_limit: Option<u32>,
     ) -> Result<Conversation, ClientError> {
         let resp = self
             .conversations()
@@ -36,11 +39,35 @@ impl ModulaClient {
             .get(GetConversationRequest {
                 workspace_id: workspace_id.to_string(),
                 conversation_id: conversation_id.to_string(),
+                message_limit,
             })
             .await
             .map_err(rpc)?
             .into_inner();
         Ok(Conversation::from(resp))
+    }
+
+    /// The `limit` messages before `before_seq`, oldest first.
+    pub async fn conversation_messages(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        before_seq: u32,
+        limit: u32,
+    ) -> Result<Vec<ChatMessage>, ClientError> {
+        let resp = self
+            .conversations()
+            .await?
+            .list_messages(ListMessagesRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                before_seq,
+                limit,
+            })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(resp.messages.into_iter().map(ChatMessage::from).collect())
     }
 
     /// Create a conversation; returns the new conversation id.

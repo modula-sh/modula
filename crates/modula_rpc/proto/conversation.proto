@@ -6,6 +6,8 @@ import "google/protobuf/struct.proto";
 service ConversationService {
   rpc List(ListConversationsRequest) returns (ListConversationsResponse);
   rpc Get(GetConversationRequest) returns (Conversation);
+  // A page of messages older than `before_seq`, oldest first.
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
   rpc Create(CreateConversationRequest) returns (CreateConversationResponse);
   rpc Update(UpdateConversationRequest) returns (UpdateConversationResponse);
   rpc Delete(DeleteConversationRequest) returns (DeleteConversationResponse);
@@ -29,8 +31,55 @@ message QueuedMessage {
 
 message ChatMessage {
   string role = 1;
+  // The message as plain text: all of a user message, the text parts of an
+  // assistant one.
   string content = 2;
   string ts = 3;
+  // Position in the conversation, from 0.
+  uint32 seq = 4;
+  // An assistant message's text, thinking and tool calls, in the order they
+  // happened.
+  repeated MessagePart parts = 5;
+  optional TurnStats stats = 6;
+}
+
+message MessagePart {
+  oneof part {
+    string text = 1;
+    string thinking = 2;
+    ToolCall tool = 3;
+  }
+}
+
+enum ToolStatus {
+  TOOL_STATUS_RUNNING = 0;
+  TOOL_STATUS_COMPLETED = 1;
+  TOOL_STATUS_FAILED = 2;
+}
+
+message ToolCall {
+  string id = 1;
+  // The provider's own tool name and input, unmodified.
+  string name = 2;
+  google.protobuf.Value input = 3;
+  // The tool call this one ran under: a sub-agent's calls point at the call
+  // that spawned it.
+  optional string parent_id = 4;
+  ToolStatus status = 5;
+  // What the tool returned, as text.
+  optional string output = 6;
+  // `output` was cut to the stored cap.
+  bool output_truncated = 7;
+}
+
+// What the provider reported for the turn that produced a message.
+message TurnStats {
+  optional uint64 duration_ms = 1;
+  // Prompt tokens, cached ones included.
+  optional uint64 input_tokens = 2;
+  optional uint64 output_tokens = 3;
+  optional double cost_usd = 4;
+  optional string model = 5;
 }
 
 message ConversationSummary {
@@ -54,12 +103,15 @@ message Conversation {
   optional string model = 4;
   google.protobuf.Struct context = 5;
   optional string session_id = 6;
+  // The tail when the request set `message_limit`, else every message.
   repeated ChatMessage messages = 7;
   string created_at = 8;
   string updated_at = 9;
   repeated QueuedMessage queued = 10;
   // Runtime state read from the run registry, not a stored column.
   bool running = 11;
+  // How many messages the conversation holds in all.
+  uint32 message_count = 12;
 }
 
 // Server-streaming event. oneof mirrors the existing WireEvent variants.
@@ -71,6 +123,8 @@ message ConvEvent {
     DoneEvent done = 4;
     ErrorEvent error = 5;
     UserEvent user = 6;
+    ToolResultEvent tool_result = 7;
+    ThinkingEvent thinking = 8;
   }
 }
 
@@ -88,6 +142,20 @@ message ToolUseEvent {
   string name = 1;
   // Tool input is schemaless provider-specific JSON.
   google.protobuf.Struct input = 2;
+  // Matches the `tool_result` that completes this call.
+  string id = 3;
+  optional string parent_id = 4;
+}
+
+message ToolResultEvent {
+  string id = 1;
+  string output = 2;
+  bool is_error = 3;
+  bool output_truncated = 4;
+}
+
+message ThinkingEvent {
+  string text = 1;
 }
 
 message DeltaEvent {
@@ -110,6 +178,18 @@ message ListConversationsResponse {
 message GetConversationRequest {
   string workspace_id = 1;
   string conversation_id = 2;
+  // Return only the newest `message_limit` messages; absent returns all.
+  optional uint32 message_limit = 3;
+}
+
+message ListMessagesRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  uint32 before_seq = 3;
+  uint32 limit = 4;
+}
+message ListMessagesResponse {
+  repeated ChatMessage messages = 1;
 }
 
 message CreateConversationRequest {

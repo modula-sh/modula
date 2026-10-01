@@ -59,39 +59,70 @@ impl ProviderRuntime for GeminiRuntime {
     }
 
     fn parse_line(&self, v: &JsonValue) -> Vec<ChatEvent> {
+        let text = |v: &JsonValue| v.as_str().unwrap_or("").to_string();
         match v["type"].as_str().unwrap_or("") {
-            "init" => match v["session_id"].as_str() {
-                Some(id) => vec![ChatEvent::Session { id: id.to_string() }],
-                None => vec![],
-            },
+            "init" => {
+                let mut events = Vec::new();
+                if let Some(id) = v["session_id"].as_str() {
+                    events.push(ChatEvent::Session { id: id.to_string() });
+                }
+                if let Some(name) = v["model"].as_str() {
+                    events.push(ChatEvent::Model {
+                        name: name.to_string(),
+                    });
+                }
+                events
+            }
             "message" if v["role"].as_str() == Some("assistant") => match v["content"].as_str() {
                 Some(text) => vec![ChatEvent::Delta {
                     text: text.to_string(),
                 }],
                 None => vec![],
             },
-            "tool_use" => {
-                let params = &v["parameters"];
-                let (name, input) = match v["tool_name"].as_str().unwrap_or("") {
-                    "run_shell_command" => ("Bash", json!({ "command": params["command"] })),
-                    "write_file" | "replace" => {
-                        ("Edit", json!({ "file_path": params["file_path"] }))
-                    }
-                    other => (other, params.clone()),
+            "tool_use" => vec![ChatEvent::ToolUse {
+                id: text(&v["tool_id"]),
+                name: text(&v["tool_name"]),
+                input: v["parameters"].clone(),
+                parent_id: None,
+            }],
+            "tool_result" => {
+                let is_error = v["status"].as_str() == Some("error");
+                let output = match v["output"].as_str() {
+                    Some(output) => output.to_string(),
+                    None => text(&v["error"]["message"]),
                 };
-                vec![ChatEvent::ToolUse {
-                    name: name.to_string(),
-                    input,
+                vec![ChatEvent::ToolResult {
+                    id: text(&v["tool_id"]),
+                    output,
+                    is_error,
                 }]
             }
-            "tool_result" => vec![ChatEvent::ToolResult],
-            "result" if v["status"].as_str() == Some("success") => vec![ChatEvent::Done],
-            "result" => vec![ChatEvent::Error {
-                message: v["error"]["message"]
-                    .as_str()
-                    .unwrap_or("gemini run failed")
-                    .to_string(),
-            }],
+            "result" => {
+                let mut events = Vec::new();
+                let stats = &v["stats"];
+                if stats.is_object() {
+                    events.push(ChatEvent::Usage {
+                        input_tokens: stats["input_tokens"].as_u64().unwrap_or(0),
+                        output_tokens: stats["output_tokens"].as_u64().unwrap_or(0),
+                        cost_usd: None,
+                    });
+                    // Error results report a zero duration.
+                    if let Some(ms) = stats["duration_ms"].as_u64().filter(|ms| *ms > 0) {
+                        events.push(ChatEvent::Duration { ms });
+                    }
+                }
+                events.push(if v["status"].as_str() == Some("success") {
+                    ChatEvent::Done
+                } else {
+                    ChatEvent::Error {
+                        message: v["error"]["message"]
+                            .as_str()
+                            .unwrap_or("gemini run failed")
+                            .to_string(),
+                    }
+                });
+                events
+            }
             _ => vec![],
         }
     }
@@ -221,33 +252,42 @@ mod tests {
         let parse = |line: &str| rt.parse_stream_line(line);
         assert!(matches!(
             &parse(r#"{"type":"init","session_id":"s1","model":"auto"}"#)[..],
-            [ChatEvent::Session { id }] if id == "s1"
+            [ChatEvent::Session { id }, ChatEvent::Model { name }] if id == "s1" && name == "auto"
         ));
         assert!(parse(r#"{"type":"message","role":"user","content":"hi"}"#).is_empty());
         assert!(matches!(
             &parse(r#"{"type":"message","role":"assistant","content":"Red","delta":true}"#)[..],
             [ChatEvent::Delta { text }] if text == "Red"
         ));
+        // The tool's own name and parameters, untouched.
         assert!(matches!(
-            &parse(r#"{"type":"tool_use","tool_name":"run_shell_command","tool_id":"t","parameters":{"command":"echo hi","description":"x"}}"#)[..],
-            [ChatEvent::ToolUse { name, input }] if name == "Bash" && input == &json!({"command":"echo hi"})
+            &parse(r#"{"type":"tool_use","tool_name":"replace","tool_id":"t1","parameters":{"file_path":"a.txt","old_string":"hi","new_string":"bye"}}"#)[..],
+            [ChatEvent::ToolUse { id, name, input, parent_id: None }]
+                if id == "t1" && name == "replace"
+                    && input == &json!({"file_path":"a.txt","old_string":"hi","new_string":"bye"})
         ));
         assert!(matches!(
-            &parse(r#"{"type":"tool_use","tool_name":"replace","tool_id":"t","parameters":{"file_path":"a.txt","old_string":"hi","new_string":"bye"}}"#)[..],
-            [ChatEvent::ToolUse { name, input }] if name == "Edit" && input == &json!({"file_path":"a.txt"})
+            &parse(r#"{"type":"tool_result","tool_id":"t1","status":"success"}"#)[..],
+            [ChatEvent::ToolResult { id, output, is_error: false }] if id == "t1" && output.is_empty()
         ));
         assert!(matches!(
-            &parse(r#"{"type":"tool_use","tool_name":"glob","tool_id":"t","parameters":{"pattern":"*.rs"}}"#)[..],
-            [ChatEvent::ToolUse { name, input }] if name == "glob" && input["pattern"] == "*.rs"
-        ));
-        assert!(matches!(
-            parse(r#"{"type":"tool_result","tool_id":"t","status":"success"}"#)[..],
-            [ChatEvent::ToolResult]
+            &parse(r#"{"type":"tool_result","tool_id":"t1","status":"error","error":{"type":"x","message":"denied"}}"#)[..],
+            [ChatEvent::ToolResult { output, is_error: true, .. }] if output == "denied"
         ));
         assert!(parse(r#"{"type":"error","severity":"warning","message":"retrying"}"#).is_empty());
         assert!(matches!(
-            parse(r#"{"type":"result","status":"success","stats":{}}"#)[..],
-            [ChatEvent::Done]
+            parse(
+                r#"{"type":"result","status":"success","stats":{"input_tokens":7,"output_tokens":3,"duration_ms":1200}}"#
+            )[..],
+            [
+                ChatEvent::Usage {
+                    input_tokens: 7,
+                    output_tokens: 3,
+                    cost_usd: None
+                },
+                ChatEvent::Duration { ms: 1200 },
+                ChatEvent::Done
+            ]
         ));
         assert!(matches!(
             &parse(r#"{"type":"result","status":"error","error":{"type":"x","message":"quota"}}"#)[..],
@@ -256,6 +296,58 @@ mod tests {
         assert!(matches!(
             &parse(r#"{"type":"result","status":"error"}"#)[..],
             [ChatEvent::Error { message }] if message == "gemini run failed"
+        ));
+    }
+
+    /// Real runs: reads and a write that end in a quota error, then the shell
+    /// commands of a second one.
+    #[test]
+    fn gemini_parse_recorded_turns() {
+        let rt = gemini_rt();
+        let parse_all = |text: &str| -> Vec<ChatEvent> {
+            text.lines()
+                .flat_map(|line| rt.parse_stream_line(line))
+                .collect()
+        };
+        let events = parse_all(include_str!("fixtures/gemini.jsonl"));
+        let tools: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolUse { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            tools,
+            ["update_topic", "read_file", "read_file", "write_file"]
+        );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ChatEvent::ToolUse { name, input, .. }
+                if name == "write_file" && input["content"] == "alpha\nbeta\ndone\n"
+        )));
+        assert!(matches!(
+            events.last(),
+            Some(ChatEvent::Error { message }) if message.contains("exhausted your daily quota")
+        ));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ChatEvent::Usage {
+                input_tokens: 23_353,
+                output_tokens: 140,
+                ..
+            }
+        )));
+
+        let events = parse_all(include_str!("fixtures/gemini_shell.jsonl"));
+        assert!(matches!(
+            &events[3],
+            ChatEvent::ToolUse { name, input, .. }
+                if name == "run_shell_command" && input["command"] == "ls -la && wc -l out.txt"
+        ));
+        assert!(matches!(
+            &events[4],
+            ChatEvent::ToolResult { output, is_error: false, .. } if output.ends_with("3 out.txt")
         ));
     }
 

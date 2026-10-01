@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde_json::json;
 
 use modula_core::error::ApiError;
-use modula_db::conversations::ConversationCreate;
+use modula_db::conversations::{ConversationCreate, NewMessage};
 
 use super::*;
 use crate::loop_registry::LoopRegistry;
@@ -126,37 +126,10 @@ async fn seed_conversation(f: &Fixture, title: &str, messages: &[&str]) -> Strin
     for m in messages {
         f.repos
             .conversations
-            .append_message(&f.env.pool, &f.env.ws, &id, "user", m, &[])
+            .append_message(&f.env.pool, &f.env.ws, &id, &NewMessage::user(m))
             .await
             .unwrap();
     }
-    id
-}
-
-/// Inserted directly: the `updated_at` trigger rewrites any UPDATE back to now.
-async fn seed_oldest_conversation(f: &Fixture, title: &str, message: &str) -> String {
-    let provider = f
-        .repos
-        .providers
-        .list(&f.env.pool, &f.env.ws)
-        .await
-        .unwrap()[0]
-        .id
-        .clone();
-    let id = uuid::Uuid::new_v4().to_string();
-    let data = json!({ "messages": [{ "role": "user", "content": message }] });
-    sqlx::query(
-        "INSERT INTO conversations (workspace_id, id, title, provider_id, data, updated_at) \
-         VALUES (?, ?, ?, ?, ?, '2000-01-01T00:00:00.000Z')",
-    )
-    .bind(&f.env.ws)
-    .bind(&id)
-    .bind(title)
-    .bind(provider)
-    .bind(data.to_string())
-    .execute(&f.env.pool)
-    .await
-    .unwrap();
     id
 }
 
@@ -245,11 +218,10 @@ async fn deduped_comments_do_not_crowd_out_a_comment_only_task() {
 }
 
 #[tokio::test]
-async fn a_conversation_matching_only_json_envelope_text_is_dropped() {
+async fn a_conversation_matches_on_message_text_not_its_role() {
     let f = fixture().await;
     let real = seed_conversation(&f, "Chat", &[&format!("we discussed {NEEDLE}")]).await;
-    // Every seeded message has the role "user", so the raw-blob LIKE matches
-    // even though no message text does.
+    // Every seeded message has the role "user"; only message text is searched.
     seed_conversation(&f, "Chat", &["nothing relevant"]).await;
 
     let hits = f.search("user").await;
@@ -267,11 +239,10 @@ async fn a_conversation_matching_only_json_envelope_text_is_dropped() {
 }
 
 #[tokio::test]
-async fn envelope_only_conversations_do_not_crowd_out_a_real_match() {
+async fn newer_conversations_do_not_crowd_out_an_older_match() {
     let f = fixture().await;
-    let real = seed_oldest_conversation(&f, "Chat", "the user asked about it").await;
-    // Enough envelope-only matches to fill the limit ahead of the older row
-    // that really matches.
+    let real = seed_conversation(&f, "Chat", &["the user asked about it"]).await;
+    // Enough newer non-matches to fill the limit ahead of the row that matches.
     for _ in 0..=DEFAULT_LIMIT {
         seed_conversation(&f, "Chat", &["nothing relevant"]).await;
     }

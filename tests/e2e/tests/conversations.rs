@@ -4,9 +4,10 @@
 
 use anyhow::Result;
 use modula_rpc::v1::{
-    conv_event, AttachConversationRequest, CancelConversationRequest, CreateConversationRequest,
-    CreateProviderRequest, DeleteConversationRequest, DequeueMessageRequest, EnqueueMessageRequest,
-    GetConversationRequest, ListConversationsRequest, SendMessageRequest,
+    conv_event, message_part, AttachConversationRequest, CancelConversationRequest,
+    CreateConversationRequest, CreateProviderRequest, DeleteConversationRequest,
+    DequeueMessageRequest, EnqueueMessageRequest, GetConversationRequest, ListConversationsRequest,
+    SendMessageRequest, ToolStatus,
 };
 use modula_test_support::Harness;
 use tonic::Code;
@@ -78,6 +79,7 @@ async fn conversations_crud_and_stream() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -107,6 +109,7 @@ async fn conversations_crud_and_stream() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -185,6 +188,7 @@ async fn conversations_crud_and_stream() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await;
     assert_eq!(gone.unwrap_err().code(), Code::NotFound);
@@ -310,6 +314,7 @@ async fn detach_does_not_kill_run_and_reattach_resumes() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -405,6 +410,7 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -439,6 +445,7 @@ async fn queued_message_sends_when_run_ends() -> Result<()> {
             .get(GetConversationRequest {
                 workspace_id: ws.clone(),
                 conversation_id: conv_id.clone(),
+                message_limit: None,
             })
             .await?
             .into_inner();
@@ -501,6 +508,7 @@ async fn cancel_clears_the_queue() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -544,13 +552,13 @@ async fn queued_message_enters_the_turn_at_a_tool_boundary() -> Result<()> {
             {"type": "stream_event", "event": {"type": "content_block_delta",
                 "delta": {"text": "before"}}},
             {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "name": "Bash", "input": {"command": "sleep 1"}}
+                {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "sleep 1"}}
             ]}}
         ],
         "sleep_ms": 1500,
         "tail": [
             {"type": "user", "message": {"role": "user", "content": [
-                {"type": "tool_result", "content": ""}
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "slept"}
             ]}},
             {"type": "stream_event", "event": {"type": "content_block_delta",
                 "delta": {"text": "after"}}},
@@ -605,6 +613,7 @@ async fn queued_message_enters_the_turn_at_a_tool_boundary() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -621,6 +630,21 @@ async fn queued_message_enters_the_turn_at_a_tool_boundary() -> Result<()> {
             ("user", "change course"),
             ("assistant", "after"),
         ]
+    );
+    // The call was still running when the message went in, so it and its
+    // result belong to the reply that follows.
+    let after = detail.messages[3]
+        .parts
+        .first()
+        .and_then(|p| p.part.clone());
+    assert!(
+        matches!(
+            &after,
+            Some(message_part::Part::Tool(t))
+                if t.id == "toolu_1" && t.output.as_deref() == Some("slept")
+                    && t.status == ToolStatus::Completed as i32
+        ),
+        "the running call must keep its result: {after:?}"
     );
     assert!(
         detail.queued.is_empty(),
@@ -711,6 +735,7 @@ async fn codex_takes_a_queued_message_mid_turn() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();
@@ -748,6 +773,7 @@ async fn codex_takes_a_queued_message_mid_turn() -> Result<()> {
         .get(GetConversationRequest {
             workspace_id: ws.clone(),
             conversation_id: conv_id.clone(),
+            message_limit: None,
         })
         .await?
         .into_inner();

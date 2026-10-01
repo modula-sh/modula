@@ -6,7 +6,7 @@ use std::process::Command;
 
 use serde_json::{json, Value as JsonValue};
 
-use super::{program, ChatEvent, ProviderRuntime};
+use super::{content_text, program, ChatEvent, ProviderRuntime};
 
 pub struct CodexRuntime {
     pub config_dir: PathBuf,
@@ -130,41 +130,38 @@ impl ProviderRuntime for CodexRuntime {
         if v.get("method").is_some() || v.get("id").is_some() {
             return parse_app_server(v);
         }
-        let t = match v["type"].as_str() {
-            Some(t) => t,
-            None => return vec![],
-        };
-        match t {
+        // `codex exec --json`, which agents and one-shot generation run.
+        let item = &v["item"];
+        match v["type"].as_str().unwrap_or("") {
             "thread.started" => match v["thread_id"].as_str() {
                 Some(id) => vec![ChatEvent::Session { id: id.to_string() }],
                 None => vec![],
             },
-            "item.started" if v["item"]["type"].as_str() == Some("command_execution") => {
-                // `command` may be a string or an array of argv tokens.
-                let cmd_val = &v["item"]["command"];
-                let command = if let Some(s) = cmd_val.as_str() {
-                    s.to_string()
-                } else if let Some(arr) = cmd_val.as_array() {
-                    arr.iter()
-                        .filter_map(|a| a.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                } else {
-                    String::new()
-                };
+            "item.started" if item["type"].as_str() == Some("command_execution") => {
                 vec![ChatEvent::ToolUse {
-                    name: "Bash".to_string(),
-                    input: serde_json::json!({"command": command}),
+                    id: item["id"].as_str().unwrap_or("").to_string(),
+                    name: "command_execution".to_string(),
+                    input: json!({ "command": item["command"] }),
+                    parent_id: None,
                 }]
             }
-            "item.completed" if v["item"]["type"].as_str() == Some("agent_message") => {
-                match v["item"]["text"].as_str() {
-                    Some(text) => vec![ChatEvent::Delta {
-                        text: text.to_string(),
-                    }],
+            "item.completed" => match item["type"].as_str() {
+                Some("command_execution") => vec![ChatEvent::ToolResult {
+                    id: item["id"].as_str().unwrap_or("").to_string(),
+                    output: item["aggregated_output"].as_str().unwrap_or("").to_string(),
+                    is_error: item["status"].as_str() == Some("failed"),
+                }],
+                Some("agent_message") => match item["text"].as_str() {
+                    Some(text) => vec![
+                        ChatEvent::Break,
+                        ChatEvent::Delta {
+                            text: text.to_string(),
+                        },
+                    ],
                     None => vec![],
-                }
-            }
+                },
+                _ => vec![],
+            },
             "turn.completed" => vec![ChatEvent::Done],
             _ => vec![],
         }
@@ -186,6 +183,68 @@ fn rpc(method: &str, params: JsonValue) -> String {
     )
 }
 
+/// A thread item that is a tool call, as `(name, input)`: the item's own type
+/// and fields, an MCP or dynamic tool under the name the model called it by.
+fn tool_item(item: &JsonValue) -> Option<(String, JsonValue)> {
+    let pick = |keys: &[&str]| {
+        JsonValue::Object(
+            keys.iter()
+                .filter(|k| !item[**k].is_null())
+                .map(|k| (k.to_string(), item[*k].clone()))
+                .collect(),
+        )
+    };
+    let kind = item["type"].as_str()?;
+    Some(match kind {
+        "commandExecution" => (kind.to_string(), pick(&["command", "cwd"])),
+        "fileChange" => (kind.to_string(), pick(&["changes"])),
+        "webSearch" => (kind.to_string(), pick(&["query", "action"])),
+        "imageView" => (kind.to_string(), pick(&["path"])),
+        "mcpToolCall" => (
+            format!(
+                "{}.{}",
+                item["server"].as_str().unwrap_or(""),
+                item["tool"].as_str().unwrap_or("")
+            ),
+            item["arguments"].clone(),
+        ),
+        "dynamicToolCall" => {
+            let tool = item["tool"].as_str().unwrap_or("");
+            let name = match item["namespace"].as_str() {
+                Some(ns) => format!("{ns}.{tool}"),
+                None => tool.to_string(),
+            };
+            (name, item["arguments"].clone())
+        }
+        "collabAgentToolCall" => (
+            item["tool"].as_str().unwrap_or(kind).to_string(),
+            pick(&["prompt", "model", "receiverThreadIds"]),
+        ),
+        _ => return None,
+    })
+}
+
+/// What a finished tool item returned, and whether it failed.
+fn tool_item_result(item: &JsonValue) -> (String, bool) {
+    let failed = matches!(item["status"].as_str(), Some("failed" | "declined"));
+    let output = match item["type"].as_str() {
+        Some("commandExecution") => item["aggregatedOutput"].as_str().unwrap_or("").to_string(),
+        Some("mcpToolCall") => match item["error"]["message"].as_str() {
+            Some(message) => message.to_string(),
+            None => content_text(&item["result"]["content"]),
+        },
+        Some("dynamicToolCall") => item["contentItems"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+    (output, failed || item["success"].as_bool() == Some(false))
+}
+
 fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
     if let Some(message) = v["error"]["message"].as_str() {
         return vec![ChatEvent::Error {
@@ -194,37 +253,75 @@ fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
     }
     let p = &v["params"];
     let item = &p["item"];
+    let id = || item["id"].as_str().unwrap_or("").to_string();
+    let delta = |text: &JsonValue| text.as_str().unwrap_or("").to_string();
     match v["method"].as_str().unwrap_or("") {
-        "thread/started" => match p["thread"]["id"].as_str() {
-            Some(id) => vec![ChatEvent::Session { id: id.to_string() }],
-            None => vec![],
-        },
-        "item/agentMessage/delta" => match p["delta"].as_str() {
-            Some(text) => vec![ChatEvent::Delta {
-                text: text.to_string(),
-            }],
-            None => vec![],
-        },
+        "thread/started" => {
+            let mut events = Vec::new();
+            if let Some(id) = p["thread"]["id"].as_str() {
+                events.push(ChatEvent::Session { id: id.to_string() });
+            }
+            if let Some(name) = p["thread"]["model"].as_str() {
+                events.push(ChatEvent::Model {
+                    name: name.to_string(),
+                });
+            }
+            events
+        }
+        "item/agentMessage/delta" => vec![ChatEvent::Delta {
+            text: delta(&p["delta"]),
+        }],
+        "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
+            vec![ChatEvent::Thinking {
+                text: delta(&p["delta"]),
+            }]
+        }
+        "item/reasoning/summaryPartAdded" => vec![ChatEvent::Break],
         "item/started" => match item["type"].as_str() {
-            Some("commandExecution") => vec![ChatEvent::ToolUse {
-                name: "Bash".to_string(),
-                input: json!({ "command": item["command"] }),
-            }],
-            Some("fileChange") => vec![ChatEvent::ToolUse {
-                name: "Edit".to_string(),
-                input: json!({ "file_path": item["changes"][0]["path"] }),
-            }],
-            Some("mcpToolCall") => vec![ChatEvent::ToolUse {
-                name: item["tool"].as_str().unwrap_or("").to_string(),
-                input: item["arguments"].clone(),
-            }],
-            _ => vec![],
+            Some("agentMessage" | "reasoning") => vec![ChatEvent::Break],
+            _ => match tool_item(item) {
+                Some((name, input)) => vec![ChatEvent::ToolUse {
+                    id: id(),
+                    name,
+                    input,
+                    parent_id: None,
+                }],
+                None => vec![],
+            },
         },
         "item/completed" => match item["type"].as_str() {
-            Some("commandExecution" | "fileChange" | "mcpToolCall") => vec![ChatEvent::ToolResult],
             Some("userMessage") => vec![ChatEvent::InputAccepted],
-            _ => vec![],
+            _ => match tool_item(item) {
+                // The finished item carries the call's final input (a patch's
+                // diff, say), so it is restated ahead of the result.
+                Some((name, input)) => {
+                    let (output, is_error) = tool_item_result(item);
+                    vec![
+                        ChatEvent::ToolUse {
+                            id: id(),
+                            name,
+                            input,
+                            parent_id: None,
+                        },
+                        ChatEvent::ToolResult {
+                            id: id(),
+                            output,
+                            is_error,
+                        },
+                    ]
+                }
+                None => vec![],
+            },
         },
+        // `last` is the model call just made; a turn is the sum of its calls.
+        "thread/tokenUsage/updated" => {
+            let last = &p["tokenUsage"]["last"];
+            vec![ChatEvent::Usage {
+                input_tokens: last["inputTokens"].as_u64().unwrap_or(0),
+                output_tokens: last["outputTokens"].as_u64().unwrap_or(0),
+                cost_usd: None,
+            }]
+        }
         "turn/completed" if p["turn"]["status"].as_str() == Some("failed") => {
             vec![ChatEvent::Error {
                 message: p["turn"]["error"]["message"]
@@ -233,7 +330,14 @@ fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
                     .to_string(),
             }]
         }
-        "turn/completed" => vec![ChatEvent::Done],
+        "turn/completed" => {
+            let mut events = Vec::new();
+            if let Some(ms) = p["turn"]["durationMs"].as_u64() {
+                events.push(ChatEvent::Duration { ms });
+            }
+            events.push(ChatEvent::Done);
+            events
+        }
         "error" if p["willRetry"].as_bool() != Some(true) => vec![ChatEvent::Error {
             message: p["error"]["message"]
                 .as_str()
@@ -350,12 +454,10 @@ type = "local"
     #[test]
     fn codex_parse_item_completed() {
         let line = r#"{"type":"item.completed","item":{"type":"agent_message","text":"hi there"}}"#;
-        let events = codex_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 1);
-        match &events[0] {
-            ChatEvent::Delta { text } => assert_eq!(text, "hi there"),
-            _ => panic!("expected Delta"),
-        }
+        assert!(matches!(
+            &codex_rt().parse_stream_line(line)[..],
+            [ChatEvent::Break, ChatEvent::Delta { text }] if text == "hi there"
+        ));
     }
 
     #[test]
@@ -369,17 +471,17 @@ type = "local"
     #[test]
     fn codex_parse_command_execution_string() {
         // command as a plain string — the verified shape from live `codex --json`.
-        let line =
-            r#"{"type":"item.started","item":{"type":"command_execution","command":"ls -la"}}"#;
-        let events = codex_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 1);
-        match &events[0] {
-            ChatEvent::ToolUse { name, input } => {
-                assert_eq!(name, "Bash");
-                assert_eq!(input["command"], "ls -la");
-            }
-            _ => panic!("expected ToolUse"),
-        }
+        let line = r#"{"type":"item.started","item":{"id":"i1","type":"command_execution","command":"ls -la"}}"#;
+        assert!(matches!(
+            &codex_rt().parse_stream_line(line)[..],
+            [ChatEvent::ToolUse { id, name, input, .. }]
+                if id == "i1" && name == "command_execution" && input["command"] == "ls -la"
+        ));
+        let done = r#"{"type":"item.completed","item":{"id":"i1","type":"command_execution","aggregated_output":"a\n","status":"failed"}}"#;
+        assert!(matches!(
+            &codex_rt().parse_stream_line(done)[..],
+            [ChatEvent::ToolResult { id, output, is_error: true }] if id == "i1" && output == "a\n"
+        ));
     }
 
     #[test]
@@ -419,16 +521,22 @@ type = "local"
             [ChatEvent::Session { id }] if id == "t1"
         ));
         assert!(matches!(
+            &parse(r#"{"method":"item/reasoning/summaryTextDelta","params":{"delta":"hm"}}"#)[..],
+            [ChatEvent::Thinking { text }] if text == "hm"
+        ));
+        assert!(matches!(
             &parse(r#"{"method":"item/agentMessage/delta","params":{"delta":"hi"}}"#)[..],
             [ChatEvent::Delta { text }] if text == "hi"
         ));
         assert!(matches!(
-            &parse(r#"{"method":"item/started","params":{"item":{"type":"commandExecution","command":"ls"}}}"#)[..],
-            [ChatEvent::ToolUse { name, .. }] if name == "Bash"
+            &parse(r#"{"method":"item/started","params":{"item":{"type":"commandExecution","id":"e1","command":"ls"}}}"#)[..],
+            [ChatEvent::ToolUse { id, name, input, .. }]
+                if id == "e1" && name == "commandExecution" && input == &json!({"command": "ls"})
         ));
         assert!(matches!(
-            parse(r#"{"method":"item/completed","params":{"item":{"type":"commandExecution"}}}"#)[..],
-            [ChatEvent::ToolResult]
+            &parse(r#"{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"e1","command":"ls","aggregatedOutput":"a.txt\n","status":"completed"}}}"#)[..],
+            [ChatEvent::ToolUse { .. }, ChatEvent::ToolResult { id, output, is_error: false }]
+                if id == "e1" && output == "a.txt\n"
         ));
         assert!(matches!(
             parse(r#"{"method":"item/completed","params":{"item":{"type":"userMessage"}}}"#)[..],
@@ -449,19 +557,88 @@ type = "local"
         assert!(parse(r#"{"id":"x","result":{}}"#).is_empty());
     }
 
+    /// The other tool items, shaped as the app-server protocol defines them.
     #[test]
-    fn codex_parse_command_execution_array() {
-        // command as an argv token array — defensive handling for possible future shape.
-        let line =
-            r#"{"type":"item.started","item":{"type":"command_execution","command":["ls","-la"]}}"#;
-        let events = codex_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 1);
-        match &events[0] {
-            ChatEvent::ToolUse { name, input } => {
-                assert_eq!(name, "Bash");
-                assert_eq!(input["command"], "ls -la");
-            }
-            _ => panic!("expected ToolUse"),
-        }
+    fn codex_parse_app_server_tool_items() {
+        let rt = codex_rt();
+        let completed = |item: JsonValue| {
+            rt.parse_line(&json!({ "method": "item/completed", "params": { "item": item } }))
+        };
+        assert!(matches!(
+            &completed(json!({
+                "type": "mcpToolCall", "id": "m1", "server": "blender", "tool": "get_screenshot",
+                "arguments": {"window": 1}, "status": "completed",
+                "result": {"content": [{"type": "text", "text": "ok"}, {"type": "image"}]},
+            }))[..],
+            [ChatEvent::ToolUse { name, input, .. }, ChatEvent::ToolResult { output, is_error: false, .. }]
+                if name == "blender.get_screenshot" && input == &json!({"window": 1}) && output == "ok\n[image]"
+        ));
+        assert!(matches!(
+            &completed(json!({
+                "type": "mcpToolCall", "id": "m2", "server": "s", "tool": "t", "arguments": {},
+                "status": "failed", "error": {"message": "boom"},
+            }))[..],
+            [_, ChatEvent::ToolResult { output, is_error: true, .. }] if output == "boom"
+        ));
+        let changes =
+            json!([{"path": "a.rs", "kind": {"type": "update", "move_path": null}, "diff": "@@"}]);
+        assert!(matches!(
+            &completed(json!({"type": "fileChange", "id": "f1", "changes": changes, "status": "completed"}))[..],
+            [ChatEvent::ToolUse { name, input, .. }, ChatEvent::ToolResult { output, is_error: false, .. }]
+                if name == "fileChange" && input["changes"] == changes && output.is_empty()
+        ));
+        assert!(matches!(
+            &completed(json!({"type": "imageView", "id": "v1", "path": "/tmp/a.png"}))[..],
+            [ChatEvent::ToolUse { name, input, .. }, _]
+                if name == "imageView" && input == &json!({"path": "/tmp/a.png"})
+        ));
+        assert!(completed(json!({"type": "agentMessage", "id": "a1", "text": "hi"})).is_empty());
+    }
+
+    /// A real app-server turn: commentary, four shell commands (one failing),
+    /// then the final answer.
+    #[test]
+    fn codex_parse_recorded_turn() {
+        let rt = codex_rt();
+        let events: Vec<ChatEvent> = include_str!("fixtures/codex.jsonl")
+            .lines()
+            .flat_map(|line| rt.parse_stream_line(line))
+            .collect();
+        assert!(matches!(
+            &events[..2],
+            [ChatEvent::Session { .. }, ChatEvent::Model { name }] if name == "gpt-6-astra"
+        ));
+        let results: Vec<(&str, bool)> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolResult {
+                    output, is_error, ..
+                } => Some((output.as_str(), *is_error)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results.len(), 4);
+        assert_eq!(
+            results[3],
+            ("cat: does-not-exist.txt: No such file or directory\n", true)
+        );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ChatEvent::ToolUse { name, input, .. }
+                if name == "commandExecution" && input["command"] == "/bin/zsh -lc 'cat does-not-exist.txt'"
+        )));
+        let (input, output) = events.iter().fold((0, 0), |(i, o), e| match e {
+            ChatEvent::Usage {
+                input_tokens,
+                output_tokens,
+                ..
+            } => (i + input_tokens, o + output_tokens),
+            _ => (i, o),
+        });
+        assert_eq!((input, output), (78_873, 242));
+        assert!(matches!(
+            &events[events.len() - 2..],
+            [ChatEvent::Duration { ms: 21_593 }, ChatEvent::Done]
+        ));
     }
 }

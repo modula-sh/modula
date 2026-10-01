@@ -79,6 +79,7 @@ pub fn run() {
             grpc::system::system_tools,
             grpc::snapshot::snapshot_get,
             grpc::conversation::conversation_get,
+            grpc::conversation::conversation_messages,
             grpc::conversation::conversation_create,
             grpc::conversation::conversation_rename,
             grpc::conversation::conversation_delete,

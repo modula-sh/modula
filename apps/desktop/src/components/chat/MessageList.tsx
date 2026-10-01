@@ -1,69 +1,76 @@
-import { type RefObject, useMemo } from "react";
-import type { InFlightTool } from "../../contexts/ConversationStreamProvider";
-import type { ConversationMessage } from "../../types";
-import { MarkdownContent } from "../MarkdownContent";
+import { type RefObject, useEffect, useMemo, useRef } from "react";
+import type { ConversationMessage, MessagePart } from "../../types";
 import { MessageBubble } from "./MessageBubble";
-import { ToolUseLine } from "./ToolUseLine";
+import { MessageParts } from "./MessageParts";
 
 export function MessageList({
   messages,
-  inFlightText,
-  inFlightTools,
+  hasOlder,
+  onReachTop,
+  parts,
   streaming,
   error,
-  bottomRef,
-  scrollContainerRef,
-  onScroll,
+  scrollRef,
 }: {
   messages: ConversationMessage[];
-  inFlightText: string;
-  inFlightTools: InFlightTool[];
+  /** Messages older than the first one shown exist. */
+  hasOlder: boolean;
+  onReachTop: () => void;
+  /** The reply in flight. */
+  parts: MessagePart[];
   streaming: boolean;
   error: string | null;
-  bottomRef: RefObject<HTMLDivElement | null>;
-  scrollContainerRef: RefObject<HTMLDivElement | null>;
-  onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
+  scrollRef: RefObject<HTMLDivElement | null>;
 }) {
   // Held apart from the in-flight tail so streaming doesn't rebuild the
   // history's elements — React skips those subtrees on an unchanged reference.
   const history = useMemo(
-    () => messages.map((msg, i) => <MessageBubble key={i} msg={msg} />),
+    () => messages.map((msg) => <MessageBubble key={msg.seq} msg={msg} />),
     [messages],
   );
 
+  // Re-observed per page: an observer only reports a change, and the top may still be in reach.
+  const topRef = useRef<HTMLDivElement>(null);
+  const firstSeq = messages[0]?.seq;
+  useEffect(() => {
+    const top = topRef.current;
+    if (!top || !hasOlder || firstSeq === undefined) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) onReachTop();
+      },
+      { root: scrollRef.current, rootMargin: "800px 0px 0px 0px" },
+    );
+    observer.observe(top);
+    return () => observer.disconnect();
+  }, [hasOlder, firstSeq, onReachTop, scrollRef]);
+
+  const last = parts.at(-1);
   return (
+    // Reversed column: the scroll origin is the bottom, so it opens on the latest message.
     <div
-      ref={scrollContainerRef}
-      className="flex-1 overflow-y-auto px-[50px] [scrollbar-gutter:stable]"
-      onScroll={onScroll}
+      ref={scrollRef}
+      className="flex-1 flex flex-col-reverse overflow-y-auto px-[50px] [scrollbar-gutter:stable]"
     >
-      <div className="max-w-[800px] mx-auto py-4 pb-40 space-y-4">
+      <div className="w-full max-w-[800px] mx-auto py-4 pb-40 space-y-4">
+        <div ref={topRef} />
         {history}
 
-        {(inFlightTools.length > 0 || inFlightText) && (
-          <div className="flex flex-col gap-1">
-            {inFlightTools.map((tool, i) => (
-              <ToolUseLine key={i} name={tool.name} input={tool.input} />
-            ))}
-            {inFlightText && (
-              <div>
-                <MarkdownContent
-                  value={inFlightText}
-                  fontClass="font-geist"
-                  bodyClass="text-[14px]"
-                />
-                <span className="inline-block w-1.5 h-3 bg-fg-subtle animate-pulse ml-0.5 align-bottom" />
-              </div>
-            )}
+        {parts.length > 0 && (
+          <div className="flex flex-col gap-1 min-w-0">
+            <MessageParts parts={parts} live />
           </div>
         )}
 
-        {streaming && !inFlightText && inFlightTools.length === 0 && (
+        {streaming && last?.type === "text" && (
+          <span className="inline-block w-1.5 h-3 bg-fg-subtle animate-pulse ml-0.5 align-bottom" />
+        )}
+
+        {streaming && (!last || (last.type === "tool" && last.status !== "running")) && (
           <p className="font-inter italic text-fg-subtle text-[14px] animate-pulse">Thinking…</p>
         )}
 
         {error && <p className="text-red-400 text-xs px-1">{error}</p>}
-        <div ref={bottomRef} />
       </div>
     </div>
   );

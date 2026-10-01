@@ -27,7 +27,8 @@ pub fn json_to_struct(v: Json) -> Option<Struct> {
     }
 }
 
-fn value_to_json(v: Value) -> Json {
+/// Convert any protobuf `Value` into JSON.
+pub fn value_to_json(v: Value) -> Json {
     match v.kind {
         Some(Kind::NullValue(_)) | None => Json::Null,
         Some(Kind::BoolValue(b)) => Json::Bool(b),
@@ -40,7 +41,8 @@ fn value_to_json(v: Value) -> Json {
     }
 }
 
-fn json_to_value(v: Json) -> Value {
+/// Convert any JSON value into a protobuf `Value`.
+pub fn json_to_value(v: Json) -> Value {
     let kind = match v {
         Json::Null => Kind::NullValue(0),
         Json::Bool(b) => Kind::BoolValue(b),

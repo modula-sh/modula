@@ -276,11 +276,41 @@ export interface ConversationSummary {
   updated_at: string;
 }
 
+/** A tool call as the provider reported it; `name` and `input` are its own. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+  /** The call this one ran under, for a sub-agent's calls. */
+  parent_id?: string;
+  status: "running" | "completed" | "failed";
+  output?: string;
+  output_truncated?: boolean;
+}
+
+export type MessagePart =
+  | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
+  | ({ type: "tool" } & ToolCall);
+
+export interface TurnStats {
+  duration_ms?: number;
+  /** Prompt tokens, cached ones included. */
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+  model?: string;
+}
+
 export interface ConversationMessage {
   role: "user" | "assistant" | "system";
   content: string;
-  tools?: { name: string; input: unknown }[];
   ts: string;
+  /** Position in the conversation, from 0. */
+  seq: number;
+  /** An assistant message's text, thinking and tool calls, in order. */
+  parts?: MessagePart[];
+  stats?: TurnStats;
 }
 
 export interface QueuedMessage {
@@ -290,7 +320,9 @@ export interface QueuedMessage {
 
 export interface ConversationDetail extends ConversationSummary {
   session_id: string | null;
+  /** The loaded window: the tail, plus any older pages fetched since. */
   messages: ConversationMessage[];
+  message_count: number;
   queued: QueuedMessage[];
   created_at: string;
   /** A provider run is in flight engine-side, even if this window isn't streaming it. */

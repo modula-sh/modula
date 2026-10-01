@@ -1,7 +1,6 @@
 //! Conversations: title and the transcript's message contents.
 
 use async_trait::async_trait;
-use serde_json::Value;
 use sqlx::SqlitePool;
 
 use modula_core::error::ApiResult;
@@ -11,23 +10,6 @@ use modula_types::{SearchHit, SearchKind};
 use super::super::SearchSource;
 
 const UNTITLED: &str = "Untitled";
-
-/// Message texts from the `data` blob. A malformed message contributes nothing
-/// rather than voiding the whole transcript.
-fn message_contents(data: &str) -> Vec<String> {
-    serde_json::from_str::<Value>(data)
-        .ok()
-        .as_ref()
-        .and_then(|v| v.get("messages"))
-        .and_then(Value::as_array)
-        .map(|messages| {
-            messages
-                .iter()
-                .filter_map(|m| Some(m.get("content")?.as_str()?.to_string()))
-                .collect()
-        })
-        .unwrap_or_default()
-}
 
 pub(in crate::search) struct Conversations {
     pool: SqlitePool,
@@ -50,8 +32,6 @@ impl SearchSource for Conversations {
     }
 
     async fn search(&self, ws: &str, query: &str, limit: i64) -> ApiResult<Vec<SearchHit>> {
-        // The SQL matched raw JSON, so a row may have hit the envelope (a role,
-        // a timestamp) rather than message text; `hit` drops those.
         Ok(self
             .conversations
             .search(
@@ -63,10 +43,11 @@ impl SearchSource for Conversations {
             .await?
             .into_iter()
             .filter_map(|c| {
-                let contents = message_contents(&c.data);
-                let bodies: Vec<(&str, &str)> = contents
-                    .iter()
-                    .map(|content| ("transcript", content.as_str()))
+                let bodies: Vec<(&str, &str)> = c
+                    .content
+                    .as_deref()
+                    .map(|content| ("transcript", content))
+                    .into_iter()
                     .collect();
                 let title = if c.title.trim().is_empty() {
                     UNTITLED

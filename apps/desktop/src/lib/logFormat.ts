@@ -41,19 +41,48 @@ function firstScalar(input: unknown): string {
   return "";
 }
 
+/** The file a tool names, under whichever key its provider uses. */
+function filePath(i: Record<string, unknown>): string {
+  const fp = i.file_path ?? i.filePath ?? i.path;
+  return typeof fp === "string" ? tildifyPath(fp) : "";
+}
+
+/** Each provider's own tool names, printed the way its CLI prints them. */
 export function formatToolUse(name: string, input: unknown): FormatResult {
   const i = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
 
   switch (name) {
-    case "Bash": {
+    case "Bash":
+    case "bash":
+    case "run_shell_command": {
       const cmd = typeof i.command === "string" ? oneLine(i.command) : "";
       const desc = typeof i.description === "string" ? oneLine(i.description) : "";
-      return { primary: `Bash(${cmd})`, continuation: desc ? [desc] : [] };
+      return { primary: `${name}(${cmd})`, continuation: desc ? [desc] : [] };
     }
-    case "Read": {
-      const fp = typeof i.file_path === "string" ? tildifyPath(i.file_path) : "";
-      return { primary: `Read(${fp})`, continuation: [] };
+    case "commandExecution":
+    case "command_execution": {
+      const cmd = typeof i.command === "string" ? oneLine(i.command) : "";
+      return { primary: `Ran ${cmd}`, continuation: [] };
     }
+    case "fileChange": {
+      const changes = Array.isArray(i.changes) ? (i.changes as { path?: unknown }[]) : [];
+      const paths = changes.map((c) => (typeof c.path === "string" ? tildifyPath(c.path) : ""));
+      return { primary: `Edited ${oneLine(paths.join(", "))}`, continuation: [] };
+    }
+    case "webSearch": {
+      const query = typeof i.query === "string" ? oneLine(i.query) : "";
+      return { primary: `Searched ${query}`, continuation: [] };
+    }
+    case "imageView":
+      return { primary: `Viewed image ${filePath(i)}`, continuation: [] };
+    case "Read":
+    case "read":
+    case "read_file":
+    case "write":
+    case "write_file":
+    case "edit":
+    case "replace":
+      return { primary: `${name}(${filePath(i)})`, continuation: [] };
     case "Edit": {
       const fp = typeof i.file_path === "string" ? tildifyPath(i.file_path) : "";
       const cont = i.replace_all === true ? ["replace_all: true"] : [];

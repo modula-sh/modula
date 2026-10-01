@@ -1,10 +1,25 @@
-import type { ConversationDetail, QueuedMessage } from "../../../types";
+import type { ConversationDetail, ConversationMessage, QueuedMessage } from "../../../types";
 import { call } from "../invoke";
 import type { CreateConversationBody } from "../types";
 
 export class ConversationResource {
-  get(ws: string, id: string) {
-    return call<ConversationDetail>("conversation_get", { workspaceId: ws, conversationId: id });
+  /** The conversation with its newest `messageLimit` messages. */
+  get(ws: string, id: string, messageLimit: number) {
+    return call<ConversationDetail>("conversation_get", {
+      workspaceId: ws,
+      conversationId: id,
+      messageLimit,
+    });
+  }
+
+  /** The `limit` messages before `beforeSeq`, oldest first. */
+  messages(ws: string, id: string, beforeSeq: number, limit: number) {
+    return call<ConversationMessage[]>("conversation_messages", {
+      workspaceId: ws,
+      conversationId: id,
+      beforeSeq,
+      limit,
+    });
   }
 
   create(ws: string, body: CreateConversationBody) {

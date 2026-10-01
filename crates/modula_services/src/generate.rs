@@ -121,41 +121,38 @@ impl GenerationService {
                 for event in runtime.parse_stream_line(&line) {
                     match event {
                         ChatEvent::Delta { text: t } => text.push_str(&t),
-                        ChatEvent::Done => return Ok(Some(text)),
+                        ChatEvent::Done => return Ok((text, true)),
                         ChatEvent::Error { message } => return Err(ApiError::Internal(message)),
                         _ => {}
                     }
                 }
             }
-            Ok(None)
+            Ok((text, false))
         };
 
         // `kill_on_drop` reaps the child when this future is dropped on expiry.
-        let drained = tokio::time::timeout(GENERATE_TIMEOUT, drain)
+        let (text, done) = tokio::time::timeout(GENERATE_TIMEOUT, drain)
             .await
             .map_err(|_| ApiError::Internal("provider timed out".into()))??;
 
-        let text = match drained {
-            Some(text) => text,
-            None => {
-                let status = child.wait().await;
-                let stderr_text = stderr_task.await.unwrap_or_default();
-                if matches!(&status, Ok(s) if s.success()) {
-                    String::new()
-                } else {
-                    let mut msg = match &status {
-                        Ok(s) => format!("provider exited with status {s}"),
-                        Err(e) => format!("provider wait failed: {e}"),
-                    };
-                    let trimmed = stderr_text.trim();
-                    if !trimmed.is_empty() {
-                        msg.push_str(": ");
-                        msg.push_str(trimmed);
-                    }
-                    return Err(ApiError::Internal(msg));
+        // A provider that ends its turn by exiting sends no `Done`; its exit
+        // status says whether the text is complete.
+        if !done {
+            let status = child.wait().await;
+            let stderr_text = stderr_task.await.unwrap_or_default();
+            if !matches!(&status, Ok(s) if s.success()) {
+                let mut msg = match &status {
+                    Ok(s) => format!("provider exited with status {s}"),
+                    Err(e) => format!("provider wait failed: {e}"),
+                };
+                let trimmed = stderr_text.trim();
+                if !trimmed.is_empty() {
+                    msg.push_str(": ");
+                    msg.push_str(trimmed);
                 }
+                return Err(ApiError::Internal(msg));
             }
-        };
+        }
 
         let text = strip_code_fence(&text);
         if text.is_empty() {

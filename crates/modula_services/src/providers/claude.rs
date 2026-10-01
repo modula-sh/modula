@@ -7,7 +7,7 @@ use std::process::Command;
 
 use serde_json::Value as JsonValue;
 
-use super::{program, ChatEvent, ProviderRuntime};
+use super::{content_text, program, ChatEvent, ProviderRuntime};
 
 pub struct ClaudeRuntime {
     pub config_dir: PathBuf,
@@ -97,62 +97,68 @@ impl ProviderRuntime for ClaudeRuntime {
     }
 
     fn parse_line(&self, v: &JsonValue) -> Vec<ChatEvent> {
-        let t = match v["type"].as_str() {
-            Some(t) => t,
-            None => return vec![],
-        };
-        match t {
-            "system" if v["subtype"].as_str() == Some("init") => match v["session_id"].as_str() {
-                Some(id) => vec![ChatEvent::Session { id: id.to_string() }],
-                None => vec![],
-            },
-            "user" if v["isReplay"].as_bool() == Some(true) => vec![ChatEvent::InputAccepted],
-            "user" => v["message"]["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|block| block["type"].as_str() == Some("tool_result"))
-                .map(|_| ChatEvent::ToolResult)
-                .collect(),
-            "stream_event" => {
-                let ev = match v.get("event") {
-                    Some(e) => e,
-                    None => return vec![],
-                };
-                if ev["type"].as_str() == Some("content_block_delta") {
-                    match ev["delta"]["text"].as_str() {
-                        Some(text) => vec![ChatEvent::Delta {
-                            text: text.to_string(),
-                        }],
-                        None => vec![],
-                    }
-                } else {
-                    vec![]
+        // On everything a sub-agent produced: the id of the call that spawned it.
+        let parent = v["parent_tool_use_id"].as_str();
+        let blocks = || v["message"]["content"].as_array().into_iter().flatten();
+        match v["type"].as_str().unwrap_or("") {
+            "system" if v["subtype"].as_str() == Some("init") => {
+                let mut events = Vec::new();
+                if let Some(id) = v["session_id"].as_str() {
+                    events.push(ChatEvent::Session { id: id.to_string() });
                 }
+                if let Some(name) = v["model"].as_str() {
+                    events.push(ChatEvent::Model {
+                        name: name.to_string(),
+                    });
+                }
+                events
             }
-            "assistant" => {
-                let content = match v["message"]["content"].as_array() {
-                    Some(c) => c,
-                    None => return vec![],
-                };
-                // Both first and resume turns use --include-partial-messages, so
-                // text always arrives via stream_event/content_block_delta. The
-                // assistant envelope is only needed for tool_use blocks.
-                content
-                    .iter()
-                    .filter(|block| block["type"].as_str() == Some("tool_use"))
-                    .map(|block| ChatEvent::ToolUse {
-                        name: block["name"].as_str().unwrap_or("").to_string(),
-                        input: block["input"].clone(),
-                    })
-                    .collect()
-            }
+            "user" if v["isReplay"].as_bool() == Some(true) => vec![ChatEvent::InputAccepted],
+            "user" => blocks()
+                .filter(|block| block["type"].as_str() == Some("tool_result"))
+                .map(|block| ChatEvent::ToolResult {
+                    id: block["tool_use_id"].as_str().unwrap_or("").to_string(),
+                    output: content_text(&block["content"]),
+                    is_error: block["is_error"].as_bool().unwrap_or(false),
+                })
+                .collect(),
+            // A sub-agent's own text is its working-out; its report comes back
+            // as the result of the call that spawned it.
+            "stream_event" if parent.is_none() => stream_event(&v["event"]),
+            // Chat turns use --include-partial-messages, so text and thinking
+            // arrive via stream_event; the envelope is only read for tool_use.
+            "assistant" => blocks()
+                .filter(|block| block["type"].as_str() == Some("tool_use"))
+                .map(|block| ChatEvent::ToolUse {
+                    id: block["id"].as_str().unwrap_or("").to_string(),
+                    name: block["name"].as_str().unwrap_or("").to_string(),
+                    input: block["input"].clone(),
+                    parent_id: parent.map(str::to_string),
+                })
+                .collect(),
             "result" => {
+                let mut events = Vec::new();
+                let usage = &v["usage"];
+                if usage.is_object() {
+                    let n = |k: &str| usage[k].as_u64().unwrap_or(0);
+                    events.push(ChatEvent::Usage {
+                        input_tokens: n("input_tokens")
+                            + n("cache_creation_input_tokens")
+                            + n("cache_read_input_tokens"),
+                        output_tokens: n("output_tokens"),
+                        cost_usd: None,
+                    });
+                }
+                // `total_cost_usd` is the whole session's running total, resumed
+                // turns included, so it says nothing about this turn.
+                if let Some(ms) = v["duration_ms"].as_u64() {
+                    events.push(ChatEvent::Duration { ms });
+                }
                 let is_error = v["is_error"].as_bool().unwrap_or(false);
                 let subtype = v["subtype"].as_str().unwrap_or("");
-                let succeeded = !is_error && matches!(subtype, "success" | "final");
-                if succeeded {
-                    return vec![ChatEvent::Done];
+                if !is_error && matches!(subtype, "success" | "final") {
+                    events.push(ChatEvent::Done);
+                    return events;
                 }
                 let msg = v["result"]
                     .as_str()
@@ -164,10 +170,42 @@ impl ProviderRuntime for ClaudeRuntime {
                     })
                     .unwrap_or("provider error")
                     .to_string();
-                vec![ChatEvent::Error { message: msg }]
+                events.push(ChatEvent::Error { message: msg });
+                events
             }
             _ => vec![],
         }
+    }
+}
+
+/// One partial-message event of the main agent.
+fn stream_event(ev: &JsonValue) -> Vec<ChatEvent> {
+    match ev["type"].as_str() {
+        Some("content_block_start")
+            if matches!(
+                ev["content_block"]["type"].as_str(),
+                Some("text" | "thinking")
+            ) =>
+        {
+            vec![ChatEvent::Break]
+        }
+        Some("content_block_delta") => {
+            let delta = &ev["delta"];
+            if let Some(text) = delta["text"].as_str() {
+                vec![ChatEvent::Delta {
+                    text: text.to_string(),
+                }]
+            } else {
+                // Empty when the CLI streams only a token count for the block.
+                match delta["thinking"].as_str() {
+                    Some(text) if !text.is_empty() => vec![ChatEvent::Thinking {
+                        text: text.to_string(),
+                    }],
+                    _ => vec![],
+                }
+            }
+        }
+        _ => vec![],
     }
 }
 
@@ -333,12 +371,113 @@ mod tests {
             claude_rt().parse_stream_line(replay)[..],
             [ChatEvent::InputAccepted]
         ));
-        let tool_result =
-            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}"#;
+        let tool_result = r#"{"type":"user","message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"a"},{"type":"image"}],"is_error":true}
+        ]}}"#;
         assert!(matches!(
-            claude_rt().parse_stream_line(tool_result)[..],
-            [ChatEvent::ToolResult]
+            &claude_rt().parse_stream_line(tool_result)[..],
+            [ChatEvent::ToolResult { id, output, is_error: true }] if id == "t1" && output == "a\n[image]"
         ));
+    }
+
+    fn fixture(text: &str) -> Vec<ChatEvent> {
+        text.lines()
+            .flat_map(|line| claude_rt().parse_stream_line(line))
+            .collect()
+    }
+
+    /// A real chat turn: two reads, a write, a shell command and a failing one.
+    #[test]
+    fn claude_parse_recorded_turn() {
+        let events = fixture(include_str!("fixtures/claude.jsonl"));
+        let tools: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolUse {
+                    name,
+                    parent_id: None,
+                    ..
+                } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tools, ["Read", "Read", "Write", "Bash", "Bash"]);
+
+        let results: Vec<(&str, bool)> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolResult {
+                    output, is_error, ..
+                } => Some((output.as_str(), *is_error)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results.len(), 5);
+        assert_eq!(results[0], ("1\talpha\n2\t", false));
+        assert!(results[4].1 && results[4].0.contains("No such file or directory"));
+
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::Delta { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(text.starts_with("I read `a.txt`") && text.ends_with("directory\"."));
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ChatEvent::Usage {
+                input_tokens: 106_859,
+                output_tokens: 538,
+                cost_usd: None
+            }
+        )));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::Duration { ms } if *ms > 0)));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::Model { name } if name == "claude-opus-5-5")));
+        assert!(matches!(events.last(), Some(ChatEvent::Done)));
+    }
+
+    /// A real turn that delegates: the sub-agent's calls name the `Agent` call
+    /// as parent, and its text never reaches the reply.
+    #[test]
+    fn claude_parse_recorded_subagent_turn() {
+        let events = fixture(include_str!("fixtures/claude_subagent.jsonl"));
+        let calls: Vec<(&str, &str, Option<&str>)> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolUse {
+                    id,
+                    name,
+                    parent_id,
+                    ..
+                } => Some((id.as_str(), name.as_str(), parent_id.as_deref())),
+                _ => None,
+            })
+            .collect();
+        let agent = calls[0].0;
+        assert_eq!(calls[0].1, "Agent");
+        assert_eq!(calls[0].2, None);
+        assert_eq!(calls.len(), 3);
+        for (_, name, parent) in &calls[1..] {
+            assert_eq!((*name, *parent), ("Read", Some(agent)));
+        }
+        // The CLI streamed the thinking block as a token count, with no text.
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::Thinking { .. })));
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::Delta { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(text.starts_with("The subagent reported"));
     }
 
     #[test]
@@ -361,6 +500,11 @@ mod tests {
             ChatEvent::Session { id } => assert_eq!(id, "sess-123"),
             _ => panic!("expected Session"),
         }
+        let line = r#"{"type":"system","subtype":"init","session_id":"s","model":"opus"}"#;
+        assert!(matches!(
+            &claude_rt().parse_stream_line(line)[..],
+            [ChatEvent::Session { .. }, ChatEvent::Model { name }] if name == "opus"
+        ));
     }
 
     #[test]
@@ -371,7 +515,7 @@ mod tests {
         // double-emission on first turns.
         let line = r#"{"type":"assistant","message":{"content":[
             {"type":"text","text":"Let me check that."},
-            {"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}
+            {"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls -la"}}
         ]}}"#;
         let events = claude_rt().parse_stream_line(line);
         assert_eq!(
@@ -381,9 +525,15 @@ mod tests {
             events.len()
         );
         match &events[0] {
-            ChatEvent::ToolUse { name, input } => {
-                assert_eq!(name, "Bash");
+            ChatEvent::ToolUse {
+                id,
+                name,
+                input,
+                parent_id,
+            } => {
+                assert_eq!((id.as_str(), name.as_str()), ("toolu_1", "Bash"));
                 assert_eq!(input["command"], "ls -la");
+                assert!(parent_id.is_none());
             }
             _ => panic!("expected ToolUse"),
         }
@@ -407,8 +557,7 @@ mod tests {
     fn claude_parse_result_success() {
         let line = r#"{"type":"result","subtype":"success","total_cost_usd":0}"#;
         let events = claude_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], ChatEvent::Done));
+        assert!(matches!(events[..], [ChatEvent::Done]));
     }
 
     #[test]
