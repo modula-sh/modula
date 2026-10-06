@@ -6,10 +6,11 @@ use modula_rpc::v1::{
     CancelConversationRequest, CancelConversationResponse, ConvEvent, Conversation,
     ConversationSummary, CreateConversationRequest, CreateConversationResponse,
     DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DequeueMessageRequest,
-    DoneEvent, EnqueueMessageRequest, ErrorEvent, GetConversationRequest, ListConversationsRequest,
-    ListConversationsResponse, ListMessagesRequest, ListMessagesResponse, QueuedMessage,
-    QueuedMessagesResponse, SendMessageRequest, SessionEvent, ThinkingEvent, ToolResultEvent,
-    ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse, UserEvent,
+    DoneEvent, EnqueueMessageRequest, ErrorEvent, ForkConversationRequest, GetConversationRequest,
+    ListConversationsRequest, ListConversationsResponse, ListMessagesRequest, ListMessagesResponse,
+    QueuedMessage, QueuedMessagesResponse, SendMessageRequest, SessionEvent, ThinkingEvent,
+    ToolResultEvent, ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse,
+    UserEvent,
 };
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
@@ -189,6 +190,20 @@ impl ConversationService for ConversationHandler {
                 body.model,
                 context,
             )
+            .await
+            .map_err(to_status)?;
+        Ok(Response::new(CreateConversationResponse { id }))
+    }
+
+    async fn fork(
+        &self,
+        req: Request<ForkConversationRequest>,
+    ) -> Result<Response<CreateConversationResponse>, Status> {
+        let body = req.into_inner();
+        let id = self
+            .state
+            .conversations
+            .fork(&body.workspace_id, &body.conversation_id, body.through_seq)
             .await
             .map_err(to_status)?;
         Ok(Response::new(CreateConversationResponse { id }))

@@ -1,6 +1,11 @@
-import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { Check, Copy, GitFork } from "lucide-react";
+import { useContext, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useToast } from "../../contexts/ToastContext";
+import { WorkspaceContext } from "../../contexts/WorkspaceContext";
 import { formatDuration } from "../../lib/toolDisplay";
+import { chatDraftKey } from "../../queries/conversation";
+import { client, errorMessage } from "../../services/client";
 import type { ConversationMessage, TurnStats } from "../../types";
 import { TimeAgo } from "../TimeAgo";
 
@@ -19,6 +24,28 @@ function statsDetail(stats: TurnStats): string {
 
 export function MessageMeta({ msg, align }: { msg: ConversationMessage; align: "start" | "end" }) {
   const [copied, setCopied] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const ws = useContext(WorkspaceContext);
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  // A new chat with the transcript up to here; a user message becomes its unsent draft.
+  async function clone() {
+    if (!id || cloning) return;
+    setCloning(true);
+    try {
+      const own = msg.role === "user";
+      const through = own ? msg.seq - 1 : msg.seq;
+      const fork = await client.conversation.fork(ws, id, through < 0 ? undefined : through);
+      if (own) localStorage.setItem(chatDraftKey(ws, fork.id), JSON.stringify(msg.content));
+      navigate(`/conversations/${fork.id}`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setCloning(false);
+    }
+  }
 
   async function copy() {
     try {
@@ -45,6 +72,15 @@ export function MessageMeta({ msg, align }: { msg: ConversationMessage; align: "
           className="p-1 rounded hover:bg-surface hover:text-fg transition-colors"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+        <button
+          type="button"
+          onClick={clone}
+          disabled={cloning}
+          title="Clone chat from here"
+          className="p-1 rounded hover:bg-surface hover:text-fg transition-colors disabled:opacity-50"
+        >
+          <GitFork size={12} />
         </button>
         <TimeAgo iso={msg.ts} />
       </div>

@@ -12,6 +12,7 @@ use std::pin::Pin;
 use std::process::Command;
 use std::sync::Arc;
 
+use modula_db::conversations::SessionAnchor;
 use serde_json::Value as JsonValue;
 
 mod claude;
@@ -108,6 +109,11 @@ pub enum ChatEvent {
     Session {
         id: String,
     },
+    /// The provider's id for where the session now stands. The last one a turn
+    /// reports is where a fork keeps everything through that turn.
+    Anchor {
+        id: String,
+    },
     /// A tool call started. For an id already seen, its input as now known.
     ToolUse {
         id: String,
@@ -180,9 +186,21 @@ pub trait ProviderRuntime: Send + Sync {
         self.build_command(prompt, Some(session_id))
     }
 
+    /// Command for the first turn of a chat that forks another session at
+    /// `from`, keeping nothing after it. The fork announces its own session id.
+    /// `None` when the CLI can't fork at a point.
+    fn build_command_chat_fork(&self, _prompt: &str, _from: &SessionAnchor) -> Option<Command> {
+        None
+    }
+
     /// Lines written to stdin before any message. `Some` means the chat takes its
     /// messages through `chat_input`, mid-turn included; `None`, one prompt per process.
-    fn chat_open(&self, _session_id: Option<&str>) -> Option<Vec<String>> {
+    /// `fork` is set on the turn `build_command_chat_fork` started.
+    fn chat_open(
+        &self,
+        _session_id: Option<&str>,
+        _fork: Option<&SessionAnchor>,
+    ) -> Option<Vec<String>> {
         None
     }
 

@@ -9,6 +9,8 @@ service ConversationService {
   // A page of messages older than `before_seq`, oldest first.
   rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
   rpc Create(CreateConversationRequest) returns (CreateConversationResponse);
+  // Clone a conversation up to one of its messages; returns the clone's id.
+  rpc Fork(ForkConversationRequest) returns (CreateConversationResponse);
   rpc Update(UpdateConversationRequest) returns (UpdateConversationResponse);
   rpc Delete(DeleteConversationRequest) returns (DeleteConversationResponse);
   // Start or continue a run; returns a server stream of ConvEvent.
@@ -201,6 +203,13 @@ message CreateConversationRequest {
 }
 message CreateConversationResponse {
   string id = 1;
+}
+
+message ForkConversationRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  // The last message the clone keeps; absent keeps none.
+  optional uint32 through_seq = 3;
 }
 
 message UpdateConversationRequest {

@@ -32,6 +32,15 @@ export class ConversationResource {
     });
   }
 
+  /** Clone a conversation through message `throughSeq`, or empty when omitted. */
+  fork(ws: string, id: string, throughSeq?: number) {
+    return call<{ id: string }>("conversation_fork", {
+      workspaceId: ws,
+      conversationId: id,
+      throughSeq,
+    });
+  }
+
   rename(ws: string, id: string, title: string) {
     return call<void>("conversation_rename", { workspaceId: ws, conversationId: id, title });
   }

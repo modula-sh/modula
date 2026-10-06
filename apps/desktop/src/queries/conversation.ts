@@ -6,6 +6,9 @@ export const conversationKeys = {
   detail: (ws: string, id: string) => ["conversations", ws, "detail", id] as const,
 };
 
+/** Where a conversation's unsent message is kept in localStorage. */
+export const chatDraftKey = (ws: string, id: string) => `modula.draft.${ws}.conv.${id}`;
+
 /** Messages per page, for the tail and for each older page. */
 export const MESSAGE_PAGE = 30;
 

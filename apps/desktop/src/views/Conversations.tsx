@@ -23,6 +23,7 @@ import { useLocalStorage } from "../lib/useLocalStorage";
 import { useResetOnChange } from "../lib/useResetOnChange";
 import { useProviderCatalog } from "../queries/catalog";
 import {
+  chatDraftKey,
   conversationKeys,
   loadOlderMessages,
   MESSAGE_PAGE,
@@ -439,7 +440,7 @@ export function ConversationDetailPage() {
                 models={availableModels}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}
-                draftKey={`modula.draft.${ws}.conv.${id}`}
+                draftKey={chatDraftKey(ws, id ?? "")}
               />
             </div>
           </div>

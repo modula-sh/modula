@@ -5,6 +5,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use modula_db::conversations::SessionAnchor;
 use serde_json::Value as JsonValue;
 
 use super::{content_text, program, ChatEvent, ProviderRuntime};
@@ -71,7 +72,26 @@ impl ProviderRuntime for ClaudeRuntime {
         cmd
     }
 
-    fn chat_open(&self, _session_id: Option<&str>) -> Option<Vec<String>> {
+    /// `--fork-session` copies the session under a new id; `--resume-session-at`
+    /// keeps only its entries through the anchor.
+    fn build_command_chat_fork(&self, _prompt: &str, from: &SessionAnchor) -> Option<Command> {
+        let mut cmd = chat_command();
+        cmd.arg("--resume")
+            .arg(&from.session)
+            .arg("--fork-session")
+            .arg("--resume-session-at")
+            .arg(&from.anchor);
+        if let Some(m) = &self.model {
+            cmd.arg("--model").arg(m);
+        }
+        Some(cmd)
+    }
+
+    fn chat_open(
+        &self,
+        _session_id: Option<&str>,
+        _fork: Option<&SessionAnchor>,
+    ) -> Option<Vec<String>> {
         Some(Vec::new())
     }
 
@@ -100,6 +120,14 @@ impl ProviderRuntime for ClaudeRuntime {
         // On everything a sub-agent produced: the id of the call that spawned it.
         let parent = v["parent_tool_use_id"].as_str();
         let blocks = || v["message"]["content"].as_array().into_iter().flatten();
+        // Each message of the main agent is an entry in the session's chain,
+        // and `uuid` is the id `--resume-session-at` cuts at.
+        let anchor = || {
+            v["uuid"]
+                .as_str()
+                .filter(|_| parent.is_none())
+                .map(|id| ChatEvent::Anchor { id: id.to_string() })
+        };
         match v["type"].as_str().unwrap_or("") {
             "system" if v["subtype"].as_str() == Some("init") => {
                 let mut events = Vec::new();
@@ -121,6 +149,7 @@ impl ProviderRuntime for ClaudeRuntime {
                     output: content_text(&block["content"]),
                     is_error: block["is_error"].as_bool().unwrap_or(false),
                 })
+                .chain(anchor())
                 .collect(),
             // A sub-agent's own text is its working-out; its report comes back
             // as the result of the call that spawned it.
@@ -135,6 +164,7 @@ impl ProviderRuntime for ClaudeRuntime {
                     input: block["input"].clone(),
                     parent_id: parent.map(str::to_string),
                 })
+                .chain(anchor())
                 .collect(),
             "result" => {
                 let mut events = Vec::new();
@@ -353,6 +383,48 @@ mod tests {
         assert!(argv.contains(&std::ffi::OsStr::new("uuid-1")));
         assert!(argv.contains(&std::ffi::OsStr::new("stream-json")));
         assert!(!argv.contains(&std::ffi::OsStr::new("hello")));
+    }
+
+    #[test]
+    fn claude_chat_forks_a_session_at_an_entry() {
+        let from = SessionAnchor {
+            session: "sess-1".into(),
+            anchor: "entry-9".into(),
+        };
+        let cmd = claude_rt().build_command_chat_fork("hello", &from).unwrap();
+        let argv: Vec<&str> = args(&cmd).iter().filter_map(|a| a.to_str()).collect();
+        let at = argv.iter().position(|a| *a == "--resume").unwrap();
+        assert_eq!(
+            argv[at..at + 5],
+            [
+                "--resume",
+                "sess-1",
+                "--fork-session",
+                "--resume-session-at",
+                "entry-9"
+            ]
+        );
+        // The fork takes its own id, so none is preset.
+        assert!(!argv.contains(&"--session-id"));
+    }
+
+    /// Every chain entry of the main agent is somewhere a fork can cut; a
+    /// sub-agent's entries are not in that chain.
+    #[test]
+    fn claude_parse_anchors() {
+        let rt = claude_rt();
+        let text = r#"{"type":"assistant","uuid":"u1","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"hi"}]}}"#;
+        assert!(matches!(
+            &rt.parse_stream_line(text)[..],
+            [ChatEvent::Anchor { id }] if id == "u1"
+        ));
+        let result = r#"{"type":"user","uuid":"u2","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#;
+        assert!(matches!(
+            &rt.parse_stream_line(result)[..],
+            [ChatEvent::ToolResult { .. }, ChatEvent::Anchor { id }] if id == "u2"
+        ));
+        let sub = r#"{"type":"assistant","uuid":"u3","parent_tool_use_id":"t1","message":{"content":[{"type":"text","text":"hi"}]}}"#;
+        assert!(rt.parse_stream_line(sub).is_empty());
     }
 
     #[test]
