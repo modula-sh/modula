@@ -7,8 +7,8 @@ use modula_rpc::json::json_to_struct;
 use modula_rpc::v1::{
     AttachConversationRequest, CancelConversationRequest, ConvEvent as PbConvEvent,
     CreateConversationRequest, DeleteConversationRequest, DequeueMessageRequest,
-    EnqueueMessageRequest, GetConversationRequest, ListMessagesRequest, SendMessageRequest,
-    UpdateConversationRequest,
+    EnqueueMessageRequest, ForkConversationRequest, GetConversationRequest, ListMessagesRequest,
+    SendMessageRequest, UpdateConversationRequest,
 };
 use modula_types::{ChatMessage, ConvEvent, Conversation, QueuedMessage};
 use serde_json::Value;
@@ -88,6 +88,27 @@ impl ModulaClient {
                 title,
                 model,
                 context: context.and_then(json_to_struct),
+            })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(resp.id)
+    }
+
+    /// Clone a conversation through `through_seq`; returns the clone's id.
+    pub async fn fork_conversation(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        through_seq: Option<u32>,
+    ) -> Result<String, ClientError> {
+        let resp = self
+            .conversations()
+            .await?
+            .fork(ForkConversationRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                through_seq,
             })
             .await
             .map_err(rpc)?

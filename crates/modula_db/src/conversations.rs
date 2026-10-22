@@ -88,6 +88,14 @@ pub struct ConversationCreate {
     pub context: serde_json::Value,
 }
 
+/// A point in a provider's session: the session, and the provider's own id
+/// for a turn in it. Forking the session there keeps everything up to that turn.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct SessionAnchor {
+    pub session: String,
+    pub anchor: String,
+}
+
 /// A message to append; its `seq` and `ts` are assigned on insert.
 #[derive(Debug, Clone, Copy)]
 pub struct NewMessage<'a> {
@@ -95,6 +103,8 @@ pub struct NewMessage<'a> {
     pub content: &'a str,
     pub parts: &'a [MessagePart],
     pub stats: Option<&'a TurnStats>,
+    /// Where the reply ends in its provider session, for a finished turn.
+    pub anchor: Option<&'a SessionAnchor>,
 }
 
 impl<'a> NewMessage<'a> {
@@ -104,6 +114,7 @@ impl<'a> NewMessage<'a> {
             content,
             parts: &[],
             stats: None,
+            anchor: None,
         }
     }
 }
@@ -241,8 +252,9 @@ impl ConversationRepository {
         let stats = msg.stats.and_then(|s| serde_json::to_string(s).ok());
         sqlx::query(
             "INSERT INTO conversation_messages \
-               (workspace_id, conversation_id, seq, role, content, parts, stats, ts) \
-             SELECT ?1, ?2, COALESCE(MAX(seq) + 1, 0), ?3, ?4, ?5, ?6, ?7 \
+               (workspace_id, conversation_id, seq, role, content, parts, stats, ts, \
+                anchor_session, anchor) \
+             SELECT ?1, ?2, COALESCE(MAX(seq) + 1, 0), ?3, ?4, ?5, ?6, ?7, ?8, ?9 \
                FROM conversation_messages WHERE workspace_id = ?1 AND conversation_id = ?2",
         )
         .bind(ws_id)
@@ -252,6 +264,8 @@ impl ConversationRepository {
         .bind(parts)
         .bind(stats)
         .bind(ts)
+        .bind(msg.anchor.map(|a| a.session.as_str()))
+        .bind(msg.anchor.map(|a| a.anchor.as_str()))
         .execute(exec)
         .await
         .map_err(|e| match e {
@@ -261,6 +275,104 @@ impl ConversationRepository {
             }
             other => Error::Internal(format!("sqlx: {other}")),
         })?;
+        Ok(())
+    }
+
+    /// Copy `from`'s messages through `through_seq` into the empty conversation
+    /// `to`, anchors included: they still name the session each reply came from.
+    pub async fn copy_messages<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        from: &str,
+        to: &str,
+        through_seq: u32,
+    ) -> Result<()>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        sqlx::query(
+            "INSERT INTO conversation_messages \
+               (workspace_id, conversation_id, seq, role, content, parts, stats, ts, \
+                anchor_session, anchor) \
+             SELECT workspace_id, ?3, seq, role, content, parts, stats, ts, anchor_session, anchor \
+               FROM conversation_messages \
+              WHERE workspace_id = ?1 AND conversation_id = ?2 AND seq <= ?4",
+        )
+        .bind(ws_id)
+        .bind(from)
+        .bind(to)
+        .bind(through_seq)
+        .execute(exec)
+        .await?;
+        Ok(())
+    }
+
+    /// Where the message at `seq` ends in its provider session, when it is a
+    /// finished reply from a provider that reports one.
+    pub async fn message_anchor<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        id: &str,
+        seq: u32,
+    ) -> Result<Option<SessionAnchor>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query_as::<_, SessionAnchor>(
+            "SELECT anchor_session AS session, anchor FROM conversation_messages \
+              WHERE workspace_id = ? AND conversation_id = ? AND seq = ? \
+                AND anchor_session IS NOT NULL AND anchor IS NOT NULL",
+        )
+        .bind(ws_id)
+        .bind(id)
+        .bind(seq)
+        .fetch_optional(exec)
+        .await?)
+    }
+
+    /// The session point a cloned conversation's first turn forks from.
+    pub async fn fork_origin<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        id: &str,
+    ) -> Result<Option<SessionAnchor>>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        Ok(sqlx::query_as::<_, SessionAnchor>(
+            "SELECT fork_session AS session, fork_anchor AS anchor FROM conversations \
+              WHERE workspace_id = ? AND id = ? \
+                AND fork_session IS NOT NULL AND fork_anchor IS NOT NULL",
+        )
+        .bind(ws_id)
+        .bind(id)
+        .fetch_optional(exec)
+        .await?)
+    }
+
+    pub async fn set_fork_origin<'e, E>(
+        &self,
+        exec: E,
+        ws_id: &str,
+        id: &str,
+        origin: &SessionAnchor,
+    ) -> Result<()>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        sqlx::query(
+            "UPDATE conversations SET fork_session = ?, fork_anchor = ? \
+              WHERE workspace_id = ? AND id = ?",
+        )
+        .bind(&origin.session)
+        .bind(&origin.anchor)
+        .bind(ws_id)
+        .bind(id)
+        .execute(exec)
+        .await?;
         Ok(())
     }
 
@@ -434,6 +546,10 @@ mod tests {
             duration_ms: Some(1200),
             ..Default::default()
         };
+        let anchor = SessionAnchor {
+            session: "sess-1".into(),
+            anchor: "turn-9".into(),
+        };
         convs
             .append_message(
                 &pool,
@@ -444,6 +560,7 @@ mod tests {
                     content: "done",
                     parts: &parts,
                     stats: Some(&stats),
+                    anchor: Some(&anchor),
                 },
             )
             .await
@@ -478,6 +595,47 @@ mod tests {
                 .await,
             Err(Error::NotFound(_))
         ));
+
+        // A clone takes the transcript through a point, anchors and all.
+        let provider_id = convs.get(&pool, &ws, "c1").await.unwrap().provider_id;
+        convs
+            .create(
+                &pool,
+                &ws,
+                &ConversationCreate {
+                    id: "c2".into(),
+                    title: None,
+                    provider_id,
+                    model: None,
+                    context: json!({}),
+                },
+            )
+            .await
+            .unwrap();
+        convs
+            .copy_messages(&pool, &ws, "c1", "c2", 5)
+            .await
+            .unwrap();
+        let copied = convs.messages(&pool, &ws, "c2", None, None).await.unwrap();
+        assert_eq!(copied, all);
+        assert_eq!(
+            convs.message_anchor(&pool, &ws, "c2", 5).await.unwrap(),
+            Some(anchor.clone())
+        );
+        assert_eq!(
+            convs.message_anchor(&pool, &ws, "c2", 4).await.unwrap(),
+            None
+        );
+
+        assert_eq!(convs.fork_origin(&pool, &ws, "c2").await.unwrap(), None);
+        convs
+            .set_fork_origin(&pool, &ws, "c2", &anchor)
+            .await
+            .unwrap();
+        assert_eq!(
+            convs.fork_origin(&pool, &ws, "c2").await.unwrap(),
+            Some(anchor)
+        );
     }
 
     /// The transcript migration: a legacy `data` blob becomes message rows, an

@@ -159,6 +159,16 @@ fn serve_stdin() {
                         "method": "thread/started",
                         "params": { "thread": { "id": "mock-thread" } },
                     })),
+                    // As the real server does, the reply names the fork's thread;
+                    // the id says what was forked so a test can check the request.
+                    Some("thread/fork") => Some(serde_json::json!({
+                        "id": v["id"],
+                        "result": { "thread": { "id": format!(
+                            "fork-of-{}-at-{}",
+                            v["params"]["threadId"].as_str().unwrap_or(""),
+                            v["params"]["lastTurnId"].as_str().unwrap_or(""),
+                        ) } },
+                    })),
                     Some("turn/start") => Some(serde_json::json!({
                         "method": "item/completed",
                         "params": { "item": { "type": "userMessage", "content": v["params"]["input"] } },

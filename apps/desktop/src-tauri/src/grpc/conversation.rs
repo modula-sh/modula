@@ -46,6 +46,19 @@ pub async fn conversation_create(
 }
 
 #[tauri::command]
+pub async fn conversation_fork(
+    engine: State<'_, ModulaClient>,
+    workspace_id: String,
+    conversation_id: String,
+    through_seq: Option<u32>,
+) -> Result<Value, String> {
+    let id = engine
+        .fork_conversation(&workspace_id, &conversation_id, through_seq)
+        .await?;
+    Ok(json!({ "id": id }))
+}
+
+#[tauri::command]
 pub async fn conversation_rename(
     engine: State<'_, ModulaClient>,
     workspace_id: String,

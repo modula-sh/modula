@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::Command;
 
+use modula_db::conversations::SessionAnchor;
 use serde_json::{json, Value as JsonValue};
 
 use super::{content_text, program, ChatEvent, ProviderRuntime};
@@ -40,8 +41,16 @@ impl ProviderRuntime for CodexRuntime {
         app_server()
     }
 
+    fn build_command_chat_fork(&self, _prompt: &str, _from: &SessionAnchor) -> Option<Command> {
+        Some(app_server())
+    }
+
     /// Requests on one thread run in order, so the turn needn't wait for the resume reply.
-    fn chat_open(&self, session_id: Option<&str>) -> Option<Vec<String>> {
+    fn chat_open(
+        &self,
+        session_id: Option<&str>,
+        fork: Option<&SessionAnchor>,
+    ) -> Option<Vec<String>> {
         let mut thread = json!({
             "approvalPolicy": "never",
             "sandbox": "danger-full-access",
@@ -49,12 +58,19 @@ impl ProviderRuntime for CodexRuntime {
         if let Some(m) = &self.model {
             thread["model"] = json!(m);
         }
-        let open = match session_id {
-            Some(id) => {
+        let open = match (session_id, fork) {
+            (Some(id), _) => {
                 thread["threadId"] = json!(id);
                 rpc("thread/resume", thread)
             }
-            None => rpc("thread/start", thread),
+            // The fork's thread id comes back in the reply to this request.
+            (None, Some(from)) => {
+                thread["threadId"] = json!(from.session);
+                thread["lastTurnId"] = json!(from.anchor);
+                thread["excludeTurns"] = json!(true);
+                rpc("thread/fork", thread)
+            }
+            (None, None) => rpc("thread/start", thread),
         };
         Some(vec![
             rpc(
@@ -251,6 +267,10 @@ fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
             message: message.to_string(),
         }];
     }
+    // The reply to a thread request names the thread; a fork's is new.
+    if let Some(id) = v["result"]["thread"]["id"].as_str() {
+        return vec![ChatEvent::Session { id: id.to_string() }];
+    }
     let p = &v["params"];
     let item = &p["item"];
     let id = || item["id"].as_str().unwrap_or("").to_string();
@@ -268,6 +288,11 @@ fn parse_app_server(v: &JsonValue) -> Vec<ChatEvent> {
             }
             events
         }
+        // A fork made with this as its last turn keeps the thread through it.
+        "turn/started" => match p["turn"]["id"].as_str() {
+            Some(id) => vec![ChatEvent::Anchor { id: id.to_string() }],
+            None => vec![],
+        },
         "item/agentMessage/delta" => vec![ChatEvent::Delta {
             text: delta(&p["delta"]),
         }],
@@ -494,12 +519,40 @@ type = "local"
             args(&rt.build_command_chat_resume("hi", "t1")),
             &["app-server"]
         );
-        let open = rt.chat_open(Some("t1")).unwrap();
+        let open = rt.chat_open(Some("t1"), None).unwrap();
         let resume: JsonValue = serde_json::from_str(open[2].trim_end()).unwrap();
         assert_eq!(resume["method"], "thread/resume");
         assert_eq!(resume["params"]["threadId"], "t1");
         assert_eq!(resume["params"]["model"], "gpt-5");
         assert_eq!(resume["params"]["sandbox"], "danger-full-access");
+    }
+
+    #[test]
+    fn codex_chat_forks_a_thread_through_a_turn() {
+        let rt = codex_rt();
+        let from = SessionAnchor {
+            session: "t1".into(),
+            anchor: "turn-a".into(),
+        };
+        assert_eq!(
+            args(&rt.build_command_chat_fork("hi", &from).unwrap()),
+            &["app-server"]
+        );
+        let open = rt.chat_open(None, Some(&from)).unwrap();
+        let fork: JsonValue = serde_json::from_str(open[2].trim_end()).unwrap();
+        assert_eq!(fork["method"], "thread/fork");
+        assert_eq!(fork["params"]["threadId"], "t1");
+        assert_eq!(fork["params"]["lastTurnId"], "turn-a");
+
+        // The reply carries the fork's own thread id; each turn reports its id.
+        assert!(matches!(
+            &rt.parse_stream_line(r#"{"id":"x","result":{"thread":{"id":"t2"},"model":"m"}}"#)[..],
+            [ChatEvent::Session { id }] if id == "t2"
+        ));
+        assert!(matches!(
+            &rt.parse_stream_line(r#"{"method":"turn/started","params":{"turn":{"id":"turn-b"}}}"#)[..],
+            [ChatEvent::Anchor { id }] if id == "turn-b"
+        ));
     }
 
     #[test]

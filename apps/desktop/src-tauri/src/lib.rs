@@ -81,6 +81,7 @@ pub fn run() {
             grpc::conversation::conversation_get,
             grpc::conversation::conversation_messages,
             grpc::conversation::conversation_create,
+            grpc::conversation::conversation_fork,
             grpc::conversation::conversation_rename,
             grpc::conversation::conversation_delete,
             grpc::conversation::conversation_cancel,

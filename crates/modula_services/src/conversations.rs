@@ -30,7 +30,9 @@ use crate::providers::{self, ChatEvent, ProviderRuntime, ProviderService};
 use crate::workspaces::WorkspaceService;
 use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
-use modula_db::conversations::{ConversationCreate, ConversationRepository, NewMessage};
+use modula_db::conversations::{
+    ConversationCreate, ConversationRepository, NewMessage, SessionAnchor,
+};
 use modula_db::Database;
 use modula_types::{
     ChatMessage, Conversation, MessagePart, QueuedMessage, ToolCall, ToolStatus, TurnStats,
@@ -97,6 +99,8 @@ struct Reply {
     parts: Vec<MessagePart>,
     stats: TurnStats,
     started: Instant,
+    /// The provider's id for where its session stands, as last reported.
+    anchor: Option<String>,
     /// Stands in for the id of a call whose provider gave none.
     unnamed_calls: usize,
 }
@@ -107,6 +111,7 @@ impl Reply {
             parts: Vec::new(),
             stats: TurnStats::default(),
             started: Instant::now(),
+            anchor: None,
             unnamed_calls: 0,
         }
     }
@@ -371,6 +376,47 @@ impl ConversationService {
         self.conversations.create(&self.pool, ws, &create).await?;
         self.publish(ws, CONVERSATION_CREATE, &id).await;
         Ok(id)
+    }
+
+    /// Clone `id` into a new conversation holding its transcript through
+    /// `through_seq` (nothing, when `None`) and return the clone's id. The clone
+    /// has no provider session yet: its first turn forks the source's at that
+    /// message when the provider can, and otherwise replays the transcript.
+    pub async fn fork(&self, ws: &str, id: &str, through_seq: Option<u32>) -> ApiResult<String> {
+        let mut tx = self.pool.begin().await?;
+        let source = self.conversations.get(&mut *tx, ws, id).await?;
+        if through_seq.is_some_and(|seq| seq >= source.message_count) {
+            return Err(ApiError::BadRequest(format!(
+                "conversation has no message {}",
+                through_seq.unwrap_or_default()
+            )));
+        }
+        let clone_id = Uuid::new_v4().to_string();
+        let create = ConversationCreate {
+            id: clone_id.clone(),
+            title: Some(source.title),
+            provider_id: source.provider_id,
+            model: source.model,
+            context: source.context,
+        };
+        self.conversations.create(&mut *tx, ws, &create).await?;
+        if let Some(seq) = through_seq {
+            self.conversations
+                .copy_messages(&mut *tx, ws, id, &clone_id, seq)
+                .await?;
+            let origin = self
+                .conversations
+                .message_anchor(&mut *tx, ws, id, seq)
+                .await?;
+            if let Some(origin) = origin {
+                self.conversations
+                    .set_fork_origin(&mut *tx, ws, &clone_id, &origin)
+                    .await?;
+            }
+        }
+        tx.commit().await?;
+        self.publish(ws, CONVERSATION_CREATE, &clone_id).await;
+        Ok(clone_id)
     }
 
     pub async fn update(&self, ws: &str, id: &str, title: Option<String>) -> ApiResult<()> {
@@ -683,33 +729,65 @@ async fn open_send_setup(
         }
     }
 
-    // `conv` was read before the user message was appended, so no messages
-    // means this is the conversation's first turn.
-    let is_first_turn = conv.message_count == 0;
-    let prompt = if is_first_turn {
-        let ctx = build_context(rt, ws_id, &conv).await;
-        if ctx.is_empty() {
-            user_msg.to_string()
-        } else {
-            format!("{ctx}\n\n{user_msg}")
-        }
-    } else {
-        user_msg.to_string()
-    };
-
+    // `conv` was read before the user message was appended. A session it has
+    // already holds its context. A clone's first turn forks the session it was
+    // cut from when the provider can; any other turn without a session starts
+    // one from the workspace context and whatever transcript there is.
     let existing_session_id = conv.session_id.clone();
-    let (mut cmd, preset_session) = if let Some(ref sid) = existing_session_id {
-        (runtime.build_command_chat_resume(&prompt, sid), None)
-    } else {
-        let preset = uuid::Uuid::new_v4().to_string();
-        match runtime.build_command_chat_first(&prompt, &preset) {
-            Some(c) => (c, Some(preset)),
-            None => (runtime.build_command_chat(&prompt), None),
+    let fork = match existing_session_id {
+        Some(_) => None,
+        None => {
+            rt.repos
+                .conversations
+                .fork_origin(&rt.repos.pool, ws_id, conv_id)
+                .await?
+        }
+    };
+    let forked = fork
+        .as_ref()
+        .and_then(|from| Some((runtime.build_command_chat_fork(user_msg, from)?, from)));
+    let (prompt, mut cmd, preset_session, fork) = match (&existing_session_id, forked) {
+        (Some(sid), _) => (
+            user_msg.to_string(),
+            runtime.build_command_chat_resume(user_msg, sid),
+            None,
+            None,
+        ),
+        (None, Some((cmd, from))) => (user_msg.to_string(), cmd, None, Some(from)),
+        (None, None) => {
+            let history = rt
+                .repos
+                .conversations
+                .messages(
+                    &rt.repos.pool,
+                    ws_id,
+                    conv_id,
+                    Some(conv.message_count),
+                    None,
+                )
+                .await?;
+            let prompt = [
+                build_context(rt, ws_id, &conv).await,
+                replay_transcript(&history),
+                user_msg.to_string(),
+            ]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+            let preset = uuid::Uuid::new_v4().to_string();
+            match runtime.build_command_chat_first(&prompt, &preset) {
+                Some(cmd) => (prompt, cmd, Some(preset), None),
+                None => {
+                    let cmd = runtime.build_command_chat(&prompt);
+                    (prompt, cmd, None, None)
+                }
+            }
         }
     };
     let session_id = existing_session_id.clone().or(preset_session.clone());
 
-    let opening = runtime.chat_open(session_id.as_deref());
+    let opening = runtime.chat_open(session_id.as_deref(), fork);
     let ws_dir = rt.workspaces.workspace_dir(ws_id).await?;
     cmd.current_dir(&ws_dir)
         .stdin(if opening.is_some() {
@@ -936,6 +1014,7 @@ async fn run_to_completion(
                                     *stats.cost_usd.get_or_insert(0.0) += usd;
                                 }
                             }
+                            ChatEvent::Anchor { id } => reply.anchor = Some(id),
                             ChatEvent::Duration { ms } => reply.stats.duration_ms = Some(ms),
                             ChatEvent::Model { name } => reply.stats.model = Some(name),
                             ChatEvent::InputAccepted => {
@@ -949,7 +1028,7 @@ async fn run_to_completion(
                                 }
                             }
                             ChatEvent::Error { message } => {
-                                persist_reply(&convs, &pool, &ws, &cid, &mut reply, true).await;
+                                persist_reply(&convs, &pool, &ws, &cid, &mut reply, Persist::CUT_SHORT).await;
                                 emit(&slot, WireEvent::Error { message }).await;
                                 let _ = child.kill().await;
                                 let _ = child.wait().await;
@@ -974,7 +1053,7 @@ async fn run_to_completion(
                 Ok(None) => break,
                 Err(e) => {
                     tracing::warn!("conversation stream read error: {e}");
-                    persist_reply(&convs, &pool, &ws, &cid, &mut reply, true).await;
+                    persist_reply(&convs, &pool, &ws, &cid, &mut reply, Persist::CUT_SHORT).await;
                     emit(&slot, WireEvent::Error { message: e.to_string() }).await;
                     let _ = child.kill().await;
                     let _ = child.wait().await;
@@ -986,7 +1065,19 @@ async fn run_to_completion(
     }
     drop(stdin);
 
-    persist_reply(&convs, &pool, &ws, &cid, &mut reply, true).await;
+    // Only a turn the provider finished leaves its session somewhere a clone
+    // can fork from.
+    let finished = parser_terminal && !canceled;
+    let session = session_id.as_deref().filter(|_| finished);
+    persist_reply(
+        &convs,
+        &pool,
+        &ws,
+        &cid,
+        &mut reply,
+        Persist::Final { session },
+    )
+    .await;
 
     if canceled {
         let _ = child.kill().await;
@@ -1048,7 +1139,15 @@ async fn inject_queued(
             break;
         }
         injected += 1;
-        persist_reply(&queue.conversations, &queue.pool, ws, cid, reply, false).await;
+        persist_reply(
+            &queue.conversations,
+            &queue.pool,
+            ws,
+            cid,
+            reply,
+            Persist::Partial,
+        )
+        .await;
         if let Err(e) = queue
             .conversations
             .append_message(&queue.pool, ws, cid, &NewMessage::user(&msg.content))
@@ -1075,17 +1174,32 @@ fn derive_title(user_msg: &str) -> String {
         .collect()
 }
 
+/// How much of its turn a persisted reply covers.
+#[derive(Clone, Copy)]
+enum Persist<'a> {
+    /// The reply so far, with the turn still running.
+    Partial,
+    /// The end of the turn. `session` is the provider session it finished in;
+    /// `None` when the turn was cut short.
+    Final { session: Option<&'a str> },
+}
+
+impl Persist<'_> {
+    const CUT_SHORT: Self = Self::Final { session: None };
+}
+
 /// Persist the reply so far as one assistant message. The one that ends the
-/// turn (`last`) carries the turn's stats, with the engine's own clock standing
-/// in for a duration the provider didn't report.
+/// turn carries the turn's stats, with the engine's own clock standing in for
+/// a duration the provider didn't report, and where the turn left its session.
 async fn persist_reply(
     convs: &ConversationRepository,
     pool: &Database,
     ws: &str,
     cid: &str,
     reply: &mut Reply,
-    last: bool,
+    persist: Persist<'_>,
 ) {
+    let last = matches!(persist, Persist::Final { .. });
     let parts = reply.take(last);
     if parts.is_empty() {
         return;
@@ -1098,11 +1212,24 @@ async fn persist_reply(
             .get_or_insert(reply.started.elapsed().as_millis() as u64);
         stats
     });
+    let anchor = match (persist, &reply.anchor) {
+        (
+            Persist::Final {
+                session: Some(session),
+            },
+            Some(anchor),
+        ) => Some(SessionAnchor {
+            session: session.to_string(),
+            anchor: anchor.clone(),
+        }),
+        _ => None,
+    };
     let msg = NewMessage {
         role: "assistant",
         content: &content,
         parts: &parts,
         stats: stats.as_ref(),
+        anchor: anchor.as_ref(),
     };
     if let Err(e) = convs.append_message(pool, ws, cid, &msg).await {
         // The streaming design relies on this persisted turn to heal a mid-stream
@@ -1114,6 +1241,52 @@ async fn persist_reply(
             "failed to persist assistant message; conversation turn lost"
         );
     }
+}
+
+/// The longest a tool call's input runs in a replayed transcript.
+const REPLAY_INPUT_CAP: usize = 400;
+
+/// A transcript as the opening of a new provider session, for a chat that
+/// can't pick up the session its messages came from. Tool calls are named
+/// with their input; what they returned is left out, since the agent can run
+/// them again and their output is most of a transcript's size.
+fn replay_transcript(messages: &[ChatMessage]) -> String {
+    if messages.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "<conversation_history>\n\
+         This chat continues an earlier conversation. Its transcript so far follows; \
+         tool calls are listed without their output.\n",
+    );
+    for msg in messages {
+        out.push_str(&format!("\n[{}]\n", msg.role));
+        if msg.parts.is_empty() {
+            out.push_str(msg.content.trim());
+            out.push('\n');
+            continue;
+        }
+        for part in &msg.parts {
+            match part {
+                MessagePart::Text { text } if !text.trim().is_empty() => {
+                    out.push_str(text.trim());
+                    out.push('\n');
+                }
+                MessagePart::Tool(tool) => {
+                    let input: String = tool
+                        .input
+                        .to_string()
+                        .chars()
+                        .take(REPLAY_INPUT_CAP)
+                        .collect();
+                    out.push_str(&format!("(tool {}: {input})\n", tool.name));
+                }
+                _ => {}
+            }
+        }
+    }
+    out.push_str("</conversation_history>");
+    out
 }
 
 async fn build_context(rt: &ConvRuntime, ws_id: &str, conv: &Conversation) -> String {
@@ -1199,8 +1372,8 @@ async fn build_context(rt: &ConvRuntime, ws_id: &str, conv: &Conversation) -> St
 
 #[cfg(test)]
 mod tests {
-    use super::{derive_title, plain_text, Reply, WireEvent, TOOL_OUTPUT_CAP};
-    use modula_types::{MessagePart, ToolStatus};
+    use super::{derive_title, plain_text, replay_transcript, Reply, WireEvent, TOOL_OUTPUT_CAP};
+    use modula_types::{ChatMessage, MessagePart, ToolCall, ToolStatus};
     use serde_json::json;
 
     fn tool(reply: &Reply, i: usize) -> &modula_types::ToolCall {
@@ -1303,6 +1476,46 @@ mod tests {
             (call.status, call.output.as_deref()),
             (ToolStatus::Failed, Some("boom"))
         );
+    }
+
+    #[test]
+    fn replayed_transcript_keeps_the_text_and_names_the_tool_calls() {
+        assert_eq!(replay_transcript(&[]), "");
+        let message = |role: &str, content: &str, parts: Vec<MessagePart>| ChatMessage {
+            role: role.into(),
+            content: content.into(),
+            ts: String::new(),
+            seq: 0,
+            parts,
+            stats: None,
+        };
+        let replay = replay_transcript(&[
+            message("user", "What is in a.txt?", vec![]),
+            message(
+                "assistant",
+                "It holds alpha.",
+                vec![
+                    MessagePart::Tool(ToolCall {
+                        id: "t1".into(),
+                        name: "Read".into(),
+                        input: json!({"file_path": "a.txt"}),
+                        parent_id: None,
+                        status: ToolStatus::Completed,
+                        output: Some("1\tSECRET-OUTPUT".into()),
+                        output_truncated: false,
+                    }),
+                    MessagePart::Text {
+                        text: "It holds alpha.".into(),
+                    },
+                ],
+            ),
+        ]);
+        assert!(replay.starts_with("<conversation_history>"));
+        assert!(replay.ends_with("</conversation_history>"));
+        assert!(replay.contains("[user]\nWhat is in a.txt?\n"));
+        assert!(replay
+            .contains("[assistant]\n(tool Read: {\"file_path\":\"a.txt\"})\nIt holds alpha.\n"));
+        assert!(!replay.contains("SECRET-OUTPUT"));
     }
 
     #[test]
