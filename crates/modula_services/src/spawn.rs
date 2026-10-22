@@ -643,7 +643,9 @@ or env vars.{loop_line}"
     if let Some(sd) = spec_dir {
         p.push_str("\n\nThis run's spec folder is `");
         p.push_str(sd);
-        p.push_str("` (relative to your cwd) — read and write your spec files there.");
+        p.push_str(
+            "` (relative to your cwd). Its name gives your branch; it holds markdown specs only for variants without a plan.",
+        );
     }
     p.push_str("\n\nRun end-to-end and print your end-of-run report.");
     p

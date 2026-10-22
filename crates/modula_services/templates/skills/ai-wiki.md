@@ -2,9 +2,9 @@
 
 The workspace `wiki/` is an agent-maintained knowledge base of durable codebase facts: architecture, conventions, quirks. It **never** holds task-specific commentary.
 
-- **Before you work**, read `wiki/index.md` and the pages for the projects and components you'll touch. Cite pages as `[[link]]` in specs.
+- **Before you work**, read `wiki/index.md` and the pages for the projects and components you'll touch. Cite pages as `[[link]]` in plans.
 - **When you find a durable fact** that contradicts, fills a gap in, or extends the wiki, **read `wiki/SCHEMA.md` first**. Then update the relevant pages, keep `wiki/index.md` in sync, and append an entry to `wiki/log.md`.
-- **Keep it durable.** A fact that matters only to this task belongs in the spec or a thread comment, not the wiki.
+- **Keep it durable.** A fact that matters only to this task belongs in the plan or a thread comment, not the wiki.
 
 ### Writing style
 

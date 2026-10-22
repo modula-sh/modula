@@ -6,7 +6,7 @@ This is the source of truth for how the factory operates. Everything in `.modula
 
 ## What this factory is
 
-A pipeline that turns approved external tasks (JIRA / Linear / GitHub) into shipped code, run by a small set of Claude agents. Each agent has a narrow role and persists its output through the engine (via the `modula` CLI over local IPC) so the next agent in the pipeline can pick it up. Structured state lives in a single SQLite database; markdown artifacts (the variant spec folder + per-workspace wiki + agent prompts) live on disk.
+A pipeline that turns approved external tasks (JIRA / Linear / GitHub) into shipped code, run by a small set of Claude agents. Each agent has a narrow role and persists its output through the engine (via the `modula` CLI over local IPC) so the next agent in the pipeline can pick it up. Structured state lives in a single SQLite database; markdown artifacts (per-workspace wiki, logs) live on disk.
 
 ## Where state lives
 
@@ -20,15 +20,13 @@ The factory has two parts: a **single `modula` binary** that ships with the desk
 │                                    #   agents, agent_skills, tasks, variants,
 │                                    #   labels, task_labels, task_agent_settings,
 │                                    #   roadmap_rows, thread_entries, events,
-│                                    #   agent_runs, agent_processes, conversations
+│                                    #   agent_runs, agent_processes, conversations,
+│                                    #   variant_plans
 └── <workspace-slug>/               # one folder per workspace, named by slug
     ├── specs/
     │   └── <task-slug>/            # e.g. mod-0001-some-new-adjustment
-    │       └── v<position>/        # one dir per variant (1-based position)
-    │           ├── phases.md        # Researcher's design + phase checklist
-    │           ├── phase-1-plan.md  # per-phase plan
-    │           ├── phase-1-task.md  # per-phase checklist (Worker ticks off)
-    │           └── ...
+    │       └── v<position>/        # one dir per variant; names the branch, holds
+    │                               #   markdown specs only for pre-plan variants
     ├── logs/                        # Stream-json log files from agent runs
     ├── wiki/                        # Agent-maintained codebase knowledge base
     │   ├── SCHEMA.md
@@ -50,11 +48,10 @@ What stays on disk (because it's the right tool):
 
 | Surface | Why on disk |
 |---|---|
-| `phases.md`, `phase-N-plan.md`, `phase-N-task.md` | Markdown artifacts a human reads / pastes into PRs. |
 | `logs/*.log` | Append-only stream-json; `tail -f` is the operator's friend. |
 | `wiki/` | Obsidian-compatible markdown the user opens in a wiki reader. |
 
-Everything else (tasks, roadmap, variants, providers, projects, agents, agent prompts, threads, events, runs, processes, pipeline) lives in `~/.modula/db.sqlite`.
+Everything else (tasks, roadmap, variants, variant plans, providers, projects, agents, agent prompts, threads, events, runs, processes, pipeline) lives in `~/.modula/db.sqlite`.
 
 ## Roles
 
@@ -66,9 +63,9 @@ The scan agents (JIRA / Linear / GitHub) mirror external issues on demand or on 
 | **Linear Scan** | manual or `schedule_cron` | Linear (MCP) | `task create` (upsert) | no |
 | **GitHub Scan** | manual or `schedule_cron` | GitHub (MCP) | `task create` (upsert) | no |
 | **Project Manager** | `task.create` / `task.update` rules, or manual | `task list`, `roadmap list` | roadmap via `task patch` | no |
-| **Researcher** | `task.update` rule (pipeline_status == `ready_for_research`) | `task get`, `roadmap list`, task-thread | `variant create`, roadmap via `task patch`, task-thread `comment create`; writes `phases.md` + per-phase `plan` / `task` files on disk | no |
-| **Worker** | `variant.update` rule (status == `ready_for_workers` or `rework`) | one variant, `phases.md` + per-phase files, task-thread, variant-thread | variant status via `variant patch`; ticks `phases.md` + per-phase task files; writes code in N worktrees | **yes** |
-| **Code-Reviewer** | `variant.update` rule (status == `ready_for_review`) | one variant's worktree(s), `task get`, variant-thread | variant-thread `comment create` + verdict; ACCEPT → variant `accept`, REQUEST_CHANGES → variant `rework` | no |
+| **Researcher** | `task.update` rule (pipeline_status == `ready_for_research`) | `task get`, `roadmap list`, task-thread | `variant create`, roadmap via `task patch`, task-thread `comment create`; `plan set` per variant | no |
+| **Worker** | `variant.update` rule (status == `ready_for_workers` or `rework`) | one variant, its plan (`plan get`), task-thread, variant-thread | variant status via `variant patch`; task status, rework phases, deviations, summaries via `plan patch`; writes code in N worktrees | **yes** |
+| **Code-Reviewer** | `variant.update` rule (status == `ready_for_review`) | one variant's worktree(s), its plan (`plan get --md`), `task get`, variant-thread | variant-thread `comment create` + verdict; ACCEPT → variant `accept`, REQUEST_CHANGES → variant `rework` | no |
 | **Reviewer** | `task.update` rule (pipeline_status == `ready_for_review`) | every variant's thread + roadmap | task-thread verdict (`comment create`); APPROVE → roadmap to `ready_for_acceptance`; KICK BACK → variant `rework` + roadmap to `in_progress` | no |
 
 Agents **never** spawn other agents. Status transitions are driven by **events** the engine emits whenever a mutation lands — the dispatcher routes each event to whichever agents have matching rules. Status writes are owned by agents; the dispatcher only spawns.
@@ -124,7 +121,7 @@ Scan agent ──> task.create / task.update
                 Project Manager ──> task.update (pipeline_status=ready_for_research)
                        ▼
                    Researcher ──> variant rows + task.update (pipeline_status=ready_for_workers)
-                       │           specs/<id>/<v>/{phases.md, phase-N-plan.md, phase-N-task.md}
+                       │           one plan per variant (modula plan set)
                        ▼
                      Worker ──> variant.update (status=ready_for_review)
                        │         code in .worktrees/<branch>
@@ -219,7 +216,7 @@ Variants live on the task, not the roadmap row. The roadmap is purely orchestrat
 | `ready_for_research` | PM | PM finished; Researcher can pick up |
 | `researching` | Researcher | Researcher is locked on this row |
 | `needs_clarification` | Researcher | Researcher hit ambiguity; posted a `kind: question` to the task-thread. Human answers via dashboard composer and flips back to `ready_for_research`. |
-| `ready_for_workers` | Researcher | Specs written; Workers can pick up variants |
+| `ready_for_workers` | Researcher | Plans written; Workers can pick up variants |
 | `in_progress` | Worker (on first run) | Workers + Code-Reviewers running |
 | `ready_for_review` | (transitional) | All variants accepted; Reviewer will pick up on next event |
 | `in_review` | dispatcher or PM-style agent | Reviewer is locked on this row |
@@ -250,22 +247,13 @@ Who writes what:
 
 Each thread entry triggers a `thread.append` event. Agents subscribe to these when the conversation has to drive them (e.g. Researcher resumes when a human reply lands).
 
-### Specs folder — on disk only
+### Variant plans — in the engine
 
-```
-specs/<task-slug>/           # one dir per task (external-id + title slug). No top-level files.
-└── v<position>/                # one dir per variant (1-based position)
-    ├── phases.md              # Researcher's design + phase checklist;
-    │                          #   sections: Problem, Approach, Projects touched,
-    │                          #   Phases (checklist), Risks & tradeoffs, Test plan
-    ├── phase-1-plan.md        # one plan per phase (scope, approach, notes)
-    ├── phase-1-task.md        # one task list per phase (Worker ticks off)
-    └── ...
-```
+Each variant has one JSON plan document in the `variant_plans` table, read and written only through `modula plan` (format and ownership: the Specs skill). It carries Problem, Approach, Projects touched, Risks & tradeoffs and Test plan, then the phases, each with its scope, approach, notes, deviations and task checklist, then the Worker's Done / Rework round N summaries. Prose fields stay markdown. Every write is validated and publishes `plan.update`.
 
-The folder is the agents' shared scratch space for the markdown that doesn't fit cleanly into the DB. Anything structured (statuses, variants, verdicts, comments) goes through the `modula` CLI instead.
+Researcher writes the whole plan once (`plan set`). Worker marks each task `in_progress` when it starts it and `done` when it finishes, one at a time, and only flips variant `ready_for_review` once every task is `done` or `skipped`. Phase status and percent complete are derived, never stored; `task get` and `variant get` print a progress line per variant. A single-shot Worker finishes all phases in one run; a looping Worker may take many iterations per phase.
 
-Researcher writes the initial files. Worker ticks task checkboxes as it works and checks off phases in `phases.md` when done; only flips variant `ready_for_review` once every phase is checked off. A single-shot Worker finishes all phases in one run; a looping Worker may take many iterations per phase.
+`specs/<task-slug>/v<position>/` still names the variant's branch, and holds the markdown specs of variants that predate plans.
 
 ## AI Wiki
 
@@ -288,7 +276,7 @@ There is exactly one `index.md` and one `log.md` at the wiki root; project subdi
 
 | Agent | Role |
 |---|---|
-| **Researcher** | Primary reader + writer. Reads `index.md` and relevant pages before investigating. Writes durable findings (architecture, conventions, quirks). Cites pages with `[[link]]` in `phases.md` / phase plans. |
+| **Researcher** | Primary reader + writer. Reads `index.md` and relevant pages before investigating. Writes durable findings (architecture, conventions, quirks). Cites pages with `[[link]]` in the plan. |
 | **Worker** | Reader; light writer. Reads relevant pages before implementing. Updates when implementation contradicts or fills a gap. |
 | **Code-Reviewer** | Reader + maintainer. Reads pages to review against. Updates when review surfaces a new pattern or contradiction. |
 | **PM / Reviewer** | No wiki interaction — these agents operate above the codebase level. |
@@ -297,7 +285,7 @@ There is exactly one `index.md` and one `log.md` at the wiki root; project subdi
 
 **In the wiki**: durable codebase truths — architectural patterns and rationale, module responsibilities, recurring conventions, quirks, cross-project contracts, contradictions between docs and code.
 
-**Not in the wiki**: task-specific work (→ `specs/<task-slug>/v<position>/phases.md` + phase files), review conversation (→ thread entries via API), build/test logs (→ `logs/`), code itself, anything already authoritative in `<project>/CLAUDE.md`.
+**Not in the wiki**: task-specific work (→ the variant's plan, `modula plan`), review conversation (→ thread entries via API), build/test logs (→ `logs/`), code itself, anything already authoritative in `<project>/CLAUDE.md`.
 
 ### Seeding and ownership
 
@@ -324,7 +312,7 @@ Each project's `.gitignore` should ignore `.worktrees/`.
 
 **Direct mode** (`tasks.worktree: false`, always paired with `max_variants: 1`) skips both the worktree and the new branch — the Worker commits on each project's `base_branch` directly. Before its first commit, the Worker tags the start point as `modula/<task-slug>-v<position>/start` so Code-Reviewer can diff later. Use direct mode for rapid prototyping where you don't want PR overhead.
 
-Either way, the Worker discovers which projects to touch by reading the variant's `phases.md` → "Projects touched" section. The dispatcher passes only the variant identification arg(s); the Worker resolves project paths and base branches from `modula config get` itself.
+Either way, the Worker discovers which projects to touch by reading the `projects` list of the variant's plan. The dispatcher passes only the variant identification arg(s); the Worker resolves project paths and base branches from `modula config get` itself.
 
 ## Project index
 
