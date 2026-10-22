@@ -310,12 +310,12 @@ export function TaskDetail({
               {task.variants.map((v) => (
                 <li
                   key={v.id}
-                  className="flex items-center gap-2 text-xs flex-wrap border border-border rounded px-2 py-1.5"
+                  className="flex items-center gap-2 text-xs border border-border rounded px-2 py-1.5"
                 >
-                  <span className="font-inter font-semibold w-20 text-fg">
+                  <span className="font-inter font-semibold w-20 shrink-0 text-fg">
                     Variant {v.position}
                   </span>
-                  <span className="font-inter flex items-center gap-1.5 text-[13px] text-fg">
+                  <span className="font-inter flex items-center gap-1.5 shrink-0 text-[13px] text-fg">
                     <span
                       className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${toneDotClasses[variantStatusTone(v.status)]}`}
                     />
@@ -324,13 +324,16 @@ export function TaskDetail({
                   {v.plan_progress && (
                     <>
                       <PlanProgressBar progress={v.plan_progress} status={v.status} />
-                      <span className="tabular-nums text-fg-muted">
+                      <span className="tabular-nums shrink-0 text-fg-muted">
                         {v.plan_progress.current_phase_id
                           ? `phase ${v.plan_progress.current_phase_id}/${v.plan_progress.phases_total}`
                           : "done"}
                       </span>
                       {v.plan_progress.current_task_title && (
-                        <span className="truncate min-w-0 text-fg-muted">
+                        <span
+                          title={v.plan_progress.current_task_title}
+                          className="truncate min-w-0 text-fg-muted"
+                        >
                           {v.plan_progress.current_task_title}
                         </span>
                       )}
@@ -953,7 +956,7 @@ function VariantActions({
   }
 
   return (
-    <span className="flex items-center gap-1 ml-auto">
+    <span className="flex items-center gap-1 ml-auto shrink-0">
       {hasPlan && (
         <Button
           onClick={() => openPanel({ type: "plan", workspace: ws, task: taskId, variant }, "card")}
