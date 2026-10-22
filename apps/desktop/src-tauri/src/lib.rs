@@ -133,6 +133,7 @@ pub fn run() {
             grpc::project::project_repo_branches,
             grpc::diff::variant_diff,
             grpc::diff::variant_pr,
+            grpc::plan::plan_get,
             grpc::search::search_query,
             pty::pty_open,
             pty::pty_write,

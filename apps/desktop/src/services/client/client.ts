@@ -10,6 +10,7 @@ import { ConversationResource } from "./resources/conversation";
 import { DiffResource } from "./resources/diff";
 import { IntegrationResource } from "./resources/integration";
 import { LabelResource } from "./resources/label";
+import { PlanResource } from "./resources/plan";
 import { ProjectResource } from "./resources/project";
 import { ProviderResource } from "./resources/provider";
 import { RemoteResource } from "./resources/remote";
@@ -39,6 +40,7 @@ export const client = Object.freeze({
   agent: new AgentResource(),
   project: new ProjectResource(),
   diff: new DiffResource(),
+  plan: new PlanResource(),
   provider: new ProviderResource(),
   conversation: new ConversationResource(),
   terminal: new TerminalResource(),

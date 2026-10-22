@@ -2,6 +2,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
 import { useStreamApi } from "../contexts/ConversationStreamProvider";
+import { planKeys } from "../queries/plan";
 import { snapshotKeys } from "../queries/snapshot";
 
 /** A workspace event from the engine's `EventService.Watch` stream, forwarded
@@ -18,18 +19,19 @@ interface EngineEvent {
 // Route a stream event to the cached queries it invalidates. The workspace
 // snapshot aggregates tasks, roadmap, agents, runs, config, and conversations,
 // so every event refreshes it (replacing the old snapshot SSE poll). The key
-// prefixes mirror the factories in `queries/{thread,conversation}.ts` and the
-// `["tasks", ws, …]` detail keys in `queries/task.ts`.
+// prefixes mirror the factories in `queries/{thread,conversation,plan}.ts` and
+// the `["tasks", ws, …]` detail keys in `queries/task.ts`.
 function invalidate(qc: QueryClient, ws: string, ev: EngineEvent) {
   qc.invalidateQueries({ queryKey: snapshotKeys.all(ws) });
   if (ev.type.startsWith("thread_") && ev.task_id) {
     qc.invalidateQueries({ queryKey: ["threads", ws, ev.task_id] });
   } else if (ev.type.startsWith("conversation_")) {
     qc.invalidateQueries({ queryKey: ["conversations", ws] });
+  } else if (ev.type === "plan_updated" && ev.task_id) {
+    qc.invalidateQueries({ queryKey: planKeys.task(ws, ev.task_id) });
   } else if (
     ev.type.startsWith("task_") ||
     ev.type === "variant_updated" ||
-    ev.type === "plan_updated" ||
     ev.type === "agent_run"
   ) {
     qc.invalidateQueries({ queryKey: ["tasks", ws] });
