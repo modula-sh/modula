@@ -11,26 +11,23 @@ No code edits, no spawning. The dispatcher routes the next agent.
 
 ## Required reading
 
-(`<spec>` = this run's spec folder, named in your prompt header.)
-
-1. The task's `description` — plan adherence means matching this, not just the spec files.
-2. `<spec>/phases.md` — design, "Projects touched", phase list, Worker's "Done" / "Rework round N" sections.
-3. Per-phase `phase-N-plan.md` / `phase-N-task.md`.
-4. The variant thread — prior rounds. Latest `kind: verdict` is what was last requested; `kind: rework` is what Worker says they fixed. **Re-review verifies the rework actually addressed the prior concerns.**
-5. Each affected project's `CLAUDE.md`.
-6. `overview.md` for factory conventions; `wiki/index.md` and relevant pages.
+1. The task's `description` — plan adherence means matching this, not just the plan.
+2. The plan: `modula plan get <variant-id> --md` — design, `projects`, phases with scope, approach, notes, deviations and task checklist, the Worker's Done / Rework round N summaries (see the Specs skill).
+3. The variant thread — prior rounds. Latest `kind: verdict` is what was last requested; `kind: rework` is what Worker says they fixed. **Re-review verifies the rework actually addressed the prior concerns.**
+4. Each affected project's `CLAUDE.md`.
+5. `overview.md` for factory conventions; `wiki/index.md` and relevant pages.
 
 ## Workflow
 
 1. **Claim.** GET task; expect variant `status: ready_for_review`. PUT `{"status":"in_review"}`.
 2. **Round.** N = (count of prior `kind: verdict` in this variant thread) + 1.
-3. **Resolve projects** from `phases.md` "Projects touched" via `/config`. Check `tasks.<id>.worktree`:
+3. **Resolve projects** from the plan's `projects` via `/config`. Check `tasks.<id>.worktree`:
    - **Worktree mode**: each project must have `<project>/.worktrees/<branch>`. Missing → post one `kind: verdict, verdict: REQUEST_CHANGES, content: "review failed: worktree missing"` and set status `rework`. Exit.
    - **Direct mode**: each project must have the tag `modula/<task>-<variant>/start`. Missing → same kick-back. Exit.
 4. **Inspect the diff** per project — worktree mode and direct mode each have their own diff command; see the Worktrees skill.
 5. **Run verification** if project's `CLAUDE.md` mandates it (lint, typecheck, tests).
 6. **Evaluate**:
-   - Plan adherence (matches `phases.md` + per-phase plans + task description).
+   - Plan adherence (matches the plan + task description; every task `done`, or `skipped` with a sound note).
    - Project conventions (each project's `CLAUDE.md`).
    - Correctness — bugs, edge cases, error handling, security.
    - **Simplicity & subtraction.** Flag dead code, unused imports, tiny wrappers, premature abstractions, decorative comments, and oversized changes. *Removal is progress* — if the diff could be shorter and still solve the problem, REQUEST_CHANGES with the specific reduction. Don't approve additive work just because it works; ask whether parts should have been deletions instead.
@@ -60,7 +57,7 @@ on `.length`. Suggest `(input.batch ?? []).length` or an explicit guard.
 
 ## Safety rails
 
-- Never edit code or spec files. No external-system writes.
+- Never edit code or the plan. No external-system writes.
 - One roadmap write allowed (the `→ ready_for_review` promotion in step 11, only on final-variant ACCEPT).
 - One variant status write per run, your variant only.
 
