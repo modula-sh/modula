@@ -13,6 +13,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde_json::{json, Value as JsonValue};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -29,9 +30,11 @@ use crate::providers::{self, ChatEvent, ProviderRuntime, ProviderService};
 use crate::workspaces::WorkspaceService;
 use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
-use modula_db::conversations::{ConversationCreate, ConversationRepository};
+use modula_db::conversations::{ConversationCreate, ConversationRepository, NewMessage};
 use modula_db::Database;
-use modula_types::{Conversation, QueuedMessage};
+use modula_types::{
+    ChatMessage, Conversation, MessagePart, QueuedMessage, ToolCall, ToolStatus, TurnStats,
+};
 
 pub type ConvKey = (String, String);
 
@@ -50,10 +53,21 @@ pub enum WireEvent {
         id: String,
     },
     ToolUse {
+        id: String,
         name: String,
         input: JsonValue,
+        parent_id: Option<String>,
+    },
+    ToolResult {
+        id: String,
+        output: String,
+        is_error: bool,
+        output_truncated: bool,
     },
     Delta {
+        text: String,
+    },
+    Thinking {
         text: String,
     },
     /// A queued message taken into the running turn. Not replayed.
@@ -70,6 +84,164 @@ impl WireEvent {
     pub fn is_terminal(&self) -> bool {
         matches!(self, WireEvent::Done | WireEvent::Error { .. })
     }
+}
+
+/// The most of a tool's output a transcript stores. Past it the head is kept
+/// and the call marked truncated; the provider's own session has the rest.
+const TOOL_OUTPUT_CAP: usize = 30_000;
+
+/// The reply a run is building: its parts in the order the provider produced
+/// them, and what the provider reports about the turn. Clients fold the same
+/// stream events into the same parts.
+struct Reply {
+    parts: Vec<MessagePart>,
+    stats: TurnStats,
+    started: Instant,
+    /// Stands in for the id of a call whose provider gave none.
+    unnamed_calls: usize,
+}
+
+impl Reply {
+    fn new() -> Self {
+        Self {
+            parts: Vec::new(),
+            stats: TurnStats::default(),
+            started: Instant::now(),
+            unnamed_calls: 0,
+        }
+    }
+
+    fn text(&mut self, text: &str) {
+        match self.parts.last_mut() {
+            Some(MessagePart::Text { text: t }) => t.push_str(text),
+            _ => self.parts.push(MessagePart::Text {
+                text: text.to_string(),
+            }),
+        }
+    }
+
+    fn thinking(&mut self, text: &str) {
+        match self.parts.last_mut() {
+            Some(MessagePart::Thinking { text: t }) => t.push_str(text),
+            _ => self.parts.push(MessagePart::Thinking {
+                text: text.to_string(),
+            }),
+        }
+    }
+
+    /// The paragraph break owed to the trailing text or thinking part, as the
+    /// event that carries it. `None` when nothing needs separating.
+    fn paragraph_break(&mut self) -> Option<WireEvent> {
+        const BREAK: &str = "\n\n";
+        let (text, thinking) = match self.parts.last_mut()? {
+            MessagePart::Text { text } => (text, false),
+            MessagePart::Thinking { text } => (text, true),
+            MessagePart::Tool(_) => return None,
+        };
+        if text.is_empty() || text.ends_with(BREAK) {
+            return None;
+        }
+        text.push_str(BREAK);
+        let text = BREAK.to_string();
+        Some(if thinking {
+            WireEvent::Thinking { text }
+        } else {
+            WireEvent::Delta { text }
+        })
+    }
+
+    fn tool_mut(&mut self, id: &str) -> Option<&mut ToolCall> {
+        self.parts.iter_mut().find_map(|p| match p {
+            MessagePart::Tool(t) if t.id == id => Some(t),
+            _ => None,
+        })
+    }
+
+    /// Record a call, or its input as now known for one already recorded.
+    /// Returns the event announcing a new call.
+    fn tool_use(
+        &mut self,
+        id: String,
+        name: String,
+        input: JsonValue,
+        parent_id: Option<String>,
+    ) -> Option<WireEvent> {
+        if let Some(tool) = (!id.is_empty()).then(|| self.tool_mut(&id)).flatten() {
+            tool.name = name;
+            tool.input = input;
+            return None;
+        }
+        let id = if id.is_empty() {
+            self.unnamed_calls += 1;
+            format!("call-{}", self.unnamed_calls)
+        } else {
+            id
+        };
+        self.parts.push(MessagePart::Tool(ToolCall {
+            id: id.clone(),
+            name: name.clone(),
+            input: input.clone(),
+            parent_id: parent_id.clone(),
+            status: ToolStatus::Running,
+            output: None,
+            output_truncated: false,
+        }));
+        Some(WireEvent::ToolUse {
+            id,
+            name,
+            input,
+            parent_id,
+        })
+    }
+
+    /// Complete a recorded call. Returns the event carrying what was stored.
+    fn tool_result(&mut self, id: String, mut output: String, is_error: bool) -> Option<WireEvent> {
+        let tool = self.tool_mut(&id)?;
+        let output_truncated = output.len() > TOOL_OUTPUT_CAP;
+        if output_truncated {
+            let end = (0..=TOOL_OUTPUT_CAP)
+                .rev()
+                .find(|&i| output.is_char_boundary(i))
+                .unwrap_or(0);
+            output.truncate(end);
+        }
+        tool.status = if is_error {
+            ToolStatus::Failed
+        } else {
+            ToolStatus::Completed
+        };
+        tool.output = Some(output.clone());
+        tool.output_truncated = output_truncated;
+        Some(WireEvent::ToolResult {
+            id,
+            output,
+            is_error,
+            output_truncated,
+        })
+    }
+
+    /// Hand over the parts to persist. Mid-turn, calls still running stay
+    /// behind so their results land on them in the next message.
+    fn take(&mut self, last: bool) -> Vec<MessagePart> {
+        let (keep, done) = std::mem::take(&mut self.parts).into_iter().partition(|p| {
+            !last && matches!(p, MessagePart::Tool(t) if t.status == ToolStatus::Running)
+        });
+        self.parts = keep;
+        done
+    }
+}
+
+/// A message's parts as plain text: its text parts.
+fn plain_text(parts: &[MessagePart]) -> String {
+    parts
+        .iter()
+        .filter_map(|p| match p {
+            MessagePart::Text { text } => Some(text.trim()),
+            _ => None,
+        })
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// Per-conversation in-flight run. Cheap to clone (`Arc` inside).
@@ -150,8 +322,30 @@ impl ConversationService {
         Ok(self.conversations.list(&self.pool, ws).await?)
     }
 
-    pub async fn get(&self, ws: &str, id: &str) -> ApiResult<Conversation> {
-        Ok(self.conversations.get(&self.pool, ws, id).await?)
+    /// The conversation with its newest `message_limit` messages, or all of them.
+    pub async fn get(
+        &self,
+        ws: &str,
+        id: &str,
+        message_limit: Option<u32>,
+    ) -> ApiResult<Conversation> {
+        let mut conv = self.conversations.get(&self.pool, ws, id).await?;
+        conv.messages = self.messages(ws, id, None, message_limit).await?;
+        Ok(conv)
+    }
+
+    /// Messages in order: the newest `limit` of those older than `before_seq`.
+    pub async fn messages(
+        &self,
+        ws: &str,
+        id: &str,
+        before_seq: Option<u32>,
+        limit: Option<u32>,
+    ) -> ApiResult<Vec<ChatMessage>> {
+        Ok(self
+            .conversations
+            .messages(&self.pool, ws, id, before_seq, limit)
+            .await?)
     }
 
     pub async fn create(
@@ -472,7 +666,7 @@ async fn open_send_setup(
 
     rt.repos
         .conversations
-        .append_message(&rt.repos.pool, ws_id, conv_id, "user", user_msg, &[])
+        .append_message(&rt.repos.pool, ws_id, conv_id, &NewMessage::user(user_msg))
         .await?;
 
     // Set the title eagerly from the first user message so the sidebar shows it
@@ -489,9 +683,9 @@ async fn open_send_setup(
         }
     }
 
-    // `conv` was read before the user message was appended, so an empty message
-    // list means this is the conversation's first turn.
-    let is_first_turn = conv.messages.is_empty();
+    // `conv` was read before the user message was appended, so no messages
+    // means this is the conversation's first turn.
+    let is_first_turn = conv.message_count == 0;
     let prompt = if is_first_turn {
         let ctx = build_context(rt, ws_id, &conv).await;
         if ctx.is_empty() {
@@ -667,8 +861,7 @@ async fn run_to_completion(
 
     let reader = tokio::io::BufReader::new(stdout);
     let mut lines = reader.lines();
-    let mut accumulated = String::new();
-    let mut accumulated_tools: Vec<serde_json::Value> = Vec::new();
+    let mut reply = Reply::new();
     let mut canceled = false;
     let mut parser_terminal = false;
     // Written but not yet acknowledged; a turn ending with one pending is followed by another.
@@ -686,7 +879,7 @@ async fn run_to_completion(
                 if let Some(pipe) = stdin.as_mut() {
                     pending_input += inject_queued(
                         &queue, &runtime, pipe, session_id.as_deref(), &slot, &ws, &cid,
-                        &mut accumulated, &mut accumulated_tools,
+                        &mut reply,
                     ).await;
                 }
             }
@@ -710,18 +903,41 @@ async fn run_to_completion(
                                 }
                                 emit(&slot, WireEvent::Session { id }).await;
                             }
-                            ChatEvent::ToolUse { name, input } => {
-                                tools_running += 1;
-                                accumulated_tools.push(json!({ "name": &name, "input": &input }));
-                                emit(&slot, WireEvent::ToolUse { name, input }).await;
+                            ChatEvent::ToolUse { id, name, input, parent_id } => {
+                                if let Some(ev) = reply.tool_use(id, name, input, parent_id) {
+                                    tools_running += 1;
+                                    emit(&slot, ev).await;
+                                }
                             }
-                            ChatEvent::ToolResult => {
+                            ChatEvent::ToolResult { id, output, is_error } => {
                                 tools_running = tools_running.saturating_sub(1);
+                                if let Some(ev) = reply.tool_result(id, output, is_error) {
+                                    emit(&slot, ev).await;
+                                }
+                            }
+                            ChatEvent::Break => {
+                                if let Some(ev) = reply.paragraph_break() {
+                                    emit(&slot, ev).await;
+                                }
                             }
                             ChatEvent::Delta { text } => {
-                                accumulated.push_str(&text);
+                                reply.text(&text);
                                 emit(&slot, WireEvent::Delta { text }).await;
                             }
+                            ChatEvent::Thinking { text } => {
+                                reply.thinking(&text);
+                                emit(&slot, WireEvent::Thinking { text }).await;
+                            }
+                            ChatEvent::Usage { input_tokens, output_tokens, cost_usd } => {
+                                let stats = &mut reply.stats;
+                                *stats.input_tokens.get_or_insert(0) += input_tokens;
+                                *stats.output_tokens.get_or_insert(0) += output_tokens;
+                                if let Some(usd) = cost_usd {
+                                    *stats.cost_usd.get_or_insert(0.0) += usd;
+                                }
+                            }
+                            ChatEvent::Duration { ms } => reply.stats.duration_ms = Some(ms),
+                            ChatEvent::Model { name } => reply.stats.model = Some(name),
                             ChatEvent::InputAccepted => {
                                 pending_input = pending_input.saturating_sub(1);
                             }
@@ -733,10 +949,7 @@ async fn run_to_completion(
                                 }
                             }
                             ChatEvent::Error { message } => {
-                                persist_and_emit(
-                                    &convs, &pool, &ws, &cid,
-                                    &accumulated, &accumulated_tools,
-                                ).await;
+                                persist_reply(&convs, &pool, &ws, &cid, &mut reply, true).await;
                                 emit(&slot, WireEvent::Error { message }).await;
                                 let _ = child.kill().await;
                                 let _ = child.wait().await;
@@ -753,7 +966,7 @@ async fn run_to_completion(
                         if let Some(pipe) = stdin.as_mut() {
                             pending_input += inject_queued(
                                 &queue, &runtime, pipe, session_id.as_deref(), &slot, &ws, &cid,
-                                &mut accumulated, &mut accumulated_tools,
+                                &mut reply,
                             ).await;
                         }
                     }
@@ -761,10 +974,7 @@ async fn run_to_completion(
                 Ok(None) => break,
                 Err(e) => {
                     tracing::warn!("conversation stream read error: {e}");
-                    persist_and_emit(
-                        &convs, &pool, &ws, &cid,
-                        &accumulated, &accumulated_tools,
-                    ).await;
+                    persist_reply(&convs, &pool, &ws, &cid, &mut reply, true).await;
                     emit(&slot, WireEvent::Error { message: e.to_string() }).await;
                     let _ = child.kill().await;
                     let _ = child.wait().await;
@@ -776,7 +986,7 @@ async fn run_to_completion(
     }
     drop(stdin);
 
-    persist_and_emit(&convs, &pool, &ws, &cid, &accumulated, &accumulated_tools).await;
+    persist_reply(&convs, &pool, &ws, &cid, &mut reply, true).await;
 
     if canceled {
         let _ = child.kill().await;
@@ -825,8 +1035,7 @@ async fn inject_queued(
     slot: &RunSlot,
     ws: &str,
     cid: &str,
-    accumulated: &mut String,
-    accumulated_tools: &mut Vec<JsonValue>,
+    reply: &mut Reply,
 ) -> usize {
     let mut injected = 0;
     while let Ok(Some(msg)) = queue.pop_queued(ws, cid).await {
@@ -839,20 +1048,10 @@ async fn inject_queued(
             break;
         }
         injected += 1;
-        persist_and_emit(
-            &queue.conversations,
-            &queue.pool,
-            ws,
-            cid,
-            accumulated,
-            accumulated_tools,
-        )
-        .await;
-        accumulated.clear();
-        accumulated_tools.clear();
+        persist_reply(&queue.conversations, &queue.pool, ws, cid, reply, false).await;
         if let Err(e) = queue
             .conversations
-            .append_message(&queue.pool, ws, cid, "user", &msg.content, &[])
+            .append_message(&queue.pool, ws, cid, &NewMessage::user(&msg.content))
             .await
         {
             tracing::error!(ws = %ws, conv = %cid, error = %e, "failed to persist queued message");
@@ -876,21 +1075,36 @@ fn derive_title(user_msg: &str) -> String {
         .collect()
 }
 
-async fn persist_and_emit(
+/// Persist the reply so far as one assistant message. The one that ends the
+/// turn (`last`) carries the turn's stats, with the engine's own clock standing
+/// in for a duration the provider didn't report.
+async fn persist_reply(
     convs: &ConversationRepository,
     pool: &Database,
     ws: &str,
     cid: &str,
-    accumulated: &str,
-    accumulated_tools: &[serde_json::Value],
+    reply: &mut Reply,
+    last: bool,
 ) {
-    if accumulated.is_empty() && accumulated_tools.is_empty() {
+    let parts = reply.take(last);
+    if parts.is_empty() {
         return;
     }
-    if let Err(e) = convs
-        .append_message(pool, ws, cid, "assistant", accumulated, accumulated_tools)
-        .await
-    {
+    let content = plain_text(&parts);
+    let stats = last.then(|| {
+        let mut stats = reply.stats.clone();
+        stats
+            .duration_ms
+            .get_or_insert(reply.started.elapsed().as_millis() as u64);
+        stats
+    });
+    let msg = NewMessage {
+        role: "assistant",
+        content: &content,
+        parts: &parts,
+        stats: stats.as_ref(),
+    };
+    if let Err(e) = convs.append_message(pool, ws, cid, &msg).await {
         // The streaming design relies on this persisted turn to heal a mid-stream
         // broadcast Lagged via refetch, so a dropped write must at least be loud.
         tracing::error!(
@@ -985,7 +1199,137 @@ async fn build_context(rt: &ConvRuntime, ws_id: &str, conv: &Conversation) -> St
 
 #[cfg(test)]
 mod tests {
-    use super::derive_title;
+    use super::{derive_title, plain_text, Reply, WireEvent, TOOL_OUTPUT_CAP};
+    use modula_types::{MessagePart, ToolStatus};
+    use serde_json::json;
+
+    fn tool(reply: &Reply, i: usize) -> &modula_types::ToolCall {
+        match &reply.parts[i] {
+            MessagePart::Tool(t) => t,
+            other => panic!("expected a tool at {i}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reply_keeps_text_and_tools_in_order() {
+        let mut reply = Reply::new();
+        reply.text("Let me ");
+        reply.text("look.");
+        assert!(reply
+            .tool_use("t1".into(), "Read".into(), json!({"file_path": "a"}), None)
+            .is_some());
+        reply.text("Done.");
+        assert_eq!(reply.parts.len(), 3);
+        assert_eq!(
+            reply.parts[0],
+            MessagePart::Text {
+                text: "Let me look.".into()
+            }
+        );
+        assert_eq!(tool(&reply, 1).status, ToolStatus::Running);
+        assert_eq!(plain_text(&reply.parts), "Let me look.\n\nDone.");
+    }
+
+    #[test]
+    fn reply_split_mid_turn_keeps_running_calls_for_their_results() {
+        let mut reply = Reply::new();
+        reply.text("Working.");
+        reply.tool_use("done".into(), "Read".into(), json!({}), None);
+        reply.tool_result("done".into(), "ok".into(), false);
+        reply.tool_use("slow".into(), "Bash".into(), json!({}), None);
+
+        let persisted = reply.take(false);
+        assert_eq!(persisted.len(), 2, "the text and the finished call");
+        assert_eq!(tool(&reply, 0).id, "slow");
+        assert!(reply
+            .tool_result("slow".into(), "late".into(), false)
+            .is_some());
+
+        // The turn's end takes everything, finished or not.
+        reply.tool_use("cut".into(), "Bash".into(), json!({}), None);
+        assert_eq!(reply.take(true).len(), 2);
+        assert!(reply.parts.is_empty());
+    }
+
+    #[test]
+    fn reply_breaks_paragraphs_only_between_text() {
+        let mut reply = Reply::new();
+        assert!(reply.paragraph_break().is_none(), "nothing to separate yet");
+        reply.text("one");
+        assert!(matches!(
+            reply.paragraph_break(),
+            Some(WireEvent::Delta { text }) if text == "\n\n"
+        ));
+        assert!(reply.paragraph_break().is_none(), "already broken");
+        reply.text("two");
+        assert_eq!(
+            reply.parts,
+            [MessagePart::Text {
+                text: "one\n\ntwo".into()
+            }]
+        );
+        reply.tool_use("t1".into(), "Bash".into(), json!({}), None);
+        assert!(
+            reply.paragraph_break().is_none(),
+            "a tool already separates"
+        );
+    }
+
+    #[test]
+    fn reply_completes_a_call_once_and_restates_its_input() {
+        let mut reply = Reply::new();
+        reply.tool_use(
+            "t1".into(),
+            "fileChange".into(),
+            json!({"changes": []}),
+            None,
+        );
+        // The finished item restates the call: its input is updated, not announced again.
+        let restated = json!({"changes": [{"path": "a.rs"}]});
+        assert!(reply
+            .tool_use("t1".into(), "fileChange".into(), restated.clone(), None)
+            .is_none());
+        assert!(matches!(
+            reply.tool_result("t1".into(), "boom".into(), true),
+            Some(WireEvent::ToolResult { is_error: true, .. })
+        ));
+        assert!(reply
+            .tool_result("nope".into(), "x".into(), false)
+            .is_none());
+        assert_eq!(reply.parts.len(), 1);
+        let call = tool(&reply, 0);
+        assert_eq!(call.input, restated);
+        assert_eq!(
+            (call.status, call.output.as_deref()),
+            (ToolStatus::Failed, Some("boom"))
+        );
+    }
+
+    #[test]
+    fn reply_names_calls_the_provider_left_unnamed() {
+        let mut reply = Reply::new();
+        reply.tool_use(String::new(), "Bash".into(), json!({}), None);
+        reply.tool_use(String::new(), "Bash".into(), json!({}), None);
+        assert_eq!(reply.parts.len(), 2);
+        assert_ne!(tool(&reply, 0).id, tool(&reply, 1).id);
+    }
+
+    #[test]
+    fn reply_caps_a_stored_output_on_a_char_boundary() {
+        let mut reply = Reply::new();
+        reply.tool_use("t1".into(), "Read".into(), json!({}), None);
+        // Two-byte chars, with the cap falling inside one.
+        let big = format!("a{}", "é".repeat(TOOL_OUTPUT_CAP));
+        reply.tool_result("t1".into(), big, false);
+        let call = tool(&reply, 0);
+        assert!(call.output_truncated);
+        let stored = call.output.as_deref().unwrap();
+        assert!(stored.len() <= TOOL_OUTPUT_CAP && stored.len() >= TOOL_OUTPUT_CAP - 1);
+
+        reply.tool_use("t2".into(), "Read".into(), json!({}), None);
+        reply.tool_result("t2".into(), "short".into(), false);
+        assert!(!tool(&reply, 1).output_truncated);
+    }
 
     #[test]
     fn empty_or_whitespace_yields_empty() {

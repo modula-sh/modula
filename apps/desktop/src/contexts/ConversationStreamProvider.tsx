@@ -1,14 +1,10 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-
-export interface InFlightTool {
-  name: string;
-  input: unknown;
-}
+import type { MessagePart } from "../types";
 
 export interface ChatStreamState {
-  inFlightText: string;
-  inFlightTools: InFlightTool[];
+  /** The reply so far, folded from the stream as the engine folds it to persist. */
+  parts: MessagePart[];
   streaming: boolean;
   error: string | null;
   // Bumped when a queued message enters the run, which persists the reply so far.
@@ -16,8 +12,7 @@ export interface ChatStreamState {
 }
 
 const EMPTY: ChatStreamState = {
-  inFlightText: "",
-  inFlightTools: [],
+  parts: [],
   streaming: false,
   error: null,
   injected: 0,
@@ -40,12 +35,42 @@ const Ctx = createContext<CtxValue | null>(null);
 // commands — the gRPC `ConvEvent` stream mapped to a tagged JSON shape.
 type ConvEvent =
   | { kind: "session"; id: string }
-  | { kind: "tooluse"; name: string; input: unknown }
+  | { kind: "tooluse"; id: string; name: string; input: unknown; parent_id?: string }
+  | { kind: "toolresult"; id: string; output: string; is_error: boolean; output_truncated: boolean }
   | { kind: "delta"; text: string }
+  | { kind: "thinking"; text: string }
   | { kind: "user"; text: string }
   | { kind: "done" }
   | { kind: "error"; message: string }
   | { kind: "unknown" };
+
+/** Text continues the trailing part of its kind; anything else starts a new one. */
+function foldText(parts: MessagePart[], type: "text" | "thinking", text: string): MessagePart[] {
+  const last = parts.at(-1);
+  if (last?.type !== type) return [...parts, { type, text }];
+  return [...parts.slice(0, -1), { type, text: last.text + text }];
+}
+
+/** A `tooluse` adds a running call; a `toolresult` completes the call it names. */
+function foldTool(
+  parts: MessagePart[],
+  ev: Extract<ConvEvent, { kind: "tooluse" | "toolresult" }>,
+): MessagePart[] {
+  if (ev.kind === "tooluse") {
+    const { kind: _, ...call } = ev;
+    return [...parts, { type: "tool", ...call, status: "running" }];
+  }
+  return parts.map((p) =>
+    p.type === "tool" && p.id === ev.id
+      ? {
+          ...p,
+          status: ev.is_error ? "failed" : "completed",
+          output: ev.output,
+          output_truncated: ev.output_truncated,
+        }
+      : p,
+  );
+}
 
 // App-level chat connection manager. Owns one gRPC stream per (workspace, conv)
 // bridged through a Tauri `Channel`, and survives page navigation, so a turn
@@ -55,12 +80,9 @@ type ConvEvent =
 // the run; an explicit `cancel()` winds the run down.
 export function ConversationStreamProvider({ children }: { children: React.ReactNode }) {
   const [states, setStates] = useState<Record<string, ChatStreamState>>({});
-  // Refs keep per-conv async state out of React reconciliation: the active
-  // stream channel per conv (used to dedupe attaches and detach on resend)
-  // and per-conv accumulators for inFlight text + tools.
+  // The active stream channel per conv, kept out of React reconciliation:
+  // used to dedupe attaches and to detach on resend.
   const channels = useRef<Map<string, Channel<ConvEvent>>>(new Map());
-  const textAcc = useRef<Map<string, string>>(new Map());
-  const toolsAcc = useRef<Map<string, InFlightTool[]>>(new Map());
 
   const patch = useCallback((convId: string, patcher: (s: ChatStreamState) => ChatStreamState) => {
     setStates((prev) => ({ ...prev, [convId]: patcher(prev[convId] ?? EMPTY) }));
@@ -82,37 +104,29 @@ export function ConversationStreamProvider({ children }: { children: React.React
   const openChannel = useCallback(
     (convId: string) => {
       const finishOk = () => {
-        textAcc.current.delete(convId);
-        toolsAcc.current.delete(convId);
         channels.current.delete(convId);
         patch(convId, () => EMPTY);
       };
       const finishErr = (msg: string) => {
-        textAcc.current.delete(convId);
-        toolsAcc.current.delete(convId);
         channels.current.delete(convId);
         patch(convId, () => ({ ...EMPTY, error: msg }));
       };
       const channel = new Channel<ConvEvent>();
       channel.onmessage = (ev) => {
-        if (ev.kind === "tooluse") {
-          const tools = [
-            ...(toolsAcc.current.get(convId) ?? []),
-            { name: ev.name, input: ev.input },
-          ];
-          toolsAcc.current.set(convId, tools);
-          patch(convId, (s) => ({ ...s, inFlightTools: tools, streaming: true }));
-        } else if (ev.kind === "delta") {
-          const acc = (textAcc.current.get(convId) ?? "") + ev.text;
-          textAcc.current.set(convId, acc);
-          patch(convId, (s) => ({ ...s, inFlightText: acc, streaming: true }));
-        } else if (ev.kind === "user") {
-          textAcc.current.set(convId, "");
-          toolsAcc.current.set(convId, []);
+        if (ev.kind === "tooluse" || ev.kind === "toolresult") {
+          patch(convId, (s) => ({ ...s, parts: foldTool(s.parts, ev), streaming: true }));
+        } else if (ev.kind === "delta" || ev.kind === "thinking") {
+          const type = ev.kind === "delta" ? "text" : "thinking";
           patch(convId, (s) => ({
             ...s,
-            inFlightText: "",
-            inFlightTools: [],
+            parts: foldText(s.parts, type, ev.text),
+            streaming: true,
+          }));
+        } else if (ev.kind === "user") {
+          // The reply so far is persisted; calls still running carry into the next one.
+          patch(convId, (s) => ({
+            ...s,
+            parts: s.parts.filter((p) => p.type === "tool" && p.status === "running"),
             streaming: true,
             injected: s.injected + 1,
           }));
@@ -131,8 +145,6 @@ export function ConversationStreamProvider({ children }: { children: React.React
   const send = useCallback<StreamApi["send"]>(
     async (ws, convId, text, model) => {
       detach(convId);
-      textAcc.current.set(convId, "");
-      toolsAcc.current.set(convId, []);
       patch(convId, () => ({ ...EMPTY, streaming: true }));
       const onEvent = openChannel(convId);
       try {
@@ -203,8 +215,7 @@ export function useConversationStream(ws: string, convId: string) {
   }
   const state = ctx.states[convId] ?? EMPTY;
   return {
-    inFlightText: state.inFlightText,
-    inFlightTools: state.inFlightTools,
+    parts: state.parts,
     streaming: state.streaming,
     error: state.error,
     injected: state.injected,

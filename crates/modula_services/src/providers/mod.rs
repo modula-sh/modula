@@ -67,6 +67,24 @@ fn read_jsonc(path: &std::path::Path) -> JsonValue {
         .unwrap_or(JsonValue::Object(Default::default()))
 }
 
+/// A tool result's content as text: a bare string, or the text blocks of an
+/// MCP-style block list. An image block is named, not inlined.
+fn content_text(content: &JsonValue) -> String {
+    match content {
+        JsonValue::String(s) => s.clone(),
+        JsonValue::Array(blocks) => blocks
+            .iter()
+            .filter_map(|b| match b["type"].as_str() {
+                Some("text") => b["text"].as_str().map(str::to_string),
+                Some("image") => Some("[image]".to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
 /// One selectable model for a provider type, as served by the catalog API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderModel {
@@ -74,20 +92,49 @@ pub struct ProviderModel {
     pub label: String,
 }
 
-/// Normalized event emitted by `parse_stream_line`. Provider-specific shapes
-/// are collapsed to these variants before being forwarded to SSE clients.
+/// Normalized event emitted by `parse_stream_line`. Each provider's stream is
+/// mapped onto these without renaming its tools or reshaping their inputs.
 pub enum ChatEvent {
+    /// Assistant text.
     Delta {
         text: String,
     },
+    /// Reasoning the provider chose to show.
+    Thinking {
+        text: String,
+    },
+    /// A new message or block starts; what follows is its own paragraph.
+    Break,
     Session {
         id: String,
     },
+    /// A tool call started. For an id already seen, its input as now known.
     ToolUse {
+        id: String,
         name: String,
         input: serde_json::Value,
+        /// The call this one ran under, for a sub-agent's calls.
+        parent_id: Option<String>,
     },
-    ToolResult,
+    ToolResult {
+        id: String,
+        output: String,
+        is_error: bool,
+    },
+    /// Tokens (and cost, when the provider prices the call) for one model call.
+    /// A turn sums them.
+    Usage {
+        input_tokens: u64,
+        output_tokens: u64,
+        cost_usd: Option<f64>,
+    },
+    /// How long the provider says the turn took.
+    Duration {
+        ms: u64,
+    },
+    Model {
+        name: String,
+    },
     /// A message written to stdin was taken into the conversation.
     InputAccepted,
     Done,

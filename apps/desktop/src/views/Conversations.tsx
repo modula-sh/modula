@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { AiAssist, AiAssistTrigger } from "../components/AiAssist";
 import { Button } from "../components/Button";
@@ -22,7 +22,12 @@ import { ProviderTypeIcon } from "../lib/providerTypes";
 import { useLocalStorage } from "../lib/useLocalStorage";
 import { useResetOnChange } from "../lib/useResetOnChange";
 import { useProviderCatalog } from "../queries/catalog";
-import { conversationKeys, useConversation } from "../queries/conversation";
+import {
+  conversationKeys,
+  loadOlderMessages,
+  MESSAGE_PAGE,
+  useConversation,
+} from "../queries/conversation";
 import { client, errorMessage } from "../services/client";
 import type { ConversationContext, ConversationMessage, Task } from "../types";
 
@@ -221,20 +226,8 @@ export function ConversationDetailPage() {
     null,
   );
   const { open: sidebarOpen, toggle: toggleSidebar } = useChatSidebar();
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const userScrolledRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const initialFiredRef = useRef(false);
-  const initialPositionedRef = useRef(false);
-  const lastLength = useRef(0);
-  const scrollKey = `modula.chat.scroll.${ws}.${id ?? ""}`;
-  const saveScroll = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el || !initialPositionedRef.current) return;
-    try {
-      localStorage.setItem(scrollKey, String(el.scrollTop));
-    } catch {}
-  }, [scrollKey]);
   const initialMsg: string | undefined = (location.state as { initialMessage?: string } | null)
     ?.initialMessage;
 
@@ -245,8 +238,30 @@ export function ConversationDetailPage() {
     if (conv) setSelectedModel((prev) => (prev === null ? conv.model : prev));
   });
 
-  const { inFlightText, inFlightTools, streaming, error, injected, send, attach, cancel } =
-    useConversationStream(ws, id ?? "");
+  const { parts, streaming, error, injected, send, attach, cancel } = useConversationStream(
+    ws,
+    id ?? "",
+  );
+
+  // The first message rendered; scrolling to the top moves it back a page.
+  const [fromSeq, setFromSeq] = useState<number | null>(null);
+  useResetOnChange(id, () => setFromSeq(null));
+  if (fromSeq === null && messages.length > 0) {
+    setFromSeq(messages[Math.max(0, messages.length - MESSAGE_PAGE)].seq);
+  }
+  const shown = useMemo(() => messages.filter((m) => m.seq >= (fromSeq ?? 0)), [messages, fromSeq]);
+  const loadingOlder = useRef(false);
+  const showOlder = useCallback(async () => {
+    if (fromSeq === null || !id || loadingOlder.current) return;
+    const next = Math.max(0, fromSeq - MESSAGE_PAGE);
+    loadingOlder.current = true;
+    try {
+      if ((messages[0]?.seq ?? 0) > next) await loadOlderMessages(queryClient, ws, id);
+      setFromSeq(next);
+    } finally {
+      loadingOlder.current = false;
+    }
+  }, [fromSeq, messages, queryClient, ws, id]);
 
   useEffect(() => {
     if (ws && id) attach();
@@ -290,8 +305,14 @@ export function ConversationDetailPage() {
       // will reconcile with the server's persisted copy.
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: text, ts: new Date().toISOString() },
+        {
+          role: "user",
+          content: text,
+          ts: new Date().toISOString(),
+          seq: (prev.at(-1)?.seq ?? -1) + 1,
+        },
       ]);
+      scrollRef.current?.scrollTo({ top: 0 });
       send(text, selectedModel);
     },
     [send, selectedModel],
@@ -339,65 +360,6 @@ export function ConversationDetailPage() {
       handleSend(initialMsg);
     }
   }, [conv, initialMsg, handleSend]);
-
-  // Keyed so only a conversation change resets, before the positioning below.
-  const positionedKeyRef = useRef(scrollKey);
-  useLayoutEffect(() => {
-    if (positionedKeyRef.current === scrollKey) return;
-    positionedKeyRef.current = scrollKey;
-    initialPositionedRef.current = false;
-    userScrolledRef.current = false;
-    lastLength.current = 0;
-  }, [scrollKey]);
-
-  // Position synchronously before paint to avoid a top-then-bottom scroll flash.
-  useLayoutEffect(() => {
-    if (initialPositionedRef.current || messages.length === 0) return;
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const max = Math.max(0, el.scrollHeight - el.clientHeight);
-    let target = max;
-    try {
-      const raw = localStorage.getItem(scrollKey);
-      if (raw != null) {
-        const parsed = parseInt(raw, 10);
-        if (Number.isFinite(parsed) && parsed < max - 64) target = Math.min(parsed, max);
-      }
-    } catch {}
-    el.scrollTop = target;
-    initialPositionedRef.current = true;
-    lastLength.current = messages.length;
-    userScrolledRef.current = target < max - 64;
-  }, [messages, scrollKey]);
-
-  // Gated on initial position so it can't fight the layout effect on mount.
-  useEffect(() => {
-    if (!initialPositionedRef.current) return;
-    if (messages.length !== lastLength.current || inFlightText || inFlightTools.length > 0) {
-      lastLength.current = messages.length;
-      if (!userScrolledRef.current) {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
-    }
-  }, [messages, inFlightText, inFlightTools]);
-
-  const scrollSaveQueuedRef = useRef(false);
-  const handleScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      const el = e.currentTarget;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
-      userScrolledRef.current = !atBottom;
-      if (!initialPositionedRef.current || scrollSaveQueuedRef.current) return;
-      scrollSaveQueuedRef.current = true;
-      requestAnimationFrame(() => {
-        scrollSaveQueuedRef.current = false;
-        saveScroll();
-      });
-    },
-    [saveScroll],
-  );
-
-  useEffect(() => () => saveScroll(), [saveScroll]);
 
   if (notFound) {
     return (
@@ -452,14 +414,13 @@ export function ConversationDetailPage() {
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
           <MessageList
-            messages={messages}
-            inFlightText={inFlightText}
-            inFlightTools={inFlightTools}
+            messages={shown}
+            hasOlder={(fromSeq ?? 0) > 0}
+            onReachTop={showOlder}
+            parts={parts}
             streaming={streaming}
             error={error ?? queueError}
-            bottomRef={bottomRef}
-            scrollContainerRef={scrollContainerRef}
-            onScroll={handleScroll}
+            scrollRef={scrollRef}
           />
 
           <div

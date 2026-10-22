@@ -10,9 +10,23 @@ pub async fn conversation_get(
     engine: State<'_, ModulaClient>,
     workspace_id: String,
     conversation_id: String,
+    message_limit: Option<u32>,
 ) -> Result<modula_types::Conversation, String> {
     Ok(engine
-        .get_conversation(&workspace_id, &conversation_id)
+        .get_conversation(&workspace_id, &conversation_id, message_limit)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn conversation_messages(
+    engine: State<'_, ModulaClient>,
+    workspace_id: String,
+    conversation_id: String,
+    before_seq: u32,
+    limit: u32,
+) -> Result<Vec<modula_types::ChatMessage>, String> {
+    Ok(engine
+        .conversation_messages(&workspace_id, &conversation_id, before_seq, limit)
         .await?)
 }
 

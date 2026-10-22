@@ -70,30 +70,79 @@ impl ProviderRuntime for OpenCodeRuntime {
         opencode_mcp_summary(&self.config_dir)
     }
 
+    /// `opencode run --format json`: each event carries one finished part.
     fn parse_line(&self, v: &JsonValue) -> Vec<ChatEvent> {
-        let t = match v["type"].as_str() {
-            Some(t) => t,
-            None => return vec![],
-        };
-        match t {
+        let part = &v["part"];
+        let text = |v: &JsonValue| v.as_str().unwrap_or("").to_string();
+        let mut events = Vec::new();
+        // Every event names the session; the run keeps the first.
+        if let Some(sid) = v["sessionID"].as_str() {
+            events.push(ChatEvent::Session {
+                id: sid.to_string(),
+            });
+        }
+        match v["type"].as_str().unwrap_or("") {
             "text" => {
-                let mut events = Vec::new();
-                // sessionID rides on every text event; emit once (handler deduplicates via session_captured).
-                if let Some(sid) = v["sessionID"].as_str() {
-                    events.push(ChatEvent::Session {
-                        id: sid.to_string(),
-                    });
-                }
-                if let Some(text) = v["part"]["text"].as_str() {
+                if let Some(text) = part["text"].as_str() {
+                    events.push(ChatEvent::Break);
                     events.push(ChatEvent::Delta {
                         text: text.to_string(),
                     });
                 }
-                events
             }
-            "step_finish" => vec![ChatEvent::Done],
-            _ => vec![],
+            "reasoning" => {
+                if let Some(text) = part["text"].as_str() {
+                    events.push(ChatEvent::Break);
+                    events.push(ChatEvent::Thinking {
+                        text: text.to_string(),
+                    });
+                }
+            }
+            // Emitted once the call has finished, so use and result arrive together.
+            "tool_use" => {
+                let state = &part["state"];
+                let is_error = state["status"].as_str() == Some("error");
+                events.push(ChatEvent::ToolUse {
+                    id: text(&part["callID"]),
+                    name: text(&part["tool"]),
+                    input: state["input"].clone(),
+                    parent_id: None,
+                });
+                events.push(ChatEvent::ToolResult {
+                    id: text(&part["callID"]),
+                    output: text(if is_error {
+                        &state["error"]
+                    } else {
+                        &state["output"]
+                    }),
+                    is_error,
+                });
+            }
+            // One per model call; the process exiting is what ends the turn.
+            "step_finish" => {
+                let tokens = &part["tokens"];
+                let n = |v: &JsonValue| v.as_u64().unwrap_or(0);
+                events.push(ChatEvent::Usage {
+                    input_tokens: n(&tokens["input"])
+                        + n(&tokens["cache"]["read"])
+                        + n(&tokens["cache"]["write"]),
+                    output_tokens: n(&tokens["output"]) + n(&tokens["reasoning"]),
+                    cost_usd: part["cost"].as_f64(),
+                });
+            }
+            "error" => {
+                let error = &v["error"];
+                events.push(ChatEvent::Error {
+                    message: error["data"]["message"]
+                        .as_str()
+                        .or_else(|| error["name"].as_str())
+                        .unwrap_or("opencode run failed")
+                        .to_string(),
+                });
+            }
+            _ => {}
         }
+        events
     }
 }
 
@@ -305,38 +354,61 @@ mod tests {
     }
 
     #[test]
-    fn opencode_parse_text_delta_with_session() {
-        // text events carry both sessionID and the delta text.
-        let line = r#"{"type":"text","sessionID":"ses_abc","part":{"text":"hi"}}"#;
-        let events = opencode_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 2);
-        match &events[0] {
-            ChatEvent::Session { id } => assert_eq!(id, "ses_abc"),
-            _ => panic!("expected Session first"),
-        }
-        match &events[1] {
-            ChatEvent::Delta { text } => assert_eq!(text, "hi"),
-            _ => panic!("expected Delta second"),
-        }
+    fn opencode_parse_text_with_session() {
+        // Each event is one finished part, and names the session.
+        let line = r#"{"type":"text","sessionID":"ses_abc","part":{"type":"text","text":"hi"}}"#;
+        assert!(matches!(
+            &opencode_rt().parse_stream_line(line)[..],
+            [ChatEvent::Session { id }, ChatEvent::Break, ChatEvent::Delta { text }]
+                if id == "ses_abc" && text == "hi"
+        ));
+        let line = r#"{"type":"reasoning","part":{"type":"reasoning","text":"hm"}}"#;
+        assert!(matches!(
+            &opencode_rt().parse_stream_line(line)[..],
+            [ChatEvent::Break, ChatEvent::Thinking { text }] if text == "hm"
+        ));
+    }
+
+    /// Part shapes per opencode's `ToolPart` / `ToolStateCompleted` / `ToolStateError`.
+    #[test]
+    fn opencode_parse_tool_use() {
+        let done = r#"{"type":"tool_use","sessionID":"s","part":{"type":"tool","callID":"c1","tool":"bash","state":{"status":"completed","input":{"command":"ls","description":"List"},"output":"a.txt\n","title":"List","metadata":{"exit":0},"time":{"start":1,"end":2}}}}"#;
+        assert!(matches!(
+            &opencode_rt().parse_stream_line(done)[..],
+            [
+                ChatEvent::Session { .. },
+                ChatEvent::ToolUse { id, name, input, parent_id: None },
+                ChatEvent::ToolResult { id: rid, output, is_error: false }
+            ] if id == "c1" && rid == "c1" && name == "bash"
+                && input == &serde_json::json!({"command":"ls","description":"List"})
+                && output == "a.txt\n"
+        ));
+        let failed = r#"{"type":"tool_use","part":{"type":"tool","callID":"c2","tool":"read","state":{"status":"error","input":{"filePath":"x"},"error":"File not found","time":{"start":1,"end":2}}}}"#;
+        assert!(matches!(
+            &opencode_rt().parse_stream_line(failed)[..],
+            [ChatEvent::ToolUse { .. }, ChatEvent::ToolResult { output, is_error: true, .. }]
+                if output == "File not found"
+        ));
     }
 
     #[test]
-    fn opencode_parse_text_delta_no_session() {
-        // text event without sessionID (e.g. already captured) → only Delta.
-        let line = r#"{"type":"text","part":{"text":"world"}}"#;
-        let events = opencode_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 1);
-        match &events[0] {
-            ChatEvent::Delta { text } => assert_eq!(text, "world"),
-            _ => panic!("expected Delta"),
-        }
+    fn opencode_step_finish_reports_usage_without_ending_the_turn() {
+        // A tool-calling turn has one step per model call; only the exit ends it.
+        let line = r#"{"type":"step_finish","part":{"type":"step-finish","reason":"tool-calls","cost":0.25,"tokens":{"input":10,"output":4,"reasoning":1,"cache":{"read":100,"write":5}}}}"#;
+        assert!(matches!(
+            opencode_rt().parse_stream_line(line)[..],
+            [ChatEvent::Usage { input_tokens: 115, output_tokens: 5, cost_usd: Some(c) }] if c == 0.25
+        ));
     }
 
+    /// A real error event (the free tier refusing an old CLI), trimmed.
     #[test]
-    fn opencode_parse_step_finish() {
-        let line = r#"{"type":"step_finish"}"#;
-        let events = opencode_rt().parse_stream_line(line);
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], ChatEvent::Done));
+    fn opencode_parse_error() {
+        let line = r#"{"type":"error","timestamp":1790880739684,"sessionID":"ses_1","error":{"name":"APIError","data":{"message":"Error from provider (Console): OpenCode 1.18.0 or newer is required to use the free tier","statusCode":426,"isRetryable":false}}}"#;
+        assert!(matches!(
+            &opencode_rt().parse_stream_line(line)[..],
+            [ChatEvent::Session { .. }, ChatEvent::Error { message }]
+                if message.contains("1.18.0 or newer is required")
+        ));
     }
 }

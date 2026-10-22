@@ -7,8 +7,9 @@ use modula_rpc::v1::{
     ConversationSummary, CreateConversationRequest, CreateConversationResponse,
     DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DequeueMessageRequest,
     DoneEvent, EnqueueMessageRequest, ErrorEvent, GetConversationRequest, ListConversationsRequest,
-    ListConversationsResponse, QueuedMessage, QueuedMessagesResponse, SendMessageRequest,
-    SessionEvent, ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse, UserEvent,
+    ListConversationsResponse, ListMessagesRequest, ListMessagesResponse, QueuedMessage,
+    QueuedMessagesResponse, SendMessageRequest, SessionEvent, ThinkingEvent, ToolResultEvent,
+    ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse, UserEvent,
 };
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
@@ -30,11 +31,30 @@ type ConvEventStream = Pin<Box<dyn Stream<Item = Result<ConvEvent, Status>> + Se
 fn to_conv_event(event: WireEvent) -> ConvEvent {
     let inner = match event {
         WireEvent::Session { id } => conv_event::Event::Session(SessionEvent { id }),
-        WireEvent::ToolUse { name, input } => conv_event::Event::ToolUse(ToolUseEvent {
+        WireEvent::ToolUse {
+            id,
+            name,
+            input,
+            parent_id,
+        } => conv_event::Event::ToolUse(ToolUseEvent {
             name,
             input: json_to_struct(input),
+            id,
+            parent_id,
+        }),
+        WireEvent::ToolResult {
+            id,
+            output,
+            is_error,
+            output_truncated,
+        } => conv_event::Event::ToolResult(ToolResultEvent {
+            id,
+            output,
+            is_error,
+            output_truncated,
         }),
         WireEvent::Delta { text } => conv_event::Event::Delta(DeltaEvent { text }),
+        WireEvent::Thinking { text } => conv_event::Event::Thinking(ThinkingEvent { text }),
         WireEvent::User { text } => conv_event::Event::User(UserEvent { text }),
         WireEvent::Done => conv_event::Event::Done(DoneEvent {}),
         WireEvent::Error { message } => conv_event::Event::Error(ErrorEvent { message }),
@@ -115,7 +135,11 @@ impl ConversationService for ConversationHandler {
         let conv = self
             .state
             .conversations
-            .get(&body.workspace_id, &body.conversation_id)
+            .get(
+                &body.workspace_id,
+                &body.conversation_id,
+                body.message_limit,
+            )
             .await
             .map_err(to_status)?;
         let mut out = Conversation::from(conv);
@@ -126,6 +150,27 @@ impl ConversationService for ConversationHandler {
             .await
             .contains(&out.id);
         Ok(Response::new(out))
+    }
+
+    async fn list_messages(
+        &self,
+        req: Request<ListMessagesRequest>,
+    ) -> Result<Response<ListMessagesResponse>, Status> {
+        let body = req.into_inner();
+        let messages = self
+            .state
+            .conversations
+            .messages(
+                &body.workspace_id,
+                &body.conversation_id,
+                Some(body.before_seq),
+                Some(body.limit),
+            )
+            .await
+            .map_err(to_status)?;
+        Ok(Response::new(ListMessagesResponse {
+            messages: messages.into_iter().map(Into::into).collect(),
+        }))
     }
 
     async fn create(

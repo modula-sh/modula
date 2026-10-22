@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { ConversationMessage } from "../../types";
 import { MarkdownContent } from "../MarkdownContent";
 import { MessageMeta } from "./MessageMeta";
-import { ToolUseLine } from "./ToolUseLine";
+import { MessageParts } from "./MessageParts";
 
 /** Memoised: message objects are stable until the post-turn refetch, so a
  * re-render of the list re-parses no markdown. */
@@ -25,16 +25,17 @@ export const MessageBubble = memo(function MessageBubble({ msg }: { msg: Convers
   }
   return (
     <div className="group flex flex-col gap-1 min-w-0">
-      {msg.tools?.map((tool, i) => (
-        <ToolUseLine key={i} name={tool.name} input={tool.input} />
-      ))}
-      {msg.content && (
-        <MarkdownContent
-          value={msg.content}
-          fontClass="font-geist"
-          bodyClass="text-[14px]"
-          className="selectable"
-        />
+      {msg.parts?.length ? (
+        <MessageParts parts={msg.parts} />
+      ) : (
+        msg.content && (
+          <MarkdownContent
+            value={msg.content}
+            fontClass="font-geist"
+            bodyClass="text-[14px]"
+            className="selectable"
+          />
+        )
       )}
       <MessageMeta msg={msg} align="start" />
     </div>
