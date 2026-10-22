@@ -22,13 +22,13 @@ use modula_rpc::v1::{
     agent_service_client::AgentServiceClient, config_service_client::ConfigServiceClient,
     conversation_service_client::ConversationServiceClient,
     event_service_client::EventServiceClient, health_service_client::HealthServiceClient,
-    label_service_client::LabelServiceClient, project_service_client::ProjectServiceClient,
-    provider_service_client::ProviderServiceClient, roadmap_service_client::RoadmapServiceClient,
-    run_service_client::RunServiceClient, search_service_client::SearchServiceClient,
-    snapshot_service_client::SnapshotServiceClient, task_service_client::TaskServiceClient,
-    thread_service_client::ThreadServiceClient, variant_service_client::VariantServiceClient,
-    workspace_service_client::WorkspaceServiceClient, CreateWorkspaceRequest, HealthCheckRequest,
-    HealthStatus,
+    label_service_client::LabelServiceClient, plan_service_client::PlanServiceClient,
+    project_service_client::ProjectServiceClient, provider_service_client::ProviderServiceClient,
+    roadmap_service_client::RoadmapServiceClient, run_service_client::RunServiceClient,
+    search_service_client::SearchServiceClient, snapshot_service_client::SnapshotServiceClient,
+    task_service_client::TaskServiceClient, thread_service_client::ThreadServiceClient,
+    variant_service_client::VariantServiceClient, workspace_service_client::WorkspaceServiceClient,
+    CreateWorkspaceRequest, HealthCheckRequest, HealthStatus,
 };
 use serde_json::Value as Json;
 use tempfile::TempDir;
@@ -155,6 +155,10 @@ impl Harness {
 
     pub fn variants(&self) -> VariantServiceClient<Channel> {
         VariantServiceClient::new(self.channel.clone())
+    }
+
+    pub fn plans(&self) -> PlanServiceClient<Channel> {
+        PlanServiceClient::new(self.channel.clone())
     }
 
     pub fn providers(&self) -> ProviderServiceClient<Channel> {
