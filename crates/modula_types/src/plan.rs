@@ -211,6 +211,26 @@ impl Plan {
         progress
     }
 
+    /// The current task (as in [`Plan::progress`]) and the `n - 1` before it in
+    /// plan order, filled with the tasks after it when fewer precede it. Once
+    /// every task is finished, the last `n`.
+    pub fn recent_tasks(&self, n: usize) -> Vec<&PlanTask> {
+        let tasks: Vec<&PlanTask> = self.tasks().map(|(_, t)| t).collect();
+        let cur = tasks
+            .iter()
+            .position(|t| t.status == PlanTaskStatus::InProgress)
+            .or_else(|| {
+                tasks
+                    .iter()
+                    .position(|t| t.status == PlanTaskStatus::Pending)
+            })
+            .unwrap_or(tasks.len());
+        let start = (cur + 1)
+            .saturating_sub(n)
+            .min(tasks.len().saturating_sub(n));
+        tasks.into_iter().skip(start).take(n).collect()
+    }
+
     /// Apply one patch. Returns the id of the task, phase, or summary (1-based
     /// index) it touched or created.
     pub fn apply(&mut self, patch: PlanPatch) -> Result<String, String> {
@@ -831,6 +851,49 @@ mod tests {
         assert_eq!((end.tasks_done, end.tasks_skipped), (2, 1));
         assert_eq!(end.current_phase_id, None);
         assert_eq!(end.current_task_id, None);
+    }
+
+    #[test]
+    fn recent_tasks_window() {
+        let titles: Vec<String> = (1..=8).map(|i| format!("T{i}")).collect();
+        let mut v = doc();
+        v["phases"][0]["tasks"] = json!(titles[..3]
+            .iter()
+            .map(|t| json!({"title": t}))
+            .collect::<Vec<_>>());
+        v["phases"][1]["tasks"] = json!(titles[3..]
+            .iter()
+            .map(|t| json!({"title": t}))
+            .collect::<Vec<_>>());
+        let mut p = Plan::parse(&v.to_string()).unwrap();
+        let ids =
+            |p: &Plan| -> Vec<String> { p.recent_tasks(5).iter().map(|t| t.id.clone()).collect() };
+        let finish = |p: &mut Plan, id: &str| {
+            set(p, id, PlanTaskStatus::InProgress).unwrap();
+            set(p, id, PlanTaskStatus::Done).unwrap();
+        };
+
+        assert_eq!(ids(&p), ["1.1", "1.2", "1.3", "2.1", "2.2"]);
+        finish(&mut p, "1.1");
+        set(&mut p, "1.2", PlanTaskStatus::InProgress).unwrap();
+        assert_eq!(ids(&p), ["1.1", "1.2", "1.3", "2.1", "2.2"]);
+        set(&mut p, "1.2", PlanTaskStatus::Done).unwrap();
+        for id in ["1.3", "2.1", "2.2", "2.3"] {
+            finish(&mut p, id);
+        }
+        set(&mut p, "2.4", PlanTaskStatus::InProgress).unwrap();
+        assert_eq!(ids(&p), ["1.3", "2.1", "2.2", "2.3", "2.4"]);
+        set(&mut p, "2.4", PlanTaskStatus::Done).unwrap();
+        p.apply(PlanPatch::SetTaskStatus {
+            task: "2.5".into(),
+            status: PlanTaskStatus::Skipped,
+            note: Some("n/a".into()),
+        })
+        .unwrap();
+        assert_eq!(ids(&p), ["2.1", "2.2", "2.3", "2.4", "2.5"]);
+
+        let short = plan();
+        assert_eq!(ids(&short), ["1.1", "1.2", "2.1"]);
     }
 
     #[test]
