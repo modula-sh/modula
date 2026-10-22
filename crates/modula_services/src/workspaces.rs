@@ -23,22 +23,15 @@ use modula_core::slug;
 
 const TEMPLATES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates");
 
-/// Slug for a task's spec folder, e.g. "MOD-0001 Some new adjustment" →
-/// "mod-0001-some-new-adjustment". Title-only when there's no external id.
-/// Never contains a UUID.
-pub fn task_spec_slug(external_id: Option<&str>, title: &str) -> String {
+/// Slug naming a task's variant branches (`feature/<slug>-v<position>`), e.g.
+/// "MOD-0001 Some new adjustment" → "mod-0001-some-new-adjustment". Title-only
+/// when there's no external id. Never contains a UUID.
+pub fn task_slug(external_id: Option<&str>, title: &str) -> String {
     let combined = match external_id {
         Some(e) if !e.trim().is_empty() => format!("{e} {title}"),
         _ => title.to_string(),
     };
     slug::slugify(&combined)
-}
-
-/// `<ws_dir>/specs/<task-slug>` — the folder holding a task's variant specs.
-pub fn task_spec_dir(ws_dir: &Path, external_id: Option<&str>, title: &str) -> PathBuf {
-    ws_dir
-        .join("specs")
-        .join(task_spec_slug(external_id, title))
 }
 
 /// Scaffold the on-disk side of a workspace (markdown artifacts only —
@@ -53,7 +46,6 @@ pub fn scaffold_workspace_files(modula: &Path, slug: &str) -> Result<PathBuf, Ap
     }
 
     fs::create_dir_all(&ws_dir)?;
-    fs::create_dir_all(ws_dir.join("specs"))?;
     fs::create_dir_all(ws_dir.join("logs"))?;
 
     if let Some(wiki_dir) = TEMPLATES.get_dir("wiki") {
@@ -222,13 +214,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn task_spec_slug_examples() {
+    fn task_slug_examples() {
         assert_eq!(
-            task_spec_slug(Some("MOD-0001"), "Some new adjustment"),
+            task_slug(Some("MOD-0001"), "Some new adjustment"),
             "mod-0001-some-new-adjustment"
         );
-        assert_eq!(task_spec_slug(None, "Just a title"), "just-a-title");
-        assert_eq!(task_spec_slug(Some(""), "Title only"), "title-only");
+        assert_eq!(task_slug(None, "Just a title"), "just-a-title");
+        assert_eq!(task_slug(Some(""), "Title only"), "title-only");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

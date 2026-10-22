@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 
 use modula_types::{RoadmapEntry, Task, Variant};
 
-use super::{bool_dash, num_dash, or_dash, str_dash, DASH};
+use super::{bool_dash, num_dash, or_dash, plan_progress, str_dash, DASH};
 
 /// `2 [1:in_progress, 2:—]`, or `0` when there are none.
 fn variants_summary(variants: &[Variant]) -> String {
@@ -91,6 +91,9 @@ pub fn task_detail(task: &Task, roadmap: Option<&RoadmapEntry>) -> String {
             let _ = writeln!(out, "  id: {}", v.id);
             let _ = writeln!(out, "  status: {}", or_dash(v.status.as_deref()));
             let _ = writeln!(out, "  position: {}", v.position);
+            if let Some(p) = &v.plan_progress {
+                let _ = writeln!(out, "  plan: {}", plan_progress(p));
+            }
         }
     }
 

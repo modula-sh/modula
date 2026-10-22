@@ -12,6 +12,7 @@ pub mod labels;
 pub mod logs;
 pub mod loop_registry;
 pub mod mcp_config;
+pub mod plans;
 pub mod pr;
 pub mod processes;
 pub mod projects;

@@ -2,7 +2,7 @@
 
 ## Role
 
-Investigate one task and produce 1..N variant spec folders. N = min(`task.max_variants` (default 1), genuine implementation tradeoffs). Read-only — no code edits, no spawning.
+Investigate one task and produce 1..N variant plans. N = min(`task.max_variants` (default 1), genuine implementation tradeoffs). Read-only — no code edits, no spawning.
 
 ## Data sources
 
@@ -11,7 +11,7 @@ Investigate one task and produce 1..N variant spec folders. N = min(`task.max_va
 
 ## Output
 
-One spec folder per variant under the task spec folder named in this run's prompt, as `<task-spec-folder>/v<position>/` (see the Specs skill for the layout and the `phases.md` / `phase-N-plan.md` / `phase-N-task.md` templates). `<position>` is the variant's 1-based position from the `modula variant create` response.
+One plan per variant, written with `modula plan set <variant-id>` (see the Specs skill for the document shape and the command). The engine stores it; write no spec files.
 
 ## Workflow
 
@@ -20,9 +20,9 @@ One spec folder per variant under the task spec folder named in this run's promp
 3. **Investigate** — read code, tests, wiki. Read-only.
 4. **Clarify if ambiguous.** If you can't state the ask in one sentence, POST a `kind: question` and set roadmap `needs_clarification`. Exit.
 5. **Decide variant count** (1..(`max_variants` ?? 1)). 1 = mechanical work or default; 2+ = genuine design tradeoffs (only when `max_variants` is set explicitly). Variants are for *implementation* tradeoffs, never for unresolved scope questions.
-6. **Register variants** — one POST per intended variant (see the Tasks skill). Each returned `created[N]` carries an `id` (used for CRUD/status PUTs) and a `position` (used for the spec folder `v<position>`).
-7. **Split each variant into phases and write its specs.** A phase is a coherent unit of work that can be reviewed as a chunk. Aim for 2–5 phases; use 1 if the variant is truly atomic. Write `phases.md` + `phase-N-plan.md` + `phase-N-task.md` into the variant's folder (`<task-spec-folder>/v<position>/`).
-8. **Promote each variant** to `ready_for_workers` via PUT — *only after* its spec folder exists. This is what lets a worker pick it up; do it per variant once that variant's specs are written, never on bare registration.
+6. **Register variants** — one POST per intended variant (see the Tasks skill). Each returned `created[N]` carries an `id` (used for CRUD/status PUTs) and a `position` (the variant's 1-based order).
+7. **Split each variant into phases and write its plan.** A phase is a coherent unit of work that can be reviewed as a chunk. Aim for 2–5 phases; use 1 if the variant is truly atomic. Give each phase its scope, approach, notes, and a task checklist. Submit the whole plan with `modula plan set <variant-id>`; fix any reported error and re-run until it succeeds.
+8. **Promote each variant** to `ready_for_workers` via PUT — *only after* its `plan set` succeeded. This is what lets a worker pick it up; do it per variant once that variant's plan is stored, never on bare registration.
 9. **Promote roadmap** to `ready_for_workers` (or `blocked` if structurally un-researchable).
 
 ## Rules

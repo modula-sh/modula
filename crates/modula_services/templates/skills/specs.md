@@ -1,83 +1,92 @@
 ## Skill: Specs
 
-A spec folder is the durable record of one variant's design and progress. It lives under the workspace root and is named by slug, never by UUID.
+A variant's plan is the durable record of its design and progress: **one JSON document per variant**, stored by the engine. Read and write it only through `modula plan`. Never write plan files. Every write is validated, so a bad document fails with the reason, and publishes `plan.update`.
 
-```text
-specs/<task-slug>/v<position>/
-    phases.md          # variant overview and phase checklist (source of truth)
-    phase-1-plan.md    # scope, approach, and notes for phase 1
-    phase-1-task.md    # actionable checklist for phase 1
-    phase-2-plan.md
-    phase-2-task.md
-    ...
+```sh
+modula plan get   <variant-id>          # the document as JSON
+modula plan get   <variant-id> --md     # readable view: plan sections plus a checklist per phase
+modula plan set   <variant-id>          # whole-plan write, body on stdin (or --file PATH)
+modula plan patch <variant-id> '<body>' # one targeted edit
 ```
 
-- `<task-slug>` is the task's external id and title, slugified: `mod-0001-some-new-adjustment`.
-- `<position>` is the variant's 1-based position.
-- Your prompt names the exact folder ("This run's spec folder is …"). Use that path. Don't construct it yourself.
-- `phases.md` marks phases `- [ ]` (pending) or `- [x]` (done) and lists every project under "Projects touched".
+`modula variant get` and `modula task get` print a one-line progress summary per variant.
 
-### Write `phases.md`
+### Plan document
 
-```markdown
-# <task title>
-
-## Problem
-What is broken, missing, or requested. Quote the task.
-
-## Approach
-The high-level approach this variant takes. One paragraph.
-
-## Projects touched
-Names must match `projects[].name` in `/config`. If none, say so and stop.
-
-- project: <name>
-  changes:
-    - path/to/file: what changes
-
-## Phases
-- [ ] phase-1: <one-line summary>
-- [ ] phase-2: <one-line summary>
-
-## Risks & tradeoffs
-- vs other variants: …
-- known unknowns: …
-
-## Test plan
-- unit: …
-- integration / manual: …
+```json
+{
+  "version": 1,
+  "title": "<task external id> <task title>",
+  "problem": "What is broken, missing, or requested. Quote the task.",
+  "approach": "The high-level approach this variant takes. One paragraph.",
+  "projects": [
+    { "name": "<project>", "changes": [{ "path": "path/to/file", "change": "what changes" }] }
+  ],
+  "phases": [
+    {
+      "title": "<short title>",
+      "scope": "What this phase delivers and what it defers.",
+      "approach": "One paragraph.",
+      "notes": "Implementation hints, edge cases, references.",
+      "tasks": [
+        { "title": "<step 1>" },
+        { "title": "Lint, typecheck, and tests pass" },
+        { "title": "Self-review diff" }
+      ]
+    }
+  ],
+  "risks": "- vs other variants: …\n- known unknowns: …",
+  "test_plan": "- unit: …\n- integration / manual: …"
+}
 ```
 
-### Write `phase-N-plan.md`
+- Prose fields are markdown strings. Keep large code blocks out.
+- `projects[].name` must match `projects[].name` in `modula config get`. The Worker sets up exactly these projects.
+- Every phase needs a title and at least one task.
+- The engine assigns ids by position: phases `1..N`, tasks `<phase>.1..<phase>.M` (`2.3` is phase 2's third task). Omit `id`; any supplied one is overwritten.
+- Tasks start `pending`. Omit `status` and `note`.
+- Phase status and percent complete are derived from task statuses, never stored. A phase is done when every task is `done` or `skipped`.
+- Unknown keys are rejected. Optional fields: `notes`, plus the Worker-owned `deviations` and `summaries`.
 
-```markdown
-# <TASK> / <variant> / phase-N: <short title>
+### Write the plan (Researcher)
 
-## Scope
-What this phase delivers and what it defers.
+Pass the JSON through a quoted heredoc, so the shell leaves quotes and backticks alone:
 
-## Approach
-One paragraph.
-
-## Notes
-Implementation hints, edge cases, references.
+```sh
+modula plan set <variant-id> <<'EOF'
+{ "version": 1, … }
+EOF
 ```
 
-### Write `phase-N-task.md`
+`set` replaces the whole document. Fix the reported error and re-run it until it succeeds.
 
-```markdown
-# <TASK> / <variant> / phase-N: Tasks
+### Advance the plan (Worker)
 
-- [ ] <step 1>
-- [ ] <step 2>
-- [ ] Lint, typecheck, and tests pass
-- [ ] Self-review diff
-```
+| Body | Edit |
+| --- | --- |
+| `{"task":"1.2","status":"in_progress"}` | Start a task. |
+| `{"task":"1.2","status":"done"}` | Finish the task you started. |
+| `{"task":"1.2","status":"skipped","note":"why"}` | Abandon a task. The note is required. |
+| `{"task":"1.2","status":"pending"}` | Re-open a task. |
+| `{"phase":"2","add_task":"Title"}` | Append a discovered task to a phase. |
+| `{"add_phase":{"title":"…","scope":"…","approach":"…","notes":"…","tasks":["…"]}}` | Append a phase, for example a rework phase. |
+| `{"phase":"1","deviations":"…"}` | Record how a phase departed from its plan. |
+| `{"summary":{"kind":"done","content":"…"}}` | Append the Done summary. |
+| `{"summary":{"kind":"rework","round":N,"content":"…"}}` | Append the Rework round N summary. |
+
+- Mark a task `in_progress` when you start it and `done` when you finish it, one at a time. Never batch-complete tasks afterwards.
+- At most one task is `in_progress`. `done` is accepted only from `in_progress`.
+- `add_task` and `add_phase` print the new id.
 
 ### Who edits what
 
-| File | Worker may |
-| --- | --- |
-| `phases.md` | Tick phases and append "Done" or "Rework round N" sections. Never rewrite the researcher's design. |
-| `phase-N-plan.md` | Append only. Add a `## Deviations` section if needed. |
-| `phase-N-task.md` | Edit freely: tick items, add discovered sub-tasks, strike abandoned ones with a one-line reason. |
+| Part | Researcher | Worker |
+| --- | --- | --- |
+| `title`, `problem`, `approach`, `projects`, `risks`, `test_plan` | Writes (`plan set`). | Read only. |
+| Phase `title`, `scope`, `approach`, `notes` | Writes. | Read only. Record departures in `deviations`. |
+| Phase `deviations` | — | Append only. |
+| Tasks | Writes the list. | Change status, append discovered tasks, skip abandoned ones with a one-line note. |
+| Phases | Writes the list. | Append a rework phase. |
+| `summaries` | — | Append Done and Rework round N summaries. |
+
+The Worker never edits or removes the Researcher's structure or prose. `plan patch` offers no operation that could.

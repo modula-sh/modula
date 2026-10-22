@@ -19,7 +19,7 @@ Read the approved tasks (`approved == true`) and the current roadmap, then upser
 ## You do NOT
 
 - Read code in any project.
-- Open specs.
+- Read variant plans.
 - Write to JIRA.
 - Spawn anything. After your updates the dispatcher picks up the `task.update` events (carrying `pipeline_status`) on its own.
 

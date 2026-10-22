@@ -66,6 +66,7 @@ export const RULE_KEYS: RuleKey[] = [
       "task.reset",
       "variant.update",
       "thread.append",
+      "plan.update",
       "conversation.create",
       "conversation.update",
       "conversation.delete",

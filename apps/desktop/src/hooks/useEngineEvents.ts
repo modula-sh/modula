@@ -29,6 +29,7 @@ function invalidate(qc: QueryClient, ws: string, ev: EngineEvent) {
   } else if (
     ev.type.startsWith("task_") ||
     ev.type === "variant_updated" ||
+    ev.type === "plan_updated" ||
     ev.type === "agent_run"
   ) {
     qc.invalidateQueries({ queryKey: ["tasks", ws] });

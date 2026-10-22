@@ -45,10 +45,8 @@ struct ResolvedAgent {
     prompt: String,
     /// Effective skill prompt bodies (hidden ∪ opted-in), ordered by position.
     skills: Vec<String>,
-    /// Human-readable spec folder for this run, relative to cwd (the workspace
-    /// dir). `specs/<task-slug>/v<position>` for a variant-scoped agent, or
-    /// `specs/<task-slug>` for a task-scoped one. `None` when there's no task.
-    spec_dir: Option<String>,
+    /// The variant's branch name; `None` unless the run is variant-scoped.
+    branch: Option<String>,
 }
 
 /// The `agent_runs` row id and the first iteration's PID.
@@ -201,33 +199,24 @@ async fn launch(
 /// Look up the agent + its provider and build the ProviderRuntime. The loop
 /// amount is a per-task setting: when `task_id` is set and a matching
 /// `task_agent_settings` row exists it supplies the count, otherwise 1.
-/// The human-readable spec folder for a run, relative to the workspace dir.
-/// Variant-scoped → `specs/<task-slug>/v<position>`; task-scoped → `specs/<task-slug>`.
-/// Returns `None` when there's no task context, or the lookup fails (best-effort).
-async fn compute_spec_dir(
+/// The variant's branch for a variant-scoped run, `feature/<task-slug>-v<position>`.
+/// `None` without task and variant context, or when the lookup fails (best-effort).
+async fn compute_branch(
     repos: &Repositories,
     ws_id: &str,
     arg_map: &BTreeMap<String, String>,
 ) -> Option<String> {
     let task_id = arg_map.get("task-id")?;
+    let variant_id = arg_map.get("variant-id")?;
     let task = repos.tasks.get(&repos.pool, ws_id, task_id).await.ok()?;
-    let slug = crate::workspaces::task_spec_slug(task.external_id.as_deref(), &task.title);
-    let base = format!("specs/{slug}");
-    match arg_map.get("variant-id") {
-        Some(vid) => {
-            let pos = repos
-                .variants
-                .position_of(&repos.pool, ws_id, task_id, vid)
-                .await
-                .ok()
-                .flatten();
-            Some(match pos {
-                Some(p) => format!("{base}/v{p}"),
-                None => base,
-            })
-        }
-        None => Some(base),
-    }
+    let pos = repos
+        .variants
+        .position_of(&repos.pool, ws_id, task_id, variant_id)
+        .await
+        .ok()
+        .flatten()?;
+    let slug = crate::workspaces::task_slug(task.external_id.as_deref(), &task.title);
+    Some(format!("feature/{slug}-v{pos}"))
 }
 
 async fn resolve(
@@ -267,13 +256,13 @@ async fn resolve(
             .unwrap_or(1),
         None => 1,
     };
-    let spec_dir = compute_spec_dir(repos, ws_id, arg_map).await;
+    let branch = compute_branch(repos, ws_id, arg_map).await;
     Ok(ResolvedAgent {
         runtime,
         loop_amount,
         prompt: agent.prompt.unwrap_or_default(),
         skills,
-        spec_dir,
+        branch,
     })
 }
 
@@ -329,7 +318,7 @@ fn spawn_iteration(
         &resolved.prompt,
         &resolved.skills,
         arg_map,
-        resolved.spec_dir.as_deref(),
+        resolved.branch.as_deref(),
         iter,
         total,
     );
@@ -592,7 +581,7 @@ fn build_prompt(
     body: &str,
     skills: &[String],
     args: &BTreeMap<String, String>,
-    spec_dir: Option<&str>,
+    branch: Option<&str>,
     iter: u32,
     total: u32,
 ) -> String {
@@ -611,7 +600,7 @@ fn build_prompt(
     };
     let header = format!(
         "You are operating in workspace '{ws_id}'. Your cwd is the workspace data \
-directory (it holds specs/, logs/, wiki/) — it is NOT a git repository and NOT \
+directory (it holds logs/ and wiki/) — it is NOT a git repository and NOT \
 your project's source code, so `git`/`ls` here will look unfamiliar; project \
 checkouts live at the paths listed in the engine's /config, and you `cd` into one \
 only when a step needs git or code work. Workspace state lives in the engine and \
@@ -640,10 +629,10 @@ or env vars.{loop_line}"
         p.push_str("\n\n");
         p.push_str(&extra);
     }
-    if let Some(sd) = spec_dir {
-        p.push_str("\n\nThis run's spec folder is `");
-        p.push_str(sd);
-        p.push_str("` (relative to your cwd) — read and write your spec files there.");
+    if let Some(b) = branch {
+        p.push_str("\n\nThis run's variant branch is `");
+        p.push_str(b);
+        p.push_str("`.");
     }
     p.push_str("\n\nRun end-to-end and print your end-of-run report.");
     p

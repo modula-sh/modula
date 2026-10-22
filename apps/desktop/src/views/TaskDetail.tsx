@@ -762,7 +762,7 @@ function TaskActionsMenu({ taskId }: { taskId: string }) {
                 delete any <span className="font-mono">modula/{taskId.toLowerCase()}-*/start</span>{" "}
                 tags (direct-mode markers)
               </li>
-              <li>delete the spec folder, task thread, and all matching runs</li>
+              <li>delete the task thread, plans, and all matching runs</li>
               <li>remove the roadmap row</li>
             </ul>
             <p>

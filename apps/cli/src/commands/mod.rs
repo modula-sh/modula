@@ -6,6 +6,7 @@
 
 mod comment;
 mod config;
+mod plan;
 mod roadmap;
 mod task;
 mod variant;
@@ -13,6 +14,7 @@ mod workspace;
 
 pub use comment::comment;
 pub use config::config;
+pub use plan::plan;
 pub use roadmap::roadmap;
 pub use task::task;
 pub use variant::variant;

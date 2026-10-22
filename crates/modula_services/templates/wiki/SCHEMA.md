@@ -53,7 +53,7 @@ DO capture (durable codebase truths *not already authoritative elsewhere*):
 
 DO NOT capture (these belong elsewhere):
 
-- Task-specific work decisions → `specs/<task-slug>/v<position>/phases.md`, `phase-N-plan.md`, `phase-N-task.md`
+- Task-specific work decisions → the variant's plan (`modula plan`)
 - Diff descriptions, PR notes → thread entries (variant- or task-scoped)
   via `POST /threads/...`
 - Build/test logs → `logs/`

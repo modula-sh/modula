@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proto/wiki.proto",
         "proto/usage.proto",
         "proto/search.proto",
+        "proto/plan.proto",
     ];
     tonic_build::configure()
         .file_descriptor_set_path(out_dir.join("modula_v1_descriptor.bin"))

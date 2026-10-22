@@ -312,7 +312,7 @@ impl ProjectService {
     /// Worktree branches across the workspace's projects that belong to `task`.
     pub async fn branches_for_task(&self, ws: &str, task_id: &str) -> ApiResult<Vec<JsonValue>> {
         let task = self.tasks.get(&self.pool, ws, task_id).await?;
-        let slug = workspaces::task_spec_slug(task.external_id.as_deref(), &task.title);
+        let slug = workspaces::task_slug(task.external_id.as_deref(), &task.title);
         let projects = self.projects.list(&self.pool, ws).await?;
         Ok(branches::branches_for_task(&projects, &slug))
     }

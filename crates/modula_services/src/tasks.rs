@@ -19,14 +19,14 @@ use modula_db::roadmap::RoadmapRepository;
 use modula_db::task_agent_settings::TaskAgentSettingsRepository;
 use modula_db::tasks::{TaskPatch, TaskRepository};
 use modula_db::threads::ThreadRepository;
+use modula_db::variant_plans::VariantPlanRepository;
 use modula_db::variants::VariantRepository;
 use modula_rpc::status::DomainError;
-use modula_types::{RoadmapEntry, Task, TaskAgentSetting};
+use modula_types::{Plan, RoadmapEntry, Task, TaskAgentSetting};
 
 use crate::diff;
 use crate::events;
 use crate::events::EventSink;
-use crate::workspaces;
 use crate::workspaces::WorkspaceService;
 use modula_core::error::ApiResult;
 
@@ -99,6 +99,7 @@ pub struct TaskService {
     pool: SqlitePool,
     tasks: TaskRepository,
     variants: VariantRepository,
+    variant_plans: VariantPlanRepository,
     roadmap: RoadmapRepository,
     pipeline: PipelineRepository,
     labels: LabelRepository,
@@ -118,6 +119,7 @@ impl TaskService {
         pool: SqlitePool,
         tasks: TaskRepository,
         variants: VariantRepository,
+        variant_plans: VariantPlanRepository,
         roadmap: RoadmapRepository,
         pipeline: PipelineRepository,
         labels: LabelRepository,
@@ -132,6 +134,7 @@ impl TaskService {
             pool,
             tasks,
             variants,
+            variant_plans,
             roadmap,
             pipeline,
             labels,
@@ -144,7 +147,7 @@ impl TaskService {
         }
     }
 
-    /// Reset a task: wipe its derived state (spec folder, thread rows, logs,
+    /// Reset a task: wipe its derived state (thread rows, logs,
     /// roadmap row, variants) and publish `TASK_RESET`. The task row itself is
     /// preserved so a future archive feature can resurrect the ticket.
     pub async fn reset(&self, ws: &str, task_id: &str) -> ApiResult<Json> {
@@ -169,18 +172,6 @@ impl TaskService {
     ) -> ApiResult<Json> {
         let mut files: Vec<String> = Vec::new();
         let mut errors: Vec<String> = Vec::new();
-
-        let task = self.tasks.get(&self.pool, ws_id, task_id).await?;
-        let tf = workspaces::task_spec_dir(ws_dir, task.external_id.as_deref(), &task.title);
-        if tf.is_dir() {
-            match std::fs::remove_dir_all(&tf) {
-                Ok(()) => files.push(format!(
-                    "removed spec folder {}",
-                    tf.file_name().unwrap().to_string_lossy()
-                )),
-                Err(e) => errors.push(format!("spec folder remove failed: {e}")),
-            }
-        }
 
         if self
             .threads
@@ -244,8 +235,24 @@ impl TaskService {
         let mut tasks = self.tasks.list(&self.pool, ws).await?;
         let mut variants_by_task = self.variants.list_all(&self.pool, ws).await?;
         let mut labels_by_task = self.labels.list_all_by_task(&self.pool, ws).await?;
+        let mut progress: std::collections::HashMap<_, _> = Default::default();
+        for (task_id, variant_id, text) in self
+            .variant_plans
+            .list_for_workspace(&self.pool, ws)
+            .await?
+        {
+            match Plan::parse(&text) {
+                Ok(plan) => {
+                    progress.insert((task_id, variant_id), plan.progress());
+                }
+                Err(e) => tracing::warn!("plan for variant {variant_id} does not parse: {e}"),
+            }
+        }
         for task in &mut tasks {
             task.variants = variants_by_task.remove(&task.id).unwrap_or_default();
+            for variant in &mut task.variants {
+                variant.plan_progress = progress.remove(&(task.id.clone(), variant.id.clone()));
+            }
             task.labels = labels_by_task.remove(&task.id).unwrap_or_default();
         }
         Ok(tasks)
@@ -683,6 +690,7 @@ mod tests {
             env.pool.clone(),
             TaskRepository::new(),
             VariantRepository::new(),
+            VariantPlanRepository::new(),
             RoadmapRepository::new(),
             PipelineRepository::new(),
             LabelRepository::new(),

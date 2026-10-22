@@ -123,6 +123,7 @@ pub async fn seed_task(env: &Env) -> String {
     use modula_db::task_agent_settings::TaskAgentSettingsRepository;
     use modula_db::tasks::TaskRepository;
     use modula_db::threads::ThreadRepository;
+    use modula_db::variant_plans::VariantPlanRepository;
     use modula_db::variants::VariantRepository;
 
     let repos = Repositories::new(&env.pool);
@@ -145,6 +146,7 @@ pub async fn seed_task(env: &Env) -> String {
         env.pool.clone(),
         TaskRepository::new(),
         VariantRepository::new(),
+        VariantPlanRepository::new(),
         RoadmapRepository::new(),
         PipelineRepository::new(),
         LabelRepository::new(),

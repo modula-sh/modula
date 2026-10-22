@@ -26,6 +26,7 @@ impl From<VariantRecord> for Variant {
             id: r.id,
             status: r.status,
             position: r.position,
+            plan_progress: None,
         }
     }
 }
@@ -143,6 +144,7 @@ impl VariantRepository {
                 id,
                 status,
                 position,
+                plan_progress: None,
             });
         }
         Ok(out)

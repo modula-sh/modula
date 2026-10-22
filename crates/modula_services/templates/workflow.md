@@ -20,7 +20,7 @@ Scan agent ─┐
                                                               ▼
                                                           Researcher  ─> modula variant create <task>
                                                               │           modula task patch <task> (ready_for_workers)
-                                                              │           writes phases.md + phase-N-plan.md/task.md
+                                                              │           modula plan set <v>  (one plan per variant)
                                                               ▼
                                                   variant.update (ready_for_workers)
                                                               │
@@ -150,7 +150,6 @@ modula comment list <TASK>
 investigate the project(s) referenced by the task  (read-only)
 
 if you hit ambiguity a one-sentence human answer would resolve:
-    create <workspace>/specs/<TASK>/ if missing
     modula comment create <TASK> <body>  (author=researcher, kind=question)
     modula task patch <TASK> { status: needs_clarification }
     exit
@@ -165,12 +164,11 @@ variants = modula variant create <TASK> { count: variant_count }
 
 for v in variants:
     split the variant's work into phases (1..5, coherent chunks)
-    create <workspace>/specs/<TASK>/<v.id>/phases.md
-        # sections: Problem, Approach, Projects touched, Phases (checklist),
-        #          Risks & tradeoffs, Test plan
-    for each phase p:
-        create phase-<p>-plan.md  (scope, approach, notes)
-        create phase-<p>-task.md  (checklist)
+    modula plan set <v.id>  < plan JSON
+        # problem, approach, projects, risks, test_plan;
+        # per phase: scope, approach, notes, tasks (checklist)
+        # rejected → fix the reported error and re-run
+    modula variant patch <v.id> { status: ready_for_workers }
 
 modula task patch <TASK> { status: ready_for_workers }    # or 'blocked' if structurally un-researchable
 exit
@@ -178,7 +176,7 @@ exit
 
 Each variant creation emits a `variant.update`; the Worker's rule (`event.data.status == "ready_for_workers"`) fires for each new variant on the next tick. `needs_clarification` is a soft pause — the rule doesn't match, so the row sits until a human replies and flips back to `ready_for_research`.
 
-Throughout: the Researcher reads `wiki/index.md` and relevant pages before investigating, cites pages with `[[link]]` in `phases.md` or per-phase plans, and writes durable findings back to the wiki per `wiki/SCHEMA.md` — see [`overview.md`](overview.md) → "AI Wiki".
+Throughout: the Researcher reads `wiki/index.md` and relevant pages before investigating, cites pages with `[[link]]` in the plan, and writes durable findings back to the wiki per `wiki/SCHEMA.md` — see [`overview.md`](overview.md) → "AI Wiki".
 
 ---
 
@@ -202,7 +200,7 @@ modula variant patch <V>  { status: in_progress }   # claim the variant
 
 modula config get → resolve project.path + project.base_branch
 
-read phases.md  → "Projects touched" + Phases checklist (which are pending)
+modula plan get <V>  → projects + phases and their task checklists
 for each project:
     if worktree mode (default):
         git worktree add .worktrees/<branch> -b <branch> <base_branch>   # fresh
@@ -215,18 +213,20 @@ for each project:
 if rework mode:
     modula comment list <TASK>  → variant thread (Code-Reviewer's per-variant concerns)
                                    + task thread (Reviewer's task-level kick-back, if any)
-    incorporate the feedback (update phases.md — re-open a phase or add a rework phase)
+    incorporate the feedback: modula plan patch <V> { add_phase: {…} } (a rework phase)
+                              or { task, status: pending } (re-open tasks)
 
-work the next pending phase(s); tick items in phase-<N>-task.md as you complete them
+for each unfinished task, in order:
+    modula plan patch <V> { task, status: in_progress }
+    do the work
+    modula plan patch <V> { task, status: done }          # one at a time, never batched
 commit per-project; never push
 self-review every diff; build/lint/test per project's CLAUDE.md
 
-update phases.md — check the phase off when its task list is fully done
-
-if any phase remains unchecked:
+if any task is still pending or in_progress:
     exit                                                  # next iteration / run resumes
 else:
-    append "Done" / "Rework round N" section to phases.md
+    modula plan patch <V> { summary: { kind: done | rework, round?, content } }
     if rework mode: modula comment create <TASK> <body>  (author=worker, kind=rework, variant=<V>, round=N, content=…)
     modula variant patch <V>  { status: ready_for_review }
     exit
@@ -256,7 +256,9 @@ modula comment list <TASK>  → variant thread (prior rounds, including Worker r
 
 determine round = (count of prior `kind: verdict` entries in this variant thread) + 1
 
-for each project in phases.md "Projects touched":
+modula plan get <V> --md  → design, projects, phases, tasks, Worker summaries
+
+for each project in the plan's projects:
     if worktree mode (default):
         cd <project>/.worktrees/<branch>
         diff <base_branch>..<branch>
@@ -266,7 +268,7 @@ for each project in phases.md "Projects touched":
     run lint/typecheck/tests per project's CLAUDE.md
 
 evaluate:
-    adherence to phases.md + per-phase plans, project conventions, correctness, simplicity, test coverage
+    adherence to the plan + task description, project conventions, correctness, simplicity, test coverage
     in rework mode: verify prior feedback was actually addressed
 
 modula comment create <TASK> <body>  (author=code-reviewer, kind=comment, variant=<V>, round=N) — one per concern, with file:line refs
@@ -364,10 +366,13 @@ The engine publishes an event on every successful mutation and on agent-run life
 | `task.reset` | task reset | `{ task_id }` |
 | `variant.update` | `modula variant create` (per variant) or `modula variant patch` | `{ task_id, variant_id, status }` |
 | `thread.append` | `modula comment create` | `{ task_id, variant_id?, kind, author, verdict? }` |
+| `plan.update` | `modula plan set` or `modula plan patch` | `{ task_id, variant_id }` |
 | `agent.create` / `agent.update` / `agent.delete` | agent CRUD | `{ agent_id }` |
 | `provider.create` / `provider.update` / `provider.delete` | provider CRUD | `{ provider_id }` |
 | `run.spawned` | agent spawn (manual, scheduled, or dispatched; per loop iteration) | `{ run_id, agent_id, agent_name, pid, iter? }` |
 | `run.exited` | agent process exit (reaper or loop controller) | `{ run_id, pid }` |
+
+No default rule matches `plan.update`: plan writes are frequent, and a Worker's progress must not re-fire the Worker rule.
 
 Don't write agent rules that match `run.*` events to spawn agents — a spawn publishes `run.spawned`, so such a rule re-triggers itself.
 
@@ -419,7 +424,7 @@ ROADMAP STATUS:
   ready_for_research   PM done; Researcher rule fires
   researching          Researcher locked
   needs_clarification  Researcher posted a question; awaiting human reply in task thread
-  ready_for_workers    specs written; Worker rule fires per variant
+  ready_for_workers    plans written; Worker rule fires per variant
   in_progress          Worker(s) and/or Code-Reviewer(s) running, OR kick-back loop in flight
   ready_for_review     all variants accepted; transient (usually skipped — agent flips straight to in_review)
   in_review            Reviewer rule fires
@@ -451,7 +456,7 @@ Per-agent re-run idempotency:
 | **Scan agents** (JIRA / Linear / GitHub) | Re-scan; upsert existing rows in-place; never touch human/Worker fields. |
 | **PM** | Picks up `roadmap.status == planning` rows from interrupted prior runs and finishes the transition to `ready_for_research`. Cron-scheduled and event-driven. |
 | **Researcher** | Reads `roadmap.status == researching` as its starting state. On resume from `needs_clarification`, reads the task thread, treats post-question human entries as answers, and proceeds. |
-| **Worker** | Sets `variant.status = in_progress` on entry to claim the variant. Reuses existing worktree, resumes from the first unchecked phase in `phases.md`. Setting `ready_for_review` at the end is idempotent. |
+| **Worker** | Sets `variant.status = in_progress` on entry to claim the variant. Reuses existing worktree, resumes from the first unfinished task in its plan. Setting `ready_for_review` at the end is idempotent. |
 | **Code-Reviewer** | Sets `variant.status = in_review` on entry. Reads prior thread rounds to decide rework verification scope. |
 | **Reviewer** | Reads `roadmap.status == in_review` as its starting state. Idempotent over re-runs (last verdict wins). |
 
@@ -472,12 +477,12 @@ Most cases are auto-handled by the next dispatcher tick. The few that need a hum
 
 | Symptom | Action |
 |---|---|
-| Stuck `researching` with partial specs | Delete the partial `specs/<TASK>/` folder, `modula task patch <TASK> {status: ready_for_research}`. Next tick re-fires the Researcher. |
+| Stuck `researching` with partial plans | Reset the task from the dashboard (drops its variants and their plans), then `modula task patch <TASK> {status: ready_for_research}`. Next tick re-fires the Researcher. |
 | Stuck `needs_clarification` (no human reply yet) | Open task in dashboard, answer the Researcher's question(s) in the thread composer, then click "Resume research" — flips status back to `ready_for_research`; next tick re-fires the Researcher. |
 | Variant at `ready_for_review` but never code-reviewed | Should self-resolve on next tick. To force: click Run on the code-reviewer agent in the dashboard. |
 | Variant stuck at `in_progress` or `in_review` (interrupted agent — process died mid-run) | Auto-reaped (`agent_processes` row removed when PID dies). To replay the work: set the variant back to the upstream status (`ready_for_workers` for an in_progress Worker, `ready_for_review` for an in_review Code-Reviewer) via `modula variant patch <V>` — the event re-emits and the rule re-fires. |
 | Want to force kick-back on accepted variant | `modula variant patch <V> {status: rework}` and `modula task patch <TASK> {status: in_progress}`. (Dashboard has a per-variant "Rework" button.) |
-| Worker says "no projects to touch" | `phases.md` Projects touched is empty. Researcher under-specified. Set task to `blocked` (or delete the spec folders), then re-research. |
+| Worker says "no projects to touch" | The plan's `projects` is empty. Researcher under-specified. Set task to `blocked` (or reset the task), then re-research. |
 
 ## Manual control surface
 

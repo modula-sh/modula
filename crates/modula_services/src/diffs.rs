@@ -382,7 +382,7 @@ impl DiffService {
                 ApiError::NotFound(format!("unknown variant {variant_id} on {task_id}"))
             })?;
         let worktree_mode = task.worktree != Some(false);
-        let task_slug = crate::workspaces::task_spec_slug(task.external_id.as_deref(), &task.title);
+        let task_slug = crate::workspaces::task_slug(task.external_id.as_deref(), &task.title);
         let position = variant.position;
 
         let mut projects_out: Vec<JsonValue> = Vec::new();

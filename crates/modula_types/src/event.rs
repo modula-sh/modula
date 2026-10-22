@@ -35,6 +35,9 @@ pub mod event_types {
     pub const PROVIDER_CREATE: &str = "provider.create";
     pub const PROVIDER_UPDATE: &str = "provider.update";
     pub const PROVIDER_DELETE: &str = "provider.delete";
+    /// Any write to a variant's plan. Its own type so the Worker's
+    /// `variant.update` rule never matches the frequent plan patches.
+    pub const PLAN_UPDATE: &str = "plan.update";
 
     /// Catalog rows the desktop never watches, but the sync feed replicates:
     /// they exist so a replica learns of the row, and have no
@@ -73,6 +76,7 @@ pub mod event_types {
         PROVIDER_CREATE,
         PROVIDER_UPDATE,
         PROVIDER_DELETE,
+        PLAN_UPDATE,
         PROJECT_CREATE,
         PROJECT_UPDATE,
         PROJECT_DELETE,
@@ -189,6 +193,8 @@ pub enum WorkspaceEventKind {
     ProviderUpdated { provider_id: String },
     #[serde(rename = "provider_deleted")]
     ProviderDeleted { provider_id: String },
+    #[serde(rename = "plan_updated")]
+    PlanUpdated { task_id: String, variant_id: String },
     #[serde(rename = "unknown")]
     Unknown,
 }
@@ -310,6 +316,10 @@ impl WorkspaceEvent {
             t::PROVIDER_DELETE => WorkspaceEventKind::ProviderDeleted {
                 provider_id: str_at(data, "provider_id"),
             },
+            t::PLAN_UPDATE => WorkspaceEventKind::PlanUpdated {
+                task_id: str_at(data, "task_id"),
+                variant_id: str_at(data, "variant_id"),
+            },
             _ => return None,
         };
         Some(Self {
@@ -400,6 +410,10 @@ impl From<pb::WorkspaceEvent> for WorkspaceEvent {
             },
             Some(Event::ProviderDeleted(p)) => WorkspaceEventKind::ProviderDeleted {
                 provider_id: p.provider_id,
+            },
+            Some(Event::PlanUpdated(p)) => WorkspaceEventKind::PlanUpdated {
+                task_id: p.task_id,
+                variant_id: p.variant_id,
             },
             None => WorkspaceEventKind::Unknown,
         };
@@ -541,6 +555,13 @@ impl From<WorkspaceEvent> for pb::WorkspaceEvent {
                     provider_id,
                 }))
             }
+            WorkspaceEventKind::PlanUpdated {
+                task_id,
+                variant_id,
+            } => Some(Event::PlanUpdated(pb::PlanUpdatedEvent {
+                task_id,
+                variant_id,
+            })),
             WorkspaceEventKind::Unknown => None,
         };
         Self {
@@ -804,6 +825,14 @@ mod tests {
                 WorkspaceEventKind::ConversationRun {
                     conversation_id: "c1".into(),
                     running: false,
+                },
+            ),
+            (
+                t::PLAN_UPDATE,
+                json!({"task_id": "t1", "variant_id": "v1"}),
+                WorkspaceEventKind::PlanUpdated {
+                    task_id: "t1".into(),
+                    variant_id: "v1".into(),
                 },
             ),
         ];

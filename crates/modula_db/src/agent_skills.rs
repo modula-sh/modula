@@ -134,7 +134,7 @@ const SEED_SKILLS: &[SkillSeed] = &[
     SkillSeed {
         slug: "specs",
         name: "Specs",
-        description: "The spec folder layout, phase templates, and ownership rules.",
+        description: "The variant plan document, the `modula plan` commands, and ownership rules.",
         prompt: include_str!("../../modula_services/templates/skills/specs.md"),
         hidden: true,
         position: 30,

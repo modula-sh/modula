@@ -1,0 +1,78 @@
+syntax = "proto3";
+package modula.v1;
+
+import "task.proto";
+
+// A variant's plan document. It crosses the wire as JSON text and only the
+// engine parses it; Worker edits are typed patches.
+service PlanService {
+  rpc Get(GetPlanRequest) returns (GetPlanResponse);
+  // Replace the whole document. The engine validates it and assigns ids.
+  rpc Set(SetPlanRequest) returns (SetPlanResponse);
+  rpc Patch(PatchPlanRequest) returns (PatchPlanResponse);
+}
+
+message GetPlanRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string variant_id = 3;
+}
+message GetPlanResponse {
+  string plan = 1;
+}
+
+message SetPlanRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string variant_id = 3;
+  string plan = 4;
+}
+message SetPlanResponse {
+  PlanProgress progress = 1;
+}
+
+message PlanSetTaskStatus {
+  string task = 1;
+  // pending | in_progress | done | skipped
+  string status = 2;
+  optional string note = 3;
+}
+message PlanAddTask {
+  string phase = 1;
+  string title = 2;
+}
+message PlanAddPhase {
+  string title = 1;
+  string scope = 2;
+  string approach = 3;
+  string notes = 4;
+  repeated string tasks = 5;
+}
+message PlanAppendDeviations {
+  string phase = 1;
+  string content = 2;
+}
+message PlanSummary {
+  // done | rework
+  string kind = 1;
+  optional uint32 round = 2;
+  string content = 3;
+}
+
+message PatchPlanRequest {
+  string workspace_id = 1;
+  string task_id = 2;
+  string variant_id = 3;
+  oneof op {
+    PlanSetTaskStatus set_task_status = 4;
+    PlanAddTask add_task = 5;
+    PlanAddPhase add_phase = 6;
+    PlanAppendDeviations append_deviations = 7;
+    PlanSummary add_summary = 8;
+  }
+}
+message PatchPlanResponse {
+  // The task, phase, or summary the patch touched or created.
+  string id = 1;
+  PlanProgress progress = 2;
+}

@@ -3,11 +3,16 @@ use modula_rpc::v1 as pb;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::PlanProgress;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Variant {
     pub id: String,
     pub status: Option<String>,
     pub position: i64,
+    /// Derived from the variant's plan on read; `None` when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_progress: Option<PlanProgress>,
 }
 
 impl From<pb::Variant> for Variant {
@@ -16,6 +21,7 @@ impl From<pb::Variant> for Variant {
             id: v.id,
             status: v.status,
             position: v.position,
+            plan_progress: v.plan_progress.map(PlanProgress::from),
         }
     }
 }
@@ -26,6 +32,7 @@ impl From<Variant> for pb::Variant {
             id: v.id,
             status: v.status,
             position: v.position,
+            plan_progress: v.plan_progress.map(pb::PlanProgress::from),
         }
     }
 }
@@ -178,6 +185,15 @@ mod tests {
                 id: "v1".into(),
                 status: Some("in_progress".into()),
                 position: 1,
+                plan_progress: Some(PlanProgress {
+                    tasks_total: 3,
+                    tasks_done: 1,
+                    tasks_skipped: 0,
+                    current_phase_id: Some("1".into()),
+                    current_phase_title: Some("One".into()),
+                    current_task_id: Some("1.2".into()),
+                    current_task_title: Some("B".into()),
+                }),
             }],
             labels: vec![TaskLabel {
                 id: "l1".into(),
@@ -225,7 +241,20 @@ mod tests {
             "worktree": null,
             "synced_at": "2026-01-01",
             "created_at": "2026-01-01T00:00:00Z",
-            "variants": [{"id": "v1", "status": "in_progress", "position": 1}],
+            "variants": [{
+                "id": "v1",
+                "status": "in_progress",
+                "position": 1,
+                "plan_progress": {
+                    "tasks_total": 3,
+                    "tasks_done": 1,
+                    "tasks_skipped": 0,
+                    "current_phase_id": "1",
+                    "current_phase_title": "One",
+                    "current_task_id": "1.2",
+                    "current_task_title": "B",
+                },
+            }],
             "labels": [{"id": "l1", "name": "refactor"}],
         });
         assert_eq!(got, want);

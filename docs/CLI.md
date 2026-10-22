@@ -18,7 +18,7 @@ modula install                   # register login-autostart (optional)
 | Flag | Description |
 |:-----|:------------|
 | `--socket PATH` | Engine IPC socket/pipe path for both `engine` (serve) and the client commands. Falls back to `$MODULA_ENGINE_SOCKET`, then the default per-user runtime path (`~/.modula/engine.sock`). |
-| `--workspace ID\|SLUG` (alias `--ws`) | Target workspace for the scoped families (task / roadmap / variant / comment / config), overriding `$MODULA_WORKSPACE`. The host-global `workspace` family ignores it, as do any host-global families a plugin adds. |
+| `--workspace ID\|SLUG` (alias `--ws`) | Target workspace for the scoped families (task / roadmap / variant / plan / comment / config), overriding `$MODULA_WORKSPACE`. The host-global `workspace` family ignores it, as do any host-global families a plugin adds. |
 
 ## Host commands
 
@@ -51,6 +51,7 @@ These connect to the running engine over IPC and operate on workspace state. Rea
 | `modula task list` / `get <id>` / `create <body>` / `patch <id> <body>` | Tasks. `create` routes on the body (see below). `patch` routes on body keys: `status`/`notes`/`depends_on` advance the roadmap pipeline status; other keys (`approved`, `title`, `description`, `max_variants`, `worktree`) edit the task row. |
 | `modula roadmap list` | Roadmap rows in order (task, pipeline status, depends_on, notes). |
 | `modula variant get <id>` / `create <task> <body>` / `patch <id> <body>` | Variant registration (`{"count":N}`) and transitions (`{"status":"…"}` or `{"action":"accept"\|"rework"}`). |
+| `modula plan get <variant> [--md]` / `set <variant> [--file PATH]` / `patch <variant> <body>` | A variant's plan document (see below). `variant get` and `task get` print a `plan:` progress line once a plan exists. |
 | `modula comment list <task>` / `create <task> <body>` | Task / variant thread entries. |
 | `modula config get` | Workspace config (limits, pipeline, providers, projects, agents). |
 | `modula workspace list` / `get <id>` / `create <body>` | Workspaces (not workspace-scoped). |
@@ -64,4 +65,34 @@ Both forms accept `title`, `description`, `approved`, `max_variants`, `worktree`
 ```bash
 modula task create '{"title":"Add rate limiting"}'
 modula task create '{"external_id":"ENG-412","source":"linear","title":"Add rate limiting"}'
+```
+
+### `modula plan`
+
+One JSON plan document per variant, stored by the engine. Every write is validated and publishes `plan.update` with `{task_id, variant_id}`. A rejected write exits 1 with the engine's reason, for example ``error: invalid plan: unknown field `scop`, expected one of …``.
+
+- `get` prints the document as JSON. `--md` renders the reviewer view: the plan's sections plus a checklist per phase (`[x]` done, `[~]` in progress, `[-]` skipped).
+- `set` replaces the whole document. It reads `--file PATH`, or stdin when `--file` is absent, since a full plan is too large and quote-heavy for one shell argument. The engine numbers phases `1..N` and tasks `P.1..P.M` by position, overwriting any supplied `id`. Every `projects[].name` must be a workspace project.
+- `patch` applies exactly one edit. It prints the touched or minted id and the new progress.
+
+| Body | Edit |
+|:-----|:-----|
+| `{"task":"1.2","status":"in_progress"\|"done"\|"skipped"\|"pending","note":"…"}` | Set a task's status. `note` is optional except for `skipped`. |
+| `{"phase":"2","add_task":"Title"}` | Append a pending task to a phase. |
+| `{"add_phase":{"title":"…","scope":"…","approach":"…","notes":"…","tasks":["…"]}}` | Append a phase (`notes` optional). |
+| `{"phase":"1","deviations":"…"}` | Append to a phase's deviations. |
+| `{"summary":{"kind":"done"\|"rework","round":N,"content":"…"}}` | Append a Done or Rework round summary. |
+
+Task status rules:
+
+- At most one task is `in_progress`. Finish, skip, or re-open it before starting another.
+- `done` only from `in_progress`, so a task can't jump from `pending` to `done`.
+- `skipped` only from `pending` or `in_progress`, and needs a non-empty `note`.
+- `pending` re-opens any task.
+
+```bash
+modula plan set <VARIANT_ID> --file plan.json
+modula plan patch <VARIANT_ID> '{"task":"1.1","status":"in_progress"}'
+modula plan patch <VARIANT_ID> '{"task":"1.1","status":"done"}'
+modula plan get <VARIANT_ID> --md
 ```
