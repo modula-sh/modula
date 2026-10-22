@@ -14,6 +14,7 @@ pub struct PipelineStatus {
     pub station: Option<String>,
     pub terminal: bool,
     pub error: bool,
+    pub awaits_human: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,6 +99,7 @@ impl From<pb::PipelineStatus> for PipelineStatus {
             station: p.station,
             terminal: p.terminal,
             error: p.error,
+            awaits_human: p.awaits_human,
         }
     }
 }
@@ -111,6 +113,7 @@ impl From<PipelineStatus> for pb::PipelineStatus {
             station: p.station,
             terminal: p.terminal,
             error: p.error,
+            awaits_human: p.awaits_human,
         }
     }
 }
@@ -344,6 +347,7 @@ mod tests {
                 station: Some("PLAN".into()),
                 terminal: false,
                 error: false,
+                awaits_human: true,
             }],
             providers: vec![ConfigProvider {
                 id: "p1".into(),
@@ -396,7 +400,7 @@ mod tests {
             "limits": {"max_spawns_per_run": 5},
             "pipeline": [{
                 "key": "planning", "label": "Planning", "tone": "zinc",
-                "station": "PLAN", "terminal": false, "error": false,
+                "station": "PLAN", "terminal": false, "error": false, "awaits_human": true,
             }],
             "providers": [{
                 "id": "p1", "name": "Claude", "type": "claude",

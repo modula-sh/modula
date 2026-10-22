@@ -18,9 +18,12 @@ pub struct BusEvent {
 /// `RecvError::Lagged` and are expected to log+skip — durability lives in
 /// the DB, not here.
 const CHANNEL_CAP: usize = 256;
+/// The host-wide channel carries every workspace's events.
+const ALL_CHANNEL_CAP: usize = 1024;
 
 struct Inner {
     senders: Mutex<HashMap<String, broadcast::Sender<BusEvent>>>,
+    all: broadcast::Sender<BusEvent>,
 }
 
 /// Cloneable handle to the workspace event broadcast bus. The engine's single
@@ -36,6 +39,7 @@ impl Default for Bus {
         Self {
             inner: Arc::new(Inner {
                 senders: Mutex::new(HashMap::new()),
+                all: broadcast::channel(ALL_CHANNEL_CAP).0,
             }),
         }
     }
@@ -56,12 +60,18 @@ impl Bus {
             type_: type_.to_string(),
             data,
         };
+        let _ = self.inner.all.send(event.clone());
         let guard = self.inner.senders.lock().await;
         if let Some(tx) = guard.get(ws_id) {
             if let Err(e) = tx.send(event) {
                 tracing::debug!("[bus] no active receivers for ws {ws_id}: {e}");
             }
         }
+    }
+
+    /// Subscribe to every workspace's events.
+    pub fn subscribe_all(&self) -> broadcast::Receiver<BusEvent> {
+        self.inner.all.subscribe()
     }
 
     /// Subscribe to events for `ws_id`. Creates the channel on first call for
@@ -74,5 +84,22 @@ impl Bus {
             tx
         });
         tx.subscribe()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn subscribe_all_sees_every_workspace() {
+        let bus = Bus::new();
+        let mut all = bus.subscribe_all();
+        let mut b = bus.subscribe("b").await;
+        bus.broadcast("a", 1, "task.update", Json::Null).await;
+        bus.broadcast("b", 2, "task.update", Json::Null).await;
+        assert_eq!(all.recv().await.unwrap().workspace_id, "a");
+        assert_eq!(all.recv().await.unwrap().workspace_id, "b");
+        assert_eq!(b.recv().await.unwrap().seq, 2);
     }
 }

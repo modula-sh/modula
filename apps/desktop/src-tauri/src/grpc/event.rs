@@ -22,3 +22,18 @@ pub async fn event_watch(
     }
     Ok(())
 }
+
+/// Live watch over every workspace, for host-level views.
+#[tauri::command]
+pub async fn event_watch_all(
+    engine: State<'_, ModulaClient>,
+    on_event: IpcChannel<WorkspaceEvent>,
+) -> Result<(), String> {
+    let mut stream = std::pin::pin!(engine.watch_all_events().await?);
+    while let Some(event) = stream.next().await {
+        if on_event.send(event?).is_err() {
+            break;
+        }
+    }
+    Ok(())
+}

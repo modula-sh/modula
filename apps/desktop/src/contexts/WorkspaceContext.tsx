@@ -11,6 +11,8 @@ interface WorkspaceSwitcherValue {
   workspaces: WorkspaceInfo[];
   setWorkspace: (ws: string) => void;
   refreshWorkspaces: () => void;
+  overviewOpen: boolean;
+  setOverviewOpen: (open: boolean) => void;
 }
 
 export const WorkspaceSwitcherContext = createContext<WorkspaceSwitcherValue>({
@@ -18,4 +20,6 @@ export const WorkspaceSwitcherContext = createContext<WorkspaceSwitcherValue>({
   workspaces: [],
   setWorkspace: () => {},
   refreshWorkspaces: () => {},
+  overviewOpen: false,
+  setOverviewOpen: () => {},
 });

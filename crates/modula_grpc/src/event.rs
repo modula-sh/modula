@@ -1,13 +1,14 @@
 use std::pin::Pin;
 
+use modula_plugin::BusEvent;
 use modula_rpc::json::{json_to_struct, struct_to_json};
 use modula_rpc::v1::{
     event_service_server::EventService, CreateEventRequest, CreateEventResponse, Event,
     ListEventsRequest, ListEventsResponse, ListRecentEventsRequest, ListRecentEventsResponse,
-    WatchEventsRequest, WorkspaceEvent,
+    WatchAllEventsRequest, WatchEventsRequest, WorkspaceEvent,
 };
 use serde_json::Value as Json;
-use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::broadcast::{self, error::RecvError};
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 
@@ -87,29 +88,42 @@ impl EventService for EventHandler {
             .get(&body.workspace_id)
             .await
             .map_err(to_status)?;
-        let mut rx = self.state.bus.subscribe(&body.workspace_id).await;
-        let after_seq = body.after_seq;
-        let stream = async_stream::try_stream! {
-            loop {
-                match rx.recv().await {
-                    Ok(ev) => {
-                        let seq = ev.seq;
-                        if after_seq != 0 && seq <= after_seq {
-                            continue;
-                        }
-                        if let Some(we) = modula_types::WorkspaceEvent::from_parts(
-                            seq, &ev.workspace_id, "", &ev.type_, &ev.data,
-                        ) {
-                            yield WorkspaceEvent::from(we);
-                        }
-                    }
-                    Err(RecvError::Lagged(n)) => {
-                        tracing::warn!("[event.watch] subscriber lagged, skipped {n} events");
-                    }
-                    Err(RecvError::Closed) => break,
-                }
-            }
-        };
-        Ok(Response::new(Box::pin(stream)))
+        let rx = self.state.bus.subscribe(&body.workspace_id).await;
+        Ok(Response::new(watch_stream(rx, body.after_seq)))
     }
+
+    type WatchAllStream = EventStream;
+    async fn watch_all(
+        &self,
+        _req: Request<WatchAllEventsRequest>,
+    ) -> Result<Response<Self::WatchAllStream>, Status> {
+        Ok(Response::new(watch_stream(
+            self.state.bus.subscribe_all(),
+            0,
+        )))
+    }
+}
+
+fn watch_stream(mut rx: broadcast::Receiver<BusEvent>, after_seq: i64) -> EventStream {
+    Box::pin(async_stream::try_stream! {
+        loop {
+            match rx.recv().await {
+                Ok(ev) => {
+                    let seq = ev.seq;
+                    if after_seq != 0 && seq <= after_seq {
+                        continue;
+                    }
+                    if let Some(we) = modula_types::WorkspaceEvent::from_parts(
+                        seq, &ev.workspace_id, "", &ev.type_, &ev.data,
+                    ) {
+                        yield WorkspaceEvent::from(we);
+                    }
+                }
+                Err(RecvError::Lagged(n)) => {
+                    tracing::warn!("[event.watch] subscriber lagged, skipped {n} events");
+                }
+                Err(RecvError::Closed) => break,
+            }
+        }
+    })
 }

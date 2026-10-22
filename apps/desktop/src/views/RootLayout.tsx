@@ -7,12 +7,13 @@ import { SidebarProvider } from "../contexts/SidebarContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { ToastProvider } from "../contexts/ToastContext";
 import { WorkspaceSwitcherContext } from "../contexts/WorkspaceContext";
-import { useEngineEvents } from "../hooks/useEngineEvents";
+import { useEngineEvents, useOverviewEvents } from "../hooks/useEngineEvents";
 import { useSuppressContextMenu } from "../hooks/useSuppressContextMenu";
 import { useTitlebarDrag } from "../hooks/useTitlebarDrag";
 import { useWorkspaceState } from "../hooks/useWorkspaceState";
 import { useLocalStorage } from "../lib/useLocalStorage";
 import { workspaceRouter } from "../router";
+import { GlobalOverview } from "./GlobalOverview";
 import { Onboarding } from "./Onboarding";
 
 /** App shell: the workspace selection plus the state every workspace shares. */
@@ -62,6 +63,8 @@ function EngineEvents({ workspace }: { workspace: string }) {
 
 function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> }) {
   const { workspace, workspaces, setWorkspace, refreshWorkspaces } = wsState;
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  useOverviewEvents();
 
   return (
     <ToastProvider>
@@ -70,9 +73,17 @@ function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> })
           <ChatSidebarProvider>
             <ConversationStreamProvider>
               <WorkspaceSwitcherContext.Provider
-                value={{ active: workspace, workspaces, setWorkspace, refreshWorkspaces }}
+                value={{
+                  active: workspace,
+                  workspaces,
+                  setWorkspace,
+                  refreshWorkspaces,
+                  overviewOpen,
+                  setOverviewOpen,
+                }}
               >
                 <WorkspaceViews active={workspace} />
+                {overviewOpen && <GlobalOverview />}
               </WorkspaceSwitcherContext.Provider>
             </ConversationStreamProvider>
           </ChatSidebarProvider>

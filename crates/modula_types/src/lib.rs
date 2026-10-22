@@ -14,6 +14,7 @@ mod conversation;
 mod event;
 mod integration;
 mod label;
+mod overview;
 mod plan;
 mod project;
 mod provider;
@@ -38,6 +39,7 @@ pub use conversation::{
 pub use event::{event_types, WorkspaceEvent, WorkspaceEventKind};
 pub use integration::{ExternalItem, Integration};
 pub use label::Label;
+pub use overview::{OverviewAgent, OverviewTask, OverviewVariant, OverviewWorkspace};
 pub use plan::{
     Plan, PlanChange, PlanPatch, PlanPhase, PlanProgress, PlanProject, PlanSummary,
     PlanSummaryKind, PlanTask, PlanTaskStatus,

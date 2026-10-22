@@ -24,6 +24,7 @@ export interface PipelineStatus {
   station?: string | null;
   terminal?: boolean;
   error?: boolean;
+  awaits_human?: boolean;
 }
 
 export interface Task {
@@ -145,6 +146,40 @@ export interface Plan {
   risks: string;
   test_plan: string;
   summaries?: PlanSummary[];
+}
+
+/** One workspace's active tasks, from the host-global `OverviewService`. */
+export interface OverviewWorkspace {
+  id: string;
+  name: string;
+  pipeline: PipelineStatus[];
+  tasks: OverviewTask[];
+}
+
+export interface OverviewTask {
+  id: string;
+  external_id?: string | null;
+  title: string;
+  /** Roadmap status key. */
+  status: string;
+  notes: string;
+  needs_human: boolean;
+  agents: OverviewAgent[];
+  variants: OverviewVariant[];
+}
+
+export interface OverviewAgent {
+  name: string;
+  provider_type?: string | null;
+  provider_name?: string | null;
+}
+
+export interface OverviewVariant {
+  id: string;
+  position: number;
+  status?: VariantStatus | null;
+  progress?: PlanProgress | null;
+  recent_tasks: PlanTask[];
 }
 
 export interface RoadmapItem {
