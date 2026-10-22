@@ -10,6 +10,7 @@ import { WorkspaceSwitcherContext } from "../contexts/WorkspaceContext";
 import { pipelineStatusFor, toneDotClasses } from "../lib/pipeline";
 import { planPercent } from "../lib/plan";
 import { overviewKeys, useOverview } from "../queries/overview";
+import { workspaceRouter } from "../router";
 import { errorMessage } from "../services/client";
 import type {
   OverviewTask,
@@ -88,13 +89,20 @@ function WorkspaceSection({ ws }: { ws: OverviewWorkspace }) {
 }
 
 function TaskRow({ ws, task }: { ws: OverviewWorkspace; task: OverviewTask }) {
+  const { setWorkspace, setOverviewOpen } = useContext(WorkspaceSwitcherContext);
   const status = pipelineStatusFor(ws.pipeline, task.status);
   const best = bestVariant(task.variants);
   const reason = status?.error ? task.notes.split("\n")[0] || status.label : status?.label;
 
   return (
-    <div
-      className={`flex flex-col gap-2 px-3 py-2.5 bg-card rounded-md border shadow-card text-left ${task.needs_human ? "border-yellow-300 dark:border-yellow-800" : "border-border/60"}`}
+    <button
+      type="button"
+      onClick={() => {
+        setWorkspace(ws.id);
+        workspaceRouter(ws.id).navigate(`/tasks/${encodeURIComponent(task.id)}`);
+        setOverviewOpen(false);
+      }}
+      className={`flex flex-col gap-2 w-full px-3 py-2.5 bg-card hover:bg-surface rounded-md border shadow-card text-left ${task.needs_human ? "border-yellow-300 dark:border-yellow-800" : "border-border/60"}`}
     >
       <div className="flex items-center gap-2 min-w-0">
         {task.needs_human && (
@@ -120,7 +128,7 @@ function TaskRow({ ws, task }: { ws: OverviewWorkspace; task: OverviewTask }) {
         )}
       </div>
       {task.needs_human && reason && (
-        <p className="text-[11px] text-yellow-700 dark:text-yellow-400 truncate">{reason}</p>
+        <span className="text-[11px] text-yellow-700 dark:text-yellow-400 truncate">{reason}</span>
       )}
       <div className="flex items-center gap-3 flex-wrap text-[11px] text-fg-muted">
         <StationTrack pipeline={ws.pipeline} status={status} />
@@ -139,7 +147,7 @@ function TaskRow({ ws, task }: { ws: OverviewWorkspace; task: OverviewTask }) {
         )}
       </div>
       {best && best.recent_tasks.length > 0 && <PlanWindow tasks={best.recent_tasks} />}
-    </div>
+    </button>
   );
 }
 
@@ -176,9 +184,9 @@ const MARK: Record<PlanTask["status"], string> = {
 
 function PlanWindow({ tasks }: { tasks: PlanTask[] }) {
   return (
-    <ul className="flex flex-col text-[11px]">
+    <span className="flex flex-col text-[11px]">
       {tasks.map((t) => (
-        <li
+        <span
           key={t.id}
           className={`flex items-center gap-2 px-1.5 py-0.5 rounded min-w-0 ${t.status === "in_progress" ? "bg-surface text-fg" : "text-fg-muted"}`}
         >
@@ -187,9 +195,9 @@ function PlanWindow({ tasks }: { tasks: PlanTask[] }) {
           <span className={`truncate ${t.status === "skipped" ? "line-through" : ""}`}>
             {t.title}
           </span>
-        </li>
+        </span>
       ))}
-    </ul>
+    </span>
   );
 }
 
