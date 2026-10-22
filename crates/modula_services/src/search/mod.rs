@@ -37,6 +37,7 @@ impl SearchService {
     /// Registration order is response order.
     pub fn new(workspaces: WorkspaceService, repos: &Repositories) -> Self {
         let sources: Vec<Arc<dyn SearchSource>> = vec![
+            Arc::new(sources::workspaces::Workspaces::new(workspaces.clone())),
             Arc::new(sources::tasks::Tasks::new(repos)),
             Arc::new(sources::conversations::Conversations::new(repos)),
             Arc::new(sources::agents::Agents::new(repos)),

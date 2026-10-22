@@ -491,7 +491,14 @@ export interface PairingCode {
 }
 
 /** The searchable entities. The engine sends the kind as this string. */
-export type SearchKind = "task" | "agent" | "project" | "provider" | "wiki" | "conversation";
+export type SearchKind =
+  | "task"
+  | "agent"
+  | "project"
+  | "provider"
+  | "wiki"
+  | "conversation"
+  | "workspace";
 
 /** One run of excerpt text. The engine decides what is highlighted, so the
  * client renders spans rather than re-searching the string. */
