@@ -149,6 +149,14 @@ pub enum ChatEvent {
     },
 }
 
+/// The session an interactive TUI launch starts or continues.
+#[derive(Debug, Clone, Copy)]
+pub enum TermSession<'a> {
+    /// Start a session under this caller-chosen id.
+    New(&'a str),
+    Resume(&'a str),
+}
+
 /// Per-provider-type behavior: spawn commands, stream parsing, MCP summary,
 /// and model discovery. Implementations carry their instance settings
 /// (`config_dir`, `model`); hydrate them via [`ProviderService`]'s
@@ -190,6 +198,12 @@ pub trait ProviderRuntime: Send + Sync {
     /// `from`, keeping nothing after it. The fork announces its own session id.
     /// `None` when the CLI can't fork at a point.
     fn build_command_chat_fork(&self, _prompt: &str, _from: &SessionAnchor) -> Option<Command> {
+        None
+    }
+
+    /// The provider's interactive TUI, or `None` when the CLI can't preset a
+    /// session id (terminal conversations need one to resume).
+    fn terminal_launch(&self, _prompt: Option<&str>, _session: TermSession) -> Option<Command> {
         None
     }
 
@@ -348,6 +362,9 @@ mod tests {
         for ptype in ["codex", "opencode"] {
             let rt = ProviderService::runtime_for_type(ptype, "/tmp".into()).unwrap();
             assert!(rt.build_command_chat_first("hello", "uuid-1").is_none());
+            assert!(rt
+                .terminal_launch(None, TermSession::New("uuid-1"))
+                .is_none());
         }
     }
 

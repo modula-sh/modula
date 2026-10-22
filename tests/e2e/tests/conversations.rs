@@ -53,6 +53,7 @@ async fn conversations_crud_and_stream() -> Result<()> {
             title: None,
             model: None,
             context: None,
+            mode: None,
         })
         .await?
         .into_inner()
@@ -213,6 +214,7 @@ async fn conversation_empty_message_rejected() -> Result<()> {
             title: None,
             model: None,
             context: None,
+            mode: None,
         })
         .await?
         .into_inner()
@@ -266,6 +268,7 @@ async fn detach_does_not_kill_run_and_reattach_resumes() -> Result<()> {
             title: None,
             model: None,
             context: None,
+            mode: None,
         })
         .await?
         .into_inner()
@@ -346,6 +349,7 @@ async fn queue_harness(recipe: &str) -> Result<(Harness, String, String)> {
             title: None,
             model: None,
             context: None,
+            mode: None,
         })
         .await?
         .into_inner()
@@ -700,6 +704,7 @@ async fn codex_takes_a_queued_message_mid_turn() -> Result<()> {
             title: None,
             model: None,
             context: None,
+            mode: None,
         })
         .await?
         .into_inner()

@@ -8,9 +8,9 @@ use modula_rpc::v1::{
     AttachConversationRequest, CancelConversationRequest, ConvEvent as PbConvEvent,
     CreateConversationRequest, DeleteConversationRequest, DequeueMessageRequest,
     EnqueueMessageRequest, ForkConversationRequest, GetConversationRequest, ListMessagesRequest,
-    SendMessageRequest, UpdateConversationRequest,
+    SendMessageRequest, TerminalLaunchRequest, UpdateConversationRequest,
 };
-use modula_types::{ChatMessage, ConvEvent, Conversation, QueuedMessage};
+use modula_types::{ChatMessage, ConvEvent, Conversation, LaunchSpec, QueuedMessage};
 use serde_json::Value;
 use tokio_stream::{Stream, StreamExt};
 
@@ -78,6 +78,7 @@ impl ModulaClient {
         title: Option<String>,
         model: Option<String>,
         context: Option<Value>,
+        mode: Option<String>,
     ) -> Result<String, ClientError> {
         let resp = self
             .conversations()
@@ -88,6 +89,7 @@ impl ModulaClient {
                 title,
                 model,
                 context: context.and_then(json_to_struct),
+                mode,
             })
             .await
             .map_err(rpc)?
@@ -253,5 +255,27 @@ impl ModulaClient {
             .map_err(rpc)?
             .into_inner();
         Ok(conv_event_stream(stream))
+    }
+
+    /// How to spawn a terminal conversation's TUI; the first call starts its
+    /// session with `prompt`.
+    pub async fn terminal_launch(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        prompt: Option<String>,
+    ) -> Result<LaunchSpec, ClientError> {
+        let spec = self
+            .conversations()
+            .await?
+            .terminal_launch(TerminalLaunchRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                prompt,
+            })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(spec.into())
     }
 }

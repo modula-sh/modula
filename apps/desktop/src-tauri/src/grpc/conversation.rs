@@ -38,9 +38,10 @@ pub async fn conversation_create(
     title: Option<String>,
     model: Option<String>,
     context: Option<Value>,
+    mode: Option<String>,
 ) -> Result<Value, String> {
     let id = engine
-        .create_conversation(&workspace_id, &provider_id, title, model, context)
+        .create_conversation(&workspace_id, &provider_id, title, model, context, mode)
         .await?;
     Ok(json!({ "id": id }))
 }

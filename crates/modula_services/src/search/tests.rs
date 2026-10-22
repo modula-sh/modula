@@ -119,6 +119,7 @@ async fn seed_conversation(f: &Fixture, title: &str, messages: &[&str]) -> Strin
                 provider_id: provider,
                 model: None,
                 context: json!({}),
+                mode: "chat".into(),
             },
         )
         .await

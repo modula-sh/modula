@@ -22,6 +22,7 @@ struct ConversationRecord {
     model: Option<String>,
     context: String,
     session_id: Option<String>,
+    mode: String,
     queued: String,
     created_at: String,
     updated_at: String,
@@ -40,6 +41,7 @@ impl From<ConversationRecord> for Conversation {
             model: r.model,
             context,
             session_id: r.session_id,
+            mode: r.mode,
             messages: Vec::new(),
             message_count: r.message_count,
             queued: serde_json::from_str(&r.queued).unwrap_or_default(),
@@ -51,7 +53,7 @@ impl From<ConversationRecord> for Conversation {
 }
 
 const SELECT_COLS: &str =
-    "id, title, provider_id, model, context, session_id, queued, created_at, updated_at, \
+    "id, title, provider_id, model, context, session_id, mode, queued, created_at, updated_at, \
      (SELECT COUNT(*) FROM conversation_messages m \
        WHERE m.workspace_id = conversations.workspace_id \
          AND m.conversation_id = conversations.id) AS message_count";
@@ -86,6 +88,7 @@ pub struct ConversationCreate {
     pub provider_id: String,
     pub model: Option<String>,
     pub context: serde_json::Value,
+    pub mode: String,
 }
 
 /// A point in a provider's session: the session, and the provider's own id
@@ -170,8 +173,8 @@ impl ConversationRepository {
         let title = c.title.as_deref().unwrap_or("").trim().to_string();
         sqlx::query(
             "INSERT INTO conversations \
-               (workspace_id, id, title, provider_id, model, context) \
-             VALUES (?, ?, ?, ?, ?, ?)",
+               (workspace_id, id, title, provider_id, model, context, mode) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(ws_id)
         .bind(&c.id)
@@ -179,6 +182,7 @@ impl ConversationRepository {
         .bind(&c.provider_id)
         .bind(c.model.as_deref())
         .bind(c.context.to_string())
+        .bind(&c.mode)
         .execute(exec)
         .await
         .map_err(|e| match e {
@@ -511,6 +515,7 @@ mod tests {
                     provider_id,
                     model: None,
                     context: json!({}),
+                    mode: "terminal".into(),
                 },
             )
             .await
@@ -608,6 +613,7 @@ mod tests {
                     provider_id,
                     model: None,
                     context: json!({}),
+                    mode: "chat".into(),
                 },
             )
             .await
@@ -696,5 +702,13 @@ mod tests {
             convs.set_queued(&pool, &ws, "nope", &queued).await,
             Err(Error::NotFound(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn mode_round_trips_through_get_and_list() {
+        let dir = tempdir().unwrap();
+        let (pool, ws, convs) = seeded(&dir).await;
+        assert_eq!(convs.get(&pool, &ws, "c1").await.unwrap().mode, "terminal");
+        assert_eq!(convs.list(&pool, &ws).await.unwrap()[0].mode, "terminal");
     }
 }

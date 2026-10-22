@@ -32,8 +32,8 @@ pub use config::{
     PipelineStatus, WorkspaceConfig,
 };
 pub use conversation::{
-    ChatMessage, ConvEvent, Conversation, MessagePart, QueuedMessage, ToolCall, ToolStatus,
-    TurnStats,
+    ChatMessage, ConvEvent, Conversation, LaunchSpec, MessagePart, QueuedMessage, ToolCall,
+    ToolStatus, TurnStats,
 };
 pub use event::{event_types, WorkspaceEvent, WorkspaceEventKind};
 pub use integration::{ExternalItem, Integration};

@@ -18,6 +18,7 @@ import { SearchResource } from "./resources/search";
 import { SnapshotResource } from "./resources/snapshot";
 import { SystemResource } from "./resources/system";
 import { TaskResource } from "./resources/task";
+import { TerminalResource } from "./resources/terminal";
 import { ThreadResource } from "./resources/thread";
 import { UsageResource } from "./resources/usage";
 import { VariantResource } from "./resources/variant";
@@ -40,6 +41,7 @@ export const client = Object.freeze({
   diff: new DiffResource(),
   provider: new ProviderResource(),
   conversation: new ConversationResource(),
+  terminal: new TerminalResource(),
   wiki: new WikiResource(),
   usage: new UsageResource(),
   system: new SystemResource(),

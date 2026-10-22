@@ -267,12 +267,16 @@ export interface ConversationContext {
   [key: string]: string | undefined;
 }
 
+export type ConversationMode = "chat" | "terminal";
+
 export interface ConversationSummary {
   id: string;
   title: string;
   provider_id: string;
   model: string | null;
   context: ConversationContext;
+  /** Fixed at create; a terminal conversation renders the provider's own TUI. */
+  mode: ConversationMode;
   updated_at: string;
 }
 

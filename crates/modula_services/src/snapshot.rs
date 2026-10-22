@@ -116,6 +116,7 @@ impl SnapshotService {
                     "provider_id": r.provider_id,
                     "model": r.model,
                     "context": r.context,
+                    "mode": r.mode,
                     "updated_at": r.updated_at,
                 })
             })
