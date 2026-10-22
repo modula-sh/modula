@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, CircleDot, MinusCircle } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 import { useEffect } from "react";
 import { useRightPanel } from "../../contexts/RightPanelProvider";
 import { useSnapshot } from "../../contexts/SnapshotContext";
@@ -11,12 +11,12 @@ import { MarkdownContent } from "../MarkdownContent";
 import { PlanProgressBar } from "../PlanProgressBar";
 import { Spinner } from "../Spinner";
 
-const TASK_ICON: Record<PlanTaskStatus, typeof Circle> = {
-  pending: Circle,
-  in_progress: CircleDot,
-  done: CheckCircle2,
-  skipped: MinusCircle,
-};
+function TaskIcon({ status }: { status: PlanTaskStatus }) {
+  if (status === "in_progress") return <Spinner size={14} className="shrink-0" />;
+  if (status === "done") return <Check size={14} className="shrink-0 text-fg-muted" />;
+  if (status === "skipped") return <Minus size={14} className="shrink-0 text-fg-subtle" />;
+  return <span className="shrink-0 w-3.5" />;
+}
 
 const PHASE_STATUS: Record<"done" | "current" | "pending", { label: string; tone: PipelineTone }> =
   {
@@ -159,20 +159,24 @@ function PhaseSection({
       </div>
       <ul className="mt-2 px-3 space-y-0.5">
         {phase.tasks.map((t) => {
-          const Icon = TASK_ICON[t.status];
-          const current = t.id === currentTaskId;
+          const active = t.status === "in_progress" || t.id === currentTaskId;
           return (
             <li
               key={t.id}
-              className={`flex items-start gap-2 px-2 py-1 rounded ${current ? "bg-surface" : ""}`}
+              className={`flex items-center gap-2 px-2 py-1 rounded ${active ? "bg-surface" : ""}`}
             >
-              <Icon size={14} className="shrink-0 mt-px text-fg-muted" />
+              <TaskIcon status={t.status} />
               <span className="min-w-0">
-                <span className={isFinished(t.status) ? "text-fg-muted" : "text-fg"}>
+                <span
+                  title={t.title}
+                  className={`block truncate ${isFinished(t.status) ? "text-fg-muted" : "text-fg"}`}
+                >
                   <span className="tabular-nums text-fg-subtle">{t.id}</span> {t.title}
                 </span>
                 {t.status === "skipped" && t.note && (
-                  <span className="block text-fg-subtle">{t.note}</span>
+                  <span title={t.note} className="block truncate text-fg-subtle">
+                    {t.note}
+                  </span>
                 )}
               </span>
             </li>
