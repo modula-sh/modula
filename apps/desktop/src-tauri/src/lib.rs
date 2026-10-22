@@ -12,12 +12,13 @@ pub use modula_platform as platform;
 
 mod engine;
 mod grpc;
+mod pty;
 mod update;
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager, WindowEvent,
+    Manager, RunEvent, WindowEvent,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,6 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(update::UpdaterState::new())
         .manage(engine.clone())
+        .manage(pty::PtyHost::default())
         .invoke_handler(tauri::generate_handler![
             update::update_status,
             update::install_update,
@@ -132,6 +134,9 @@ pub fn run() {
             grpc::diff::variant_diff,
             grpc::diff::variant_pr,
             grpc::search::search_query,
+            pty::pty_open,
+            pty::pty_write,
+            pty::pty_resize,
         ])
         .setup(move |app| {
             // In dev (`bash scripts/dev.sh`) the engine is already running under
@@ -181,11 +186,15 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(move |_app, event| {
+        .run(move |app, event| {
             // Every quit path (tray, app menu, Cmd+Q) funnels through `Exit`.
-            // In dev the dev script owns the engine's lifecycle.
-            if matches!(event, tauri::RunEvent::Exit) && !dev_mode() {
-                engine::shutdown(&exit_engine);
+            // In dev the dev script owns the engine's lifecycle, but the PTYs
+            // are always ours.
+            if matches!(event, RunEvent::Exit) {
+                pty::kill_all(&app.state());
+                if !dev_mode() {
+                    engine::shutdown(&exit_engine);
+                }
             }
         });
 }
