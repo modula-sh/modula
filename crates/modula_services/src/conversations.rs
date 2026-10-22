@@ -26,16 +26,18 @@ use crate::events::{
     EventSink, CONVERSATION_CREATE, CONVERSATION_DELETE, CONVERSATION_RUN_ENDED,
     CONVERSATION_RUN_STARTED, CONVERSATION_UPDATE,
 };
-use crate::providers::{self, ChatEvent, ProviderRuntime, ProviderService};
+use crate::providers::{self, ChatEvent, ProviderRuntime, ProviderService, TermSession};
 use crate::workspaces::WorkspaceService;
 use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
 use modula_db::conversations::{
     ConversationCreate, ConversationRepository, NewMessage, SessionAnchor,
 };
+use modula_db::providers::ProviderRepository;
 use modula_db::Database;
 use modula_types::{
-    ChatMessage, Conversation, MessagePart, QueuedMessage, ToolCall, ToolStatus, TurnStats,
+    ChatMessage, Conversation, LaunchSpec, MessagePart, QueuedMessage, ToolCall, ToolStatus,
+    TurnStats,
 };
 
 pub type ConvKey = (String, String);
@@ -307,6 +309,7 @@ impl ConvRunRegistry {
 pub struct ConversationService {
     pool: Database,
     conversations: ConversationRepository,
+    providers: ProviderRepository,
     events: Arc<dyn EventSink>,
 }
 
@@ -314,11 +317,13 @@ impl ConversationService {
     pub fn new(
         pool: Database,
         conversations: ConversationRepository,
+        providers: ProviderRepository,
         events: Arc<dyn EventSink>,
     ) -> Self {
         Self {
             pool,
             conversations,
+            providers,
             events,
         }
     }
@@ -360,11 +365,27 @@ impl ConversationService {
         provider_id: &str,
         model: Option<String>,
         context: JsonValue,
+        mode: Option<&str>,
     ) -> ApiResult<String> {
         let provider_id = provider_id.trim().to_string();
         if provider_id.is_empty() {
             return Err(ApiError::BadRequest("provider_id is required".into()));
         }
+        let mode = match mode.unwrap_or("").trim() {
+            "" | "chat" => "chat",
+            "terminal" => {
+                let provider = self.providers.get(&self.pool, ws, &provider_id).await?;
+                let supported =
+                    ProviderService::runtime_for_type(&provider.r#type, Default::default())
+                        .is_some_and(|rt| rt.terminal_launch(None, TermSession::New("")).is_some());
+                if supported {
+                    "terminal"
+                } else {
+                    "chat"
+                }
+            }
+            other => return Err(ApiError::BadRequest(format!("unknown mode: {other:?}"))),
+        };
         let id = Uuid::new_v4().to_string();
         let create = ConversationCreate {
             id: id.clone(),
@@ -372,6 +393,7 @@ impl ConversationService {
             provider_id,
             model,
             context,
+            mode: mode.to_string(),
         };
         self.conversations.create(&self.pool, ws, &create).await?;
         self.publish(ws, CONVERSATION_CREATE, &id).await;
@@ -398,6 +420,7 @@ impl ConversationService {
             provider_id: source.provider_id,
             model: source.model,
             context: source.context,
+            mode: source.mode,
         };
         self.conversations.create(&mut *tx, ws, &create).await?;
         if let Some(seq) = through_seq {
@@ -685,6 +708,16 @@ async fn open_send_setup(
     // The setup writes `model`, `title` and `session_id` — all replicated by the
     // sync feed — so they publish one `conversation.update` once they're all done.
     let mut changed = false;
+    let mut conv = rt
+        .repos
+        .conversations
+        .get(&rt.repos.pool, ws_id, conv_id)
+        .await?;
+    if conv.mode == "terminal" {
+        return Err(ApiError::BadRequest(
+            "a terminal conversation takes input in its terminal".into(),
+        ));
+    }
     if let Some(ref m) = model_override {
         let trimmed = m.trim();
         let v = if trimmed.is_empty() {
@@ -696,13 +729,9 @@ async fn open_send_setup(
             .conversations
             .set_model(&rt.repos.pool, ws_id, conv_id, v)
             .await?;
+        conv.model = v.map(str::to_string);
         changed = true;
     }
-    let conv = rt
-        .repos
-        .conversations
-        .get(&rt.repos.pool, ws_id, conv_id)
-        .await?;
     let provider = rt
         .repos
         .providers
@@ -850,6 +879,91 @@ async fn open_send_setup(
     }
 
     Ok((runtime, child, stdin, held, stdout, stderr, session_id))
+}
+
+/// How to spawn a terminal conversation's TUI. The first launch presets the
+/// session id and sends the context plus `prompt`; later ones resume it.
+pub async fn terminal_launch(
+    rt: &ConvRuntime,
+    ws_id: &str,
+    conv_id: &str,
+    prompt: Option<&str>,
+) -> ApiResult<LaunchSpec> {
+    let conv = rt
+        .repos
+        .conversations
+        .get(&rt.repos.pool, ws_id, conv_id)
+        .await?;
+    if conv.mode != "terminal" {
+        return Err(ApiError::BadRequest("not a terminal conversation".into()));
+    }
+    let provider = rt
+        .repos
+        .providers
+        .get(&rt.repos.pool, ws_id, &conv.provider_id)
+        .await?;
+    let runtime = ProviderService::runtime_from_provider(&provider, conv.model.clone())?;
+    let user_msg = prompt.unwrap_or("").trim();
+
+    let (cmd, preset) = match conv.session_id.as_deref() {
+        Some(sid) => (
+            runtime.terminal_launch(None, TermSession::Resume(sid)),
+            None,
+        ),
+        None => {
+            let sid = Uuid::new_v4().to_string();
+            let ctx = build_context(rt, ws_id, &conv).await;
+            let prompt = [ctx.as_str(), user_msg]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            let prompt = (!prompt.is_empty()).then_some(prompt);
+            let cmd = runtime.terminal_launch(prompt.as_deref(), TermSession::New(&sid));
+            (cmd, Some(sid))
+        }
+    };
+    let cmd = cmd.ok_or_else(|| ApiError::BadRequest("provider can't run in a terminal".into()))?;
+    let cwd = rt.workspaces.workspace_dir(ws_id).await?;
+
+    if let Some(sid) = preset {
+        rt.repos
+            .conversations
+            .set_session_id(&rt.repos.pool, ws_id, conv_id, &sid)
+            .await?;
+        let title = derive_title(user_msg);
+        if conv.title.is_empty() && !title.is_empty() {
+            rt.repos
+                .conversations
+                .set_title(&rt.repos.pool, ws_id, conv_id, &title)
+                .await?;
+        }
+        rt.conversations
+            .publish(ws_id, CONVERSATION_UPDATE, conv_id)
+            .await;
+    }
+
+    let text = |s: &std::ffi::OsStr| s.to_string_lossy().into_owned();
+    let argv = std::iter::once(cmd.get_program())
+        .chain(cmd.get_args())
+        .map(text)
+        .collect();
+    let mut env: HashMap<String, String> = runtime
+        .env_vars()
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), text(&v)))
+        .collect();
+    env.insert("MODULA_WORKSPACE".into(), ws_id.to_string());
+    env.insert("MODULA_ENGINE_SOCKET".into(), rt.engine_socket.clone());
+    // The desktop's GUI `PATH` can't find what a node-script CLI needs.
+    if let Some(path) = std::env::var_os("PATH") {
+        env.insert("PATH".into(), text(&path));
+    }
+    Ok(LaunchSpec {
+        argv,
+        env,
+        cwd: text(cwd.as_os_str()),
+    })
 }
 
 /// Subscribe to an in-flight run. If nothing is running, returns a handle whose

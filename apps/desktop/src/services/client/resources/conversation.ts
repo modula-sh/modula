@@ -29,6 +29,7 @@ export class ConversationResource {
       title: body.title,
       model: body.model,
       context: body.context,
+      mode: body.mode,
     });
   }
 

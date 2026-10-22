@@ -67,6 +67,7 @@ async fn search_spans_every_kind_and_respects_deletion() -> Result<()> {
             title: Some(format!("{NEEDLE} chat")),
             model: None,
             context: None,
+            mode: None,
         })
         .await?;
 

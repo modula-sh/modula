@@ -9,6 +9,7 @@ import type {
   AgentSchedule,
   Approved,
   ConversationContext,
+  ConversationMode,
   FilePatch,
   ProviderMcpEntry,
 } from "../../types";
@@ -127,6 +128,7 @@ export interface CreateConversationBody {
   title?: string;
   model?: string;
   context: ConversationContext;
+  mode?: ConversationMode;
 }
 
 export interface WikiNode {

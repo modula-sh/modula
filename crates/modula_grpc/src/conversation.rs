@@ -7,10 +7,10 @@ use modula_rpc::v1::{
     ConversationSummary, CreateConversationRequest, CreateConversationResponse,
     DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DequeueMessageRequest,
     DoneEvent, EnqueueMessageRequest, ErrorEvent, ForkConversationRequest, GetConversationRequest,
-    ListConversationsRequest, ListConversationsResponse, ListMessagesRequest, ListMessagesResponse,
-    QueuedMessage, QueuedMessagesResponse, SendMessageRequest, SessionEvent, ThinkingEvent,
-    ToolResultEvent, ToolUseEvent, UpdateConversationRequest, UpdateConversationResponse,
-    UserEvent,
+    LaunchSpec, ListConversationsRequest, ListConversationsResponse, ListMessagesRequest,
+    ListMessagesResponse, QueuedMessage, QueuedMessagesResponse, SendMessageRequest, SessionEvent,
+    TerminalLaunchRequest, ThinkingEvent, ToolResultEvent, ToolUseEvent, UpdateConversationRequest,
+    UpdateConversationResponse, UserEvent,
 };
 use serde_json::json;
 use tokio::sync::broadcast::error::RecvError;
@@ -123,6 +123,7 @@ impl ConversationService for ConversationHandler {
                 context: json_to_struct(r.context),
                 queued: r.queued.into_iter().map(QueuedMessage::from).collect(),
                 updated_at: r.updated_at,
+                mode: r.mode,
             })
             .collect();
         Ok(Response::new(ListConversationsResponse { conversations }))
@@ -189,6 +190,7 @@ impl ConversationService for ConversationHandler {
                 &body.provider_id,
                 body.model,
                 context,
+                body.mode.as_deref(),
             )
             .await
             .map_err(to_status)?;
@@ -332,5 +334,21 @@ impl ConversationService for ConversationHandler {
         Ok(Response::new(QueuedMessagesResponse {
             queued: queued.into_iter().map(QueuedMessage::from).collect(),
         }))
+    }
+
+    async fn terminal_launch(
+        &self,
+        req: Request<TerminalLaunchRequest>,
+    ) -> Result<Response<LaunchSpec>, Status> {
+        let body = req.into_inner();
+        let spec = conversations::terminal_launch(
+            &self.state.conv,
+            &body.workspace_id,
+            &body.conversation_id,
+            body.prompt.as_deref(),
+        )
+        .await
+        .map_err(to_status)?;
+        Ok(Response::new(spec.into()))
     }
 }

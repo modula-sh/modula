@@ -6,7 +6,7 @@ use std::process::Command;
 
 use serde_json::{json, Value as JsonValue};
 
-use super::{program, read_jsonc, ChatEvent, ProviderRuntime};
+use super::{program, read_jsonc, ChatEvent, ProviderRuntime, TermSession};
 
 /// `config_dir` is the `.gemini` dir itself; the CLI finds it as `$GEMINI_CLI_HOME/.gemini`.
 pub struct GeminiRuntime {
@@ -41,6 +41,22 @@ impl ProviderRuntime for GeminiRuntime {
 
     fn build_command_chat_first(&self, prompt: &str, preset_session_id: &str) -> Option<Command> {
         Some(self.command(prompt, Some(("--session-id", preset_session_id))))
+    }
+
+    fn terminal_launch(&self, prompt: Option<&str>, session: TermSession) -> Option<Command> {
+        let mut cmd = Command::new(program("gemini"));
+        cmd.arg("--skip-trust").arg("--yolo");
+        if let Some(m) = &self.model {
+            cmd.arg("-m").arg(m);
+        }
+        match session {
+            TermSession::New(id) => cmd.arg("--session-id").arg(id),
+            TermSession::Resume(id) => cmd.arg("--resume").arg(id),
+        };
+        if let Some(p) = prompt {
+            cmd.arg(format!("--prompt-interactive={p}"));
+        }
+        Some(cmd)
     }
 
     fn env_vars(&self) -> Vec<(&'static str, OsString)> {
@@ -203,6 +219,40 @@ mod tests {
                 "--yolo",
                 "--prompt=- list"
             ]
+        );
+    }
+
+    #[test]
+    fn gemini_terminal_launch_new_with_prompt() {
+        let rt = GeminiRuntime {
+            config_dir: "/home/u/.gemini".into(),
+            model: Some("gemini-2.5-pro".to_string()),
+        };
+        let cmd = rt
+            .terminal_launch(Some("- list"), TermSession::New("uuid-1"))
+            .unwrap();
+        assert_eq!(
+            args(&cmd),
+            &[
+                "--skip-trust",
+                "--yolo",
+                "-m",
+                "gemini-2.5-pro",
+                "--session-id",
+                "uuid-1",
+                "--prompt-interactive=- list"
+            ]
+        );
+    }
+
+    #[test]
+    fn gemini_terminal_launch_resume_without_prompt() {
+        let cmd = gemini_rt()
+            .terminal_launch(None, TermSession::Resume("sess-1"))
+            .unwrap();
+        assert_eq!(
+            args(&cmd),
+            &["--skip-trust", "--yolo", "--resume", "sess-1"]
         );
     }
 

@@ -24,6 +24,9 @@ service ConversationService {
   // accept stdin input take it mid-turn at a tool boundary.
   rpc Enqueue(EnqueueMessageRequest) returns (QueuedMessagesResponse);
   rpc Dequeue(DequeueMessageRequest) returns (QueuedMessagesResponse);
+  // How to spawn a terminal conversation's TUI; the caller hosts the PTY. The
+  // first launch starts a session with `prompt`, later ones resume it.
+  rpc TerminalLaunch(TerminalLaunchRequest) returns (LaunchSpec);
 }
 
 message QueuedMessage {
@@ -96,6 +99,8 @@ message ConversationSummary {
   // A provider run is in flight for this conversation right now. Runtime state
   // read from the run registry, not a stored column.
   bool running = 7;
+  // `chat` or `terminal`, fixed at create.
+  string mode = 9;
 }
 
 message Conversation {
@@ -114,6 +119,8 @@ message Conversation {
   bool running = 11;
   // How many messages the conversation holds in all.
   uint32 message_count = 12;
+  // `chat` or `terminal`, fixed at create.
+  string mode = 13;
 }
 
 // Server-streaming event. oneof mirrors the existing WireEvent variants.
@@ -200,6 +207,9 @@ message CreateConversationRequest {
   optional string title = 3;
   optional string model = 4;
   google.protobuf.Struct context = 5;
+  // `chat` (default) or `terminal`. A provider that can't run in a terminal
+  // gets `chat`.
+  optional string mode = 6;
 }
 message CreateConversationResponse {
   string id = 1;
@@ -264,4 +274,18 @@ message DequeueMessageRequest {
 
 message QueuedMessagesResponse {
   repeated QueuedMessage queued = 1;
+}
+
+message TerminalLaunchRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  // The first message; ignored once the session exists.
+  optional string prompt = 3;
+}
+
+message LaunchSpec {
+  // `argv[0]` is the resolved executable.
+  repeated string argv = 1;
+  map<string, string> env = 2;
+  string cwd = 3;
 }

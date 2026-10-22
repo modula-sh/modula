@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use modula_rpc::json::{json_to_struct, json_to_value, struct_to_json, value_to_json};
 use modula_rpc::v1 as pb;
 use serde::{Deserialize, Serialize};
@@ -237,6 +239,8 @@ pub struct Conversation {
     pub model: Option<String>,
     pub context: Value,
     pub session_id: Option<String>,
+    /// `chat` or `terminal`, fixed at create.
+    pub mode: String,
     /// The tail the caller asked for, or every message.
     pub messages: Vec<ChatMessage>,
     /// How many messages the conversation holds in all.
@@ -257,6 +261,7 @@ impl From<pb::Conversation> for Conversation {
             model: c.model,
             context: c.context.map(struct_to_json).unwrap_or_else(|| json!({})),
             session_id: c.session_id,
+            mode: c.mode,
             messages: c.messages.into_iter().map(ChatMessage::from).collect(),
             message_count: c.message_count,
             queued: c.queued.into_iter().map(QueuedMessage::from).collect(),
@@ -276,12 +281,41 @@ impl From<Conversation> for pb::Conversation {
             model: c.model,
             context: json_to_struct(c.context),
             session_id: c.session_id,
+            mode: c.mode,
             messages: c.messages.into_iter().map(pb::ChatMessage::from).collect(),
             message_count: c.message_count,
             queued: c.queued.into_iter().map(pb::QueuedMessage::from).collect(),
             created_at: c.created_at,
             updated_at: c.updated_at,
             running: c.running,
+        }
+    }
+}
+
+/// How to spawn a terminal conversation's TUI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LaunchSpec {
+    pub argv: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub cwd: String,
+}
+
+impl From<pb::LaunchSpec> for LaunchSpec {
+    fn from(l: pb::LaunchSpec) -> Self {
+        Self {
+            argv: l.argv,
+            env: l.env,
+            cwd: l.cwd,
+        }
+    }
+}
+
+impl From<LaunchSpec> for pb::LaunchSpec {
+    fn from(l: LaunchSpec) -> Self {
+        Self {
+            argv: l.argv,
+            env: l.env,
+            cwd: l.cwd,
         }
     }
 }
@@ -401,6 +435,7 @@ mod tests {
             model: Some("opus".into()),
             context: json!({"task": "t1"}),
             session_id: None,
+            mode: "chat".into(),
             messages: vec![
                 ChatMessage {
                     role: "user".into(),
@@ -456,7 +491,7 @@ mod tests {
     fn conversation_serde_matches_dto() {
         let want = json!({
             "id": "c1", "title": "Chat", "provider_id": "p1", "model": "opus",
-            "context": {"task": "t1"}, "session_id": null,
+            "context": {"task": "t1"}, "session_id": null, "mode": "chat",
             "messages": [
                 {"role": "user", "content": "hi", "ts": "2026-01-01T00:00:00Z", "seq": 0},
                 {

@@ -8,7 +8,7 @@ use std::process::Command;
 use modula_db::conversations::SessionAnchor;
 use serde_json::Value as JsonValue;
 
-use super::{content_text, program, ChatEvent, ProviderRuntime};
+use super::{content_text, program, ChatEvent, ProviderRuntime, TermSession};
 
 pub struct ClaudeRuntime {
     pub config_dir: PathBuf,
@@ -83,6 +83,22 @@ impl ProviderRuntime for ClaudeRuntime {
             .arg(&from.anchor);
         if let Some(m) = &self.model {
             cmd.arg("--model").arg(m);
+        }
+        Some(cmd)
+    }
+
+    fn terminal_launch(&self, prompt: Option<&str>, session: TermSession) -> Option<Command> {
+        let mut cmd = Command::new(program("claude"));
+        cmd.arg("--permission-mode").arg("bypassPermissions");
+        if let Some(m) = &self.model {
+            cmd.arg("--model").arg(m);
+        }
+        match session {
+            TermSession::New(id) => cmd.arg("--session-id").arg(id),
+            TermSession::Resume(id) => cmd.arg("--resume").arg(id),
+        };
+        if let Some(p) = prompt {
+            cmd.arg("--").arg(p);
         }
         Some(cmd)
     }
@@ -425,6 +441,46 @@ mod tests {
         ));
         let sub = r#"{"type":"assistant","uuid":"u3","parent_tool_use_id":"t1","message":{"content":[{"type":"text","text":"hi"}]}}"#;
         assert!(rt.parse_stream_line(sub).is_empty());
+    }
+
+    #[test]
+    fn claude_terminal_launch_new_with_prompt() {
+        let rt = ClaudeRuntime {
+            config_dir: "/tmp".into(),
+            model: Some("opus".to_string()),
+        };
+        let cmd = rt
+            .terminal_launch(Some("-x first"), TermSession::New("uuid-1"))
+            .unwrap();
+        assert_eq!(
+            args(&cmd),
+            &[
+                "--permission-mode",
+                "bypassPermissions",
+                "--model",
+                "opus",
+                "--session-id",
+                "uuid-1",
+                "--",
+                "-x first",
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_terminal_launch_resume_without_prompt() {
+        let cmd = claude_rt()
+            .terminal_launch(None, TermSession::Resume("sess-abc"))
+            .unwrap();
+        assert_eq!(
+            args(&cmd),
+            &[
+                "--permission-mode",
+                "bypassPermissions",
+                "--resume",
+                "sess-abc"
+            ]
+        );
     }
 
     #[test]

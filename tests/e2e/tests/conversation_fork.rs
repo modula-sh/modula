@@ -37,6 +37,7 @@ async fn conversation(h: &Harness, ws: &str, provider_type: &str) -> Result<Stri
             title: None,
             model: None,
             context: None,
+            mode: None,
         })
         .await?
         .into_inner()

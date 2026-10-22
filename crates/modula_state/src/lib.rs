@@ -204,8 +204,12 @@ impl AppState {
             workspaces.clone(),
         );
         let runs = RunService::new(db.clone(), repos.agent_runs.clone(), workspaces.clone());
-        let conversations =
-            ConversationService::new(db.clone(), repos.conversations.clone(), event_sink);
+        let conversations = ConversationService::new(
+            db.clone(),
+            repos.conversations.clone(),
+            repos.providers.clone(),
+            event_sink,
+        );
         let generation =
             GenerationService::new(db.clone(), repos.providers.clone(), workspaces.clone());
         let diffs = DiffService::new(
