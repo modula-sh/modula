@@ -6,9 +6,11 @@
 //! effect over the gRPC IPC transport and that every command prints labelled
 //! text, never raw JSON.
 
-use std::process::Output;
+use std::io::Write;
+use std::process::{Output, Stdio};
 
 use anyhow::Result;
+use modula_rpc::v1::CreateProjectRequest;
 use modula_test_support::{modula_bin, Harness};
 
 use modula_test_support::fixtures as common;
@@ -23,6 +25,26 @@ fn run_cli(h: &Harness, ws: &str, args: &[&str]) -> Output {
         .env("MODULA_WORKSPACE", ws)
         .output()
         .expect("spawn modula CLI")
+}
+
+/// [`run_cli`] with `stdin` piped in, as an agent does for `plan set`.
+fn run_cli_stdin(h: &Harness, ws: &str, args: &[&str], stdin: &str) -> Output {
+    let mut child = std::process::Command::new(modula_bin())
+        .args(args)
+        .env("MODULA_ENGINE_SOCKET", &h.socket)
+        .env("MODULA_WORKSPACE", ws)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn modula CLI");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    child.wait_with_output().expect("wait for modula CLI")
 }
 
 /// Run a command expected to succeed; return its stdout. Panics with the
@@ -309,6 +331,135 @@ async fn cli_workspace_commands_and_ws_override() -> Result<()> {
 
     let in_one = ok_stdout(&h, &ws1, &["task", "list"]);
     assert!(!in_one.contains(&task_id), "task leaked into ws1: {in_one}");
+
+    Ok(())
+}
+
+/// The plan flow the agents drive: the Researcher sets the document (stdin
+/// and `--file`), the Worker advances tasks one at a time and appends rework,
+/// and reviewers read it back.
+#[tokio::test]
+async fn cli_plan_flow() -> Result<()> {
+    let h = Harness::start().await?;
+    let ws = common::fresh_workspace(&h, "cli-plan").await?;
+    h.projects()
+        .create(CreateProjectRequest {
+            workspace_id: ws.clone(),
+            name: "Modula".into(),
+            path: "/tmp/modula".into(),
+            base_branch: "main".into(),
+        })
+        .await?;
+    let task_id = task_id_from_create(&ok_stdout(
+        &h,
+        &ws,
+        &["task", "create", r#"{"title":"Plan me"}"#],
+    ));
+    let variant = variant_ids_from_create(&ok_stdout(
+        &h,
+        &ws,
+        &["variant", "create", &task_id, r#"{"count":1}"#],
+    ))
+    .remove(0);
+
+    let doc = serde_json::json!({
+        "version": 1, "title": "MOD-1 Plan me", "problem": "p", "approach": "a",
+        "projects": [{"name": "Modula", "changes": [{"path": "src/lib.rs", "change": "edit"}]}],
+        "phases": [
+            {"title": "Engine", "scope": "s", "approach": "a",
+             "tasks": [{"title": "Types"}, {"title": "Service"}]},
+            {"title": "CLI", "scope": "s", "approach": "a", "tasks": [{"title": "Commands"}]}
+        ],
+        "risks": "r", "test_plan": "t"
+    })
+    .to_string();
+
+    let out = run_cli_stdin(&h, &ws, &["plan", "set", &variant], &doc);
+    assert!(
+        out.status.success(),
+        "plan set via stdin: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(out.stdout)?,
+        format!("plan set for variant {variant}: 0/3 tasks · phase 1 Engine · task 1.1 Types\n")
+    );
+
+    let dir = tempfile::tempdir()?;
+    let file = dir.path().join("plan.json");
+    std::fs::write(&file, &doc)?;
+    let out = ok_stdout(
+        &h,
+        &ws,
+        &["plan", "set", &variant, "--file", file.to_str().unwrap()],
+    );
+    assert!(out.contains("0/3 tasks"), "plan set --file: {out}");
+
+    let patch = |body: &str| ok_stdout(&h, &ws, &["plan", "patch", &variant, body]);
+    assert_eq!(
+        patch(r#"{"task":"1.1","status":"in_progress"}"#),
+        format!(
+            "plan {variant}: task 1.1 in_progress (0/3 tasks · phase 1 Engine · task 1.1 Types)\n"
+        )
+    );
+    let out = patch(r#"{"task":"1.1","status":"done"}"#);
+    assert!(out.contains("task 1.1 done (1/3 tasks"), "{out}");
+    let out = patch(r#"{"task":"1.2","status":"skipped","note":"covered by 1.1"}"#);
+    assert!(out.contains("task 1.2 skipped (2/3 tasks"), "{out}");
+    let out = patch(r#"{"phase":"1","deviations":"Merged 1.2 into 1.1."}"#);
+    assert!(out.contains("phase 1 deviations appended"), "{out}");
+    let out = patch(
+        r#"{"add_phase":{"title":"Rework round 1","scope":"s","approach":"a","tasks":["Fix review"]}}"#,
+    );
+    assert!(out.contains("phase 3 added (2/4 tasks"), "{out}");
+    let out = patch(r#"{"phase":"3","add_task":"Retest"}"#);
+    assert!(out.contains("task 3.2 added (2/5 tasks"), "{out}");
+    let out = patch(r#"{"summary":{"kind":"rework","round":1,"content":"Fixed review."}}"#);
+    assert!(out.contains("summary 1 added"), "{out}");
+
+    let json_out = ok_stdout(&h, &ws, &["plan", "get", &variant]);
+    let plan: serde_json::Value = serde_json::from_str(&json_out)?;
+    assert_eq!(plan["phases"][0]["tasks"][1]["status"], "skipped");
+    assert_eq!(plan["phases"][2]["tasks"][1]["id"], "3.2");
+
+    let md = ok_stdout(&h, &ws, &["plan", "get", &variant, "--md"]);
+    assert_not_json("plan get --md", &md);
+    assert!(md.contains("- [x] 1.1 Types"), "{md}");
+    assert!(
+        md.contains("- [-] 1.2 Service (skipped: covered by 1.1)"),
+        "{md}"
+    );
+    assert!(md.contains("### Deviations\nMerged 1.2 into 1.1."), "{md}");
+    assert!(md.contains("## Rework round 1\nFixed review."), "{md}");
+
+    let vget = ok_stdout(&h, &ws, &["variant", "get", &variant]);
+    assert!(
+        vget.contains("plan: 2/5 tasks · phase 2 CLI · task 2.1 Commands"),
+        "variant get: {vget}"
+    );
+    let tget = ok_stdout(&h, &ws, &["task", "get", &task_id]);
+    assert!(tget.contains("  plan: 2/5 tasks"), "task get: {tget}");
+
+    // A body matching no shape fails in the CLI; a rule violation carries the
+    // engine's reason. Both exit non-zero with `error: …` and no stdout.
+    for (body, reason) in [
+        (r#"{"task":"2.1"}"#, "patch body must be exactly one of"),
+        (r#"{"task":"2.1","status":"don"}"#, "unknown variant `don`"),
+        (
+            r#"{"task":"2.1","status":"done"}"#,
+            "mark it in_progress before done",
+        ),
+    ] {
+        let out = run_cli(&h, &ws, &["plan", "patch", &variant, body]);
+        assert!(!out.status.success(), "{body} should fail");
+        assert!(out.stdout.is_empty(), "{body} printed stdout");
+        let stderr = String::from_utf8(out.stderr)?;
+        assert!(stderr.starts_with("error: "), "{body}: {stderr}");
+        assert!(stderr.contains(reason), "{body}: {stderr}");
+    }
+    let out = run_cli_stdin(&h, &ws, &["plan", "set", &variant], "{}");
+    assert!(!out.status.success(), "empty document should fail");
+    assert!(String::from_utf8(out.stderr)?.contains("missing field"));
 
     Ok(())
 }
