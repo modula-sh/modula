@@ -7,6 +7,7 @@ import {
 import { IconButton } from "../IconButton";
 import { BranchDiffPanel } from "./BranchDiffPanel";
 import { DiffPanel } from "./DiffPanel";
+import { PlanPanel } from "./PlanPanel";
 
 // Cap to a fraction of the viewport so the panel yields on narrow windows
 // instead of crushing the content column.
@@ -54,6 +55,8 @@ function PanelTitle({ content }: { content: RightPanelContent }) {
     case "diff":
     case "branch-diff":
       return <span className="text-fg-subtle">Diff</span>;
+    case "plan":
+      return <span className="text-fg-subtle">Plan</span>;
   }
 }
 
@@ -63,5 +66,7 @@ function PanelBody({ content }: { content: RightPanelContent }) {
       return <DiffPanel {...content} />;
     case "branch-diff":
       return <BranchDiffPanel {...content} />;
+    case "plan":
+      return <PlanPanel {...content} />;
   }
 }

@@ -5,6 +5,7 @@ import {
   FileDiff,
   Folder,
   GitPullRequest,
+  ListChecks,
   MoreHorizontal,
   RotateCcw,
   Trash2,
@@ -335,7 +336,13 @@ export function TaskDetail({
                       )}
                     </>
                   )}
-                  <VariantActions taskId={task.id} variant={v.id} status={v.status} runs={runs} />
+                  <VariantActions
+                    taskId={task.id}
+                    variant={v.id}
+                    status={v.status}
+                    hasPlan={!!v.plan_progress}
+                    runs={runs}
+                  />
                 </li>
               ))}
             </ul>
@@ -915,11 +922,13 @@ function VariantActions({
   taskId,
   variant,
   status,
+  hasPlan,
   runs,
 }: {
   taskId: string;
   variant: string;
   status: VariantStatus | null;
+  hasPlan: boolean;
   runs: AgentRun[];
 }) {
   const ws = useContext(WorkspaceContext);
@@ -945,6 +954,15 @@ function VariantActions({
 
   return (
     <span className="flex items-center gap-1 ml-auto">
+      {hasPlan && (
+        <Button
+          onClick={() => openPanel({ type: "plan", workspace: ws, task: taskId, variant }, "card")}
+          className="!py-0.5 !text-[10px]"
+        >
+          <ListChecks size={12} />
+          Plan
+        </Button>
+      )}
       <Button
         onClick={() =>
           openPanel({ type: "branch-diff", workspace: ws, task: taskId, variant }, "card")

@@ -17,6 +17,12 @@ export type RightPanelContent =
       workspace: string;
       task: string;
       variant: string;
+    }
+  | {
+      type: "plan";
+      workspace: string;
+      task: string;
+      variant: string;
     };
 
 export type RightPanelPlacement = "inline" | "card";
