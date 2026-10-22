@@ -11,6 +11,8 @@ service EventService {
   // Live workspace event watch stream. Delivers typed events as mutations occur.
   // Clients subscribe once and receive all workspace changes without polling.
   rpc Watch(WatchEventsRequest) returns (stream WorkspaceEvent);
+  // Live watch over every workspace, from now on.
+  rpc WatchAll(WatchAllEventsRequest) returns (stream WorkspaceEvent);
   // Bounded historical backfill (unary) — call before subscribing Watch to
   // catch events that occurred before the stream was established.
   rpc ListRecentEvents(ListRecentEventsRequest) returns (ListRecentEventsResponse);
@@ -49,6 +51,8 @@ message WatchEventsRequest {
   // Resume from a specific sequence number (0 = start from now).
   int64 after_seq = 2;
 }
+
+message WatchAllEventsRequest {}
 
 // Typed workspace event; oneof carries the specific event payload.
 // seq is a monotonically increasing sequence number for ordering and reattach.

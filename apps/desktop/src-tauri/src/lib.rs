@@ -92,6 +92,7 @@ pub fn run() {
             grpc::conversation::conversation_send,
             grpc::conversation::conversation_attach,
             grpc::event::event_watch,
+            grpc::event::event_watch_all,
             grpc::run::run_watch,
             grpc::provider::provider_catalog,
             grpc::provider::provider_list,

@@ -2,7 +2,7 @@
 //! [`WorkspaceEvent`]s; dropping it ends the watch (the engine has no other
 //! cleanup to do).
 
-use modula_rpc::v1::WatchEventsRequest;
+use modula_rpc::v1::{WatchAllEventsRequest, WatchEventsRequest};
 use modula_types::WorkspaceEvent;
 use tokio_stream::{Stream, StreamExt};
 
@@ -25,6 +25,20 @@ impl ModulaClient {
                 workspace_id: workspace_id.to_string(),
                 after_seq,
             })
+            .await
+            .map_err(rpc)?
+            .into_inner();
+        Ok(stream.map(|item| item.map(WorkspaceEvent::from).map_err(rpc)))
+    }
+
+    /// Every workspace's events, from now on.
+    pub async fn watch_all_events(
+        &self,
+    ) -> Result<impl Stream<Item = Result<WorkspaceEvent, ClientError>>, ClientError> {
+        let stream = self
+            .events()
+            .await?
+            .watch_all(WatchAllEventsRequest {})
             .await
             .map_err(rpc)?
             .into_inner();
