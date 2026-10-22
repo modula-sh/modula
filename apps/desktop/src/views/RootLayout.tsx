@@ -7,7 +7,7 @@ import { SidebarProvider } from "../contexts/SidebarContext";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { ToastProvider } from "../contexts/ToastContext";
 import { WorkspaceSwitcherContext } from "../contexts/WorkspaceContext";
-import { useEngineEvents } from "../hooks/useEngineEvents";
+import { useEngineEvents, useOverviewEvents } from "../hooks/useEngineEvents";
 import { useSuppressContextMenu } from "../hooks/useSuppressContextMenu";
 import { useTitlebarDrag } from "../hooks/useTitlebarDrag";
 import { useWorkspaceState } from "../hooks/useWorkspaceState";
@@ -64,6 +64,7 @@ function EngineEvents({ workspace }: { workspace: string }) {
 function AppRoot({ wsState }: { wsState: ReturnType<typeof useWorkspaceState> }) {
   const { workspace, workspaces, setWorkspace, refreshWorkspaces } = wsState;
   const [overviewOpen, setOverviewOpen] = useState(false);
+  useOverviewEvents();
 
   return (
     <ToastProvider>

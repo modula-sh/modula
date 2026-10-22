@@ -2,6 +2,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
 import { useStreamApi } from "../contexts/ConversationStreamProvider";
+import { overviewKeys } from "../queries/overview";
 import { planKeys } from "../queries/plan";
 import { snapshotKeys } from "../queries/snapshot";
 
@@ -70,4 +71,28 @@ export function useEngineEvents(workspace: string) {
       channel.onmessage = () => {};
     };
   }, [workspace, qc]);
+}
+
+/** Host-wide watch for the Global Overview. Mount once: unmounting does not end it. */
+export function useOverviewEvents() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const channel = new Channel<EngineEvent>();
+    channel.onmessage = (ev) => {
+      if (
+        ev.type.startsWith("task_") ||
+        ev.type.startsWith("variant_") ||
+        ev.type === "plan_updated" ||
+        ev.type === "agent_run"
+      ) {
+        qc.invalidateQueries({ queryKey: overviewKeys.all });
+      }
+    };
+    invoke("event_watch_all", { onEvent: channel }).catch(() => {
+      // Watch ended (engine restart). An app reload re-subscribes.
+    });
+    return () => {
+      channel.onmessage = () => {};
+    };
+  }, [qc]);
 }

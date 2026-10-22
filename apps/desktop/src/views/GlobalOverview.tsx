@@ -1,6 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { Channel, invoke } from "@tauri-apps/api/core";
-import { useContext, useEffect } from "react";
+import { useContext } from "react";
 import { AgentName } from "../components/AgentName";
 import { Pill } from "../components/Pill";
 import { PlanProgressBar } from "../components/PlanProgressBar";
@@ -9,7 +7,7 @@ import { useShortcut } from "../contexts/ShortcutsContext";
 import { WorkspaceSwitcherContext } from "../contexts/WorkspaceContext";
 import { pipelineStatusFor, toneDotClasses } from "../lib/pipeline";
 import { planPercent } from "../lib/plan";
-import { overviewKeys, useOverview } from "../queries/overview";
+import { useOverview } from "../queries/overview";
 import { workspaceRouter } from "../router";
 import { errorMessage } from "../services/client";
 import type {
@@ -32,29 +30,8 @@ const NO_PLAN: PlanProgress = {
 export function GlobalOverview() {
   const { data, isLoading, error } = useOverview();
   const { setOverviewOpen } = useContext(WorkspaceSwitcherContext);
-  const qc = useQueryClient();
 
   useShortcut("escape", () => setOverviewOpen(false));
-
-  useEffect(() => {
-    const channel = new Channel<{ type: string }>();
-    channel.onmessage = (ev) => {
-      if (
-        ev.type.startsWith("task_") ||
-        ev.type.startsWith("variant_") ||
-        ev.type === "plan_updated" ||
-        ev.type === "agent_run"
-      ) {
-        qc.invalidateQueries({ queryKey: overviewKeys.all });
-      }
-    };
-    invoke("event_watch_all", { onEvent: channel }).catch(() => {
-      // Watch ended (engine restart). Reopening the overview re-subscribes.
-    });
-    return () => {
-      channel.onmessage = () => {};
-    };
-  }, [qc]);
 
   return (
     <div className="fixed top-[35px] left-2 right-2 bottom-2 z-50 rounded-xl border border-edge bg-bg shadow-content overflow-y-auto font-inter">
