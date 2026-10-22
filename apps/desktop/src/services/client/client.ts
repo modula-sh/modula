@@ -10,6 +10,7 @@ import { ConversationResource } from "./resources/conversation";
 import { DiffResource } from "./resources/diff";
 import { IntegrationResource } from "./resources/integration";
 import { LabelResource } from "./resources/label";
+import { OverviewResource } from "./resources/overview";
 import { PlanResource } from "./resources/plan";
 import { ProjectResource } from "./resources/project";
 import { ProviderResource } from "./resources/provider";
@@ -35,6 +36,7 @@ export const client = Object.freeze({
   roadmap: new RoadmapResource(),
   remote: new RemoteResource(),
   search: new SearchResource(),
+  overview: new OverviewResource(),
   snapshot: new SnapshotResource(),
   thread: new ThreadResource(),
   agent: new AgentResource(),

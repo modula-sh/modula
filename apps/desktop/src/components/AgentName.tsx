@@ -16,16 +16,22 @@ export function AgentName({
   name,
   iconSize = "xs",
   className = "",
+  provider: given,
 }: {
   name: string;
   iconSize?: keyof typeof FRAME;
   className?: string;
+  /** For callers outside a `SnapshotProvider`; skips the snapshot lookup. */
+  provider?: { type?: string | null; name?: string | null };
 }) {
   const { snap } = useSnapshot();
-  const agent = snap?.config.agents.find((a) => a.name === name);
-  const provider = agent?.provider_id
-    ? (snap?.config.providers.find((p) => p.id === agent.provider_id) ?? null)
-    : null;
+  const agent = given ? undefined : snap?.config.agents.find((a) => a.name === name);
+  const provider =
+    given ??
+    (agent?.provider_id
+      ? (snap?.config.providers.find((p) => p.id === agent.provider_id) ?? null)
+      : null);
+  const providerTitle = provider?.name ?? agent?.provider_id;
 
   return (
     <span className={`inline-flex items-center gap-1.5 min-w-0 font-inter text-fg ${className}`}>
@@ -36,11 +42,11 @@ export function AgentName({
         >
           <AgentIdenticon id={name} size={GLYPH[iconSize]} />
         </span>
-        {agent?.provider_id && (
+        {(given?.type || agent?.provider_id) && (
           <ProviderTypeIcon
             type={provider?.type}
             size={iconSize}
-            title={provider?.name ?? agent.provider_id}
+            title={providerTitle ?? undefined}
             className={OVERLAP[iconSize]}
           />
         )}

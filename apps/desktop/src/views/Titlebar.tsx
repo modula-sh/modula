@@ -1,15 +1,17 @@
-import { ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useState } from "react";
+import { ChevronLeft, ChevronRight, Globe, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useContext, useState } from "react";
 import { NavigationType, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { IconButton } from "../components/IconButton";
 import { WindowControls } from "../components/WindowControls";
 import { useSidebarContext } from "../contexts/SidebarContext";
+import { WorkspaceSwitcherContext } from "../contexts/WorkspaceContext";
 import { windowButtons } from "../tauri/window";
 
 /** Window-level chrome: navigation, the platform window buttons, and the drag
  * region between them. 35px matches VS Code's title bar. */
 export function Titlebar() {
   const { open, toggle } = useSidebarContext();
+  const { overviewOpen, setOverviewOpen } = useContext(WorkspaceSwitcherContext);
   const navigate = useNavigate();
   const { canBack, canForward } = useHistoryBounds();
 
@@ -35,6 +37,14 @@ export function Titlebar() {
         ) : (
           <PanelLeftOpen size={16} className="icon-crisp" />
         )}
+      </IconButton>
+      <IconButton
+        onClick={() => setOverviewOpen(!overviewOpen)}
+        aria-pressed={overviewOpen}
+        title="Global overview"
+        className={overviewOpen ? "text-fg bg-fg/10" : ""}
+      >
+        <Globe size={16} className="icon-crisp" />
       </IconButton>
       <div className="flex-1" />
       <WindowControls />
