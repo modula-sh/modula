@@ -15,6 +15,7 @@ import { usePipeline } from "../contexts/PipelineContext";
 import { useSnapshot } from "../contexts/SnapshotContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { pipelineLabel, pipelineStatusFor, pipelineTone, toneDotClasses } from "../lib/pipeline";
+import { planPercent } from "../lib/plan";
 import { externalStatusTextClass, variantStatusTone } from "../lib/task";
 import { useResetOnChange } from "../lib/useResetOnChange";
 import { client, errorMessage } from "../services/client";
@@ -191,6 +192,9 @@ export function TasksPane({
                 className={`inline-block w-2 h-2 rounded-full shrink-0 ${toneDotClasses[variantStatusTone(v.status)]}`}
               />
               v{v.position}
+              {v.plan_progress && (
+                <span className="tabular-nums text-fg-subtle">{planPercent(v.plan_progress)}%</span>
+              )}
             </span>
           ))}
         </span>
