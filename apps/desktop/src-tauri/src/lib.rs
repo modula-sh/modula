@@ -135,6 +135,7 @@ pub fn run() {
             grpc::diff::variant_pr,
             grpc::plan::plan_get,
             grpc::search::search_query,
+            grpc::overview::overview_get,
             pty::pty_open,
             pty::pty_write,
             pty::pty_resize,

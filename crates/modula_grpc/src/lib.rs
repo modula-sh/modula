@@ -5,13 +5,14 @@ use modula_rpc::v1::{
     conversation_service_server::ConversationServiceServer, diff_service_server::DiffServiceServer,
     event_service_server::EventServiceServer, health_service_server::HealthServiceServer,
     integration_service_server::IntegrationServiceServer, label_service_server::LabelServiceServer,
-    log_service_server::LogServiceServer, plan_service_server::PlanServiceServer,
-    project_service_server::ProjectServiceServer, provider_service_server::ProviderServiceServer,
-    roadmap_service_server::RoadmapServiceServer, run_service_server::RunServiceServer,
-    search_service_server::SearchServiceServer, snapshot_service_server::SnapshotServiceServer,
-    task_service_server::TaskServiceServer, thread_service_server::ThreadServiceServer,
-    usage_service_server::UsageServiceServer, variant_service_server::VariantServiceServer,
-    wiki_service_server::WikiServiceServer, workspace_service_server::WorkspaceServiceServer,
+    log_service_server::LogServiceServer, overview_service_server::OverviewServiceServer,
+    plan_service_server::PlanServiceServer, project_service_server::ProjectServiceServer,
+    provider_service_server::ProviderServiceServer, roadmap_service_server::RoadmapServiceServer,
+    run_service_server::RunServiceServer, search_service_server::SearchServiceServer,
+    snapshot_service_server::SnapshotServiceServer, task_service_server::TaskServiceServer,
+    thread_service_server::ThreadServiceServer, usage_service_server::UsageServiceServer,
+    variant_service_server::VariantServiceServer, wiki_service_server::WikiServiceServer,
+    workspace_service_server::WorkspaceServiceServer,
 };
 use tonic::transport::server::Router;
 
@@ -39,6 +40,7 @@ mod health;
 mod integration;
 mod label;
 mod log;
+mod overview;
 mod plan;
 mod project;
 mod provider;
@@ -61,6 +63,7 @@ pub use health::HealthHandler;
 pub use integration::IntegrationHandler;
 pub use label::LabelHandler;
 pub use log::LogHandler;
+pub use overview::OverviewHandler;
 pub use plan::PlanHandler;
 pub use project::ProjectHandler;
 pub use provider::ProviderHandler;
@@ -146,6 +149,9 @@ pub fn make_router(state: AppState, registry: &PluginRegistry) -> Router {
             .max_encoding_message_size(MAX_UNARY_MESSAGE_SIZE),
         )
         .add_service(SearchServiceServer::new(SearchHandler {
+            state: state.clone(),
+        }))
+        .add_service(OverviewServiceServer::new(OverviewHandler {
             state: state.clone(),
         }))
         .add_service(WikiServiceServer::new(WikiHandler { state }));
