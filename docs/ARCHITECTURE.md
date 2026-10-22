@@ -49,7 +49,7 @@ apps/cli/src/
   commands/ format/      — one module per command family, and its renderer
 
 crates/modula_services/src/
-  tasks.rs threads.rs labels.rs agents.rs workspaces.rs projects.rs config.rs
+  tasks.rs plans.rs threads.rs labels.rs agents.rs workspaces.rs projects.rs config.rs
   events/ runs.rs conversations.rs usage.rs integrations.rs   — domain services
   providers/             — ProviderService: CRUD + ProviderRuntime hydration
   diffs.rs pr.rs processes.rs logs.rs snapshot.rs             — cross-domain reads
@@ -190,13 +190,14 @@ apps/desktop/
 
 `~/.modula/db.sqlite` is the single global SQLite DB holding all structured
 state: workspaces, workspace_settings, pipeline_statuses, providers, projects,
-agents, agent_skills, tasks, variants, labels, task_labels,
+agents, agent_skills, tasks, variants, variant_plans, labels, task_labels,
 task_agent_settings, roadmap_rows, thread_entries, events, agent_runs,
-agent_processes, conversations.
+agent_processes, conversations. Variant plans are JSON documents read and
+written through `PlanService` (`modula plan`); progress is derived on read.
 
 `~/.modula/<workspace>/` holds the markdown:
 
-- `specs/<task-uuid>/<variant-uuid>/` — `phases.md`, `phase-N-plan.md`, `phase-N-task.md`
+- `specs/<task-slug>/v<position>/` — names the variant's branch; holds markdown specs only for variants that predate `variant_plans`
 - `logs/` — stream-json log files from agent runs
 - `wiki/` — agent-maintained knowledge base
 - `overview.md`, `workflow.md` — copied in at workspace creation
