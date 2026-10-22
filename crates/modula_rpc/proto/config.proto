@@ -44,6 +44,7 @@ message PipelineStatus {
   optional string station = 4;
   bool terminal = 5;
   bool error = 6;
+  bool awaits_human = 7;
 }
 
 // Minimal provider shape carried in config (full detail via ProviderService).

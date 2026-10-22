@@ -24,6 +24,7 @@ export interface PipelineStatus {
   station?: string | null;
   terminal?: boolean;
   error?: boolean;
+  awaits_human?: boolean;
 }
 
 export interface Task {

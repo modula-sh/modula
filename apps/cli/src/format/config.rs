@@ -25,6 +25,9 @@ pub fn config(c: &WorkspaceConfig) -> String {
         if e.error {
             flags.push("error".to_string());
         }
+        if e.awaits_human {
+            flags.push("awaits_human".to_string());
+        }
         let suffix = if flags.is_empty() {
             String::new()
         } else {

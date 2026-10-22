@@ -18,6 +18,7 @@ struct PipelineRecord {
     station: Option<String>,
     terminal: bool,
     error: bool,
+    awaits_human: bool,
 }
 
 impl From<PipelineRecord> for PipelineStatus {
@@ -29,12 +30,14 @@ impl From<PipelineRecord> for PipelineStatus {
             station: r.station,
             terminal: r.terminal,
             error: r.error,
+            awaits_human: r.awaits_human,
         }
     }
 }
 
 /// Default pipeline shipped with every new workspace. Order is the rendered
-/// column order; `terminal`/`error` flags drive frontend coloring.
+/// column order; `terminal`/`error` flags drive frontend coloring and
+/// `awaits_human` marks statuses that wait on a person.
 const DEFAULT: &[PipelineSeed] = &[
     PipelineSeed {
         key: "planning",
@@ -43,6 +46,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("PLAN"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "ready_for_research",
@@ -51,6 +55,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("RESEARCH"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "researching",
@@ -59,6 +64,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("RESEARCH"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "needs_clarification",
@@ -67,6 +73,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("RESEARCH"),
         terminal: false,
         error: false,
+        awaits_human: true,
     },
     PipelineSeed {
         key: "ready_for_workers",
@@ -75,6 +82,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("BUILD"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "in_progress",
@@ -83,6 +91,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("BUILD"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "ready_for_review",
@@ -91,6 +100,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("REVIEW"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "in_review",
@@ -99,6 +109,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("REVIEW"),
         terminal: false,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "ready_for_acceptance",
@@ -107,6 +118,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("ACCEPTED"),
         terminal: false,
         error: false,
+        awaits_human: true,
     },
     PipelineSeed {
         key: "accepted",
@@ -115,6 +127,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: Some("ACCEPTED"),
         terminal: true,
         error: false,
+        awaits_human: false,
     },
     PipelineSeed {
         key: "blocked",
@@ -123,6 +136,7 @@ const DEFAULT: &[PipelineSeed] = &[
         station: None,
         terminal: false,
         error: true,
+        awaits_human: false,
     },
 ];
 
@@ -133,14 +147,15 @@ struct PipelineSeed {
     station: Option<&'static str>,
     terminal: bool,
     error: bool,
+    awaits_human: bool,
 }
 
 pub(crate) async fn seed_defaults(conn: &mut SqliteConnection, ws_id: &str) -> Result<()> {
     for (i, row) in DEFAULT.iter().enumerate() {
         sqlx::query(
             "INSERT INTO pipeline_statuses \
-             (workspace_id, position, key, label, tone, station, terminal, error) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+             (workspace_id, position, key, label, tone, station, terminal, error, awaits_human) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(ws_id)
         .bind(i as i64)
@@ -150,6 +165,7 @@ pub(crate) async fn seed_defaults(conn: &mut SqliteConnection, ws_id: &str) -> R
         .bind(row.station)
         .bind(row.terminal as i64)
         .bind(row.error as i64)
+        .bind(row.awaits_human as i64)
         .execute(&mut *conn)
         .await?;
     }
@@ -169,7 +185,7 @@ impl PipelineRepository {
         E: Executor<'e, Database = Sqlite>,
     {
         Ok(sqlx::query_as::<_, PipelineRecord>(
-            "SELECT key, label, tone, station, terminal, error \
+            "SELECT key, label, tone, station, terminal, error, awaits_human \
              FROM pipeline_statuses WHERE workspace_id = ? ORDER BY position",
         )
         .bind(ws_id)
@@ -178,5 +194,32 @@ impl PipelineRepository {
         .into_iter()
         .map(PipelineStatus::from)
         .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspaces::WorkspaceRepository;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn seed_flags_awaits_human() {
+        let dir = tempdir().unwrap();
+        let pool = crate::open(&dir.path().join("t.sqlite")).await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        let ws = WorkspaceRepository::new()
+            .create(&mut conn, "Modula", None)
+            .await
+            .unwrap();
+        let awaiting: Vec<String> = PipelineRepository::new()
+            .list(&mut *conn, &ws)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.awaits_human)
+            .map(|s| s.key)
+            .collect();
+        assert_eq!(awaiting, ["needs_clarification", "ready_for_acceptance"]);
     }
 }

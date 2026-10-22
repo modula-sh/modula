@@ -10,7 +10,7 @@ For the full data model and event flow, see [`overview.md`](overview.md) and [`w
 |---|---|---|
 | `workspaces` | Workspace id, name, slug, description. | `WorkspaceService` (`modula workspace list/get/create`). |
 | `workspace_settings` | One row per workspace: `max_spawns_per_run`. (Scan-agent scope is not stored here — it lives inline in each scan agent's prompt.) | Read under `limits` in `modula config get`. |
-| `pipeline_statuses` | Ordered roadmap statuses (key, label, tone, optional station, terminal/error flags). Seeded with the default 11 on workspace create. | Read under `pipeline` in `modula config get`. |
+| `pipeline_statuses` | Ordered roadmap statuses (key, label, tone, optional station, terminal/error/awaits_human flags). Seeded with the default 11 on workspace create. | Read under `pipeline` in `modula config get`. |
 | `providers` | Provider config dirs agents bind to (`id`, `name`, `type`, `config_dir`, optional `description`). | `ProviderService`. |
 | `projects` | Repos under factory management (`id` UUID, `name`, absolute `path`, `base_branch`). | `ProjectService`. |
 | `agents` | Per-agent definition (`id` UUID, `name`, `description`, `provider_id`, optional `model` + `schedule_cron` + `schedule_tz` + `schedule_enabled`, `manual` flag, `rules` (JSON array of expression strings), `args` (JSON array of `ArgDef`)). | `AgentService`. |
