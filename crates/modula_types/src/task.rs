@@ -241,7 +241,20 @@ mod tests {
             "worktree": null,
             "synced_at": "2026-01-01",
             "created_at": "2026-01-01T00:00:00Z",
-            "variants": [{"id": "v1", "status": "in_progress", "position": 1}],
+            "variants": [{
+                "id": "v1",
+                "status": "in_progress",
+                "position": 1,
+                "plan_progress": {
+                    "tasks_total": 3,
+                    "tasks_done": 1,
+                    "tasks_skipped": 0,
+                    "current_phase_id": "1",
+                    "current_phase_title": "One",
+                    "current_task_id": "1.2",
+                    "current_task_title": "B",
+                },
+            }],
             "labels": [{"id": "l1", "name": "refactor"}],
         });
         assert_eq!(got, want);
