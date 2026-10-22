@@ -92,6 +92,7 @@ function TaskRow({ ws, task }: { ws: OverviewWorkspace; task: OverviewTask }) {
   const { setWorkspace, setOverviewOpen } = useContext(WorkspaceSwitcherContext);
   const status = pipelineStatusFor(ws.pipeline, task.status);
   const best = bestVariant(task.variants);
+  const agents = task.agents.filter((a, i, all) => all.findIndex((b) => b.name === a.name) === i);
   const reason = status?.error ? task.notes.split("\n")[0] || status.label : status?.label;
 
   return (
@@ -112,10 +113,10 @@ function TaskRow({ ws, task }: { ws: OverviewWorkspace; task: OverviewTask }) {
           <span className="text-[11px] text-fg-subtle shrink-0">{task.external_id}</span>
         )}
         <span className="text-[13px] text-fg truncate">{task.title}</span>
-        {task.agents.length > 0 && (
+        {agents.length > 0 && (
           <span className="ml-auto flex items-center gap-2 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            {task.agents.map((a) => (
+            {agents.map((a) => (
               <AgentName
                 key={a.name}
                 name={a.name}
