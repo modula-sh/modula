@@ -102,6 +102,7 @@ pub struct PlanProgress {
     pub tasks_total: u32,
     pub tasks_done: u32,
     pub tasks_skipped: u32,
+    pub phases_total: u32,
     pub current_phase_id: Option<String>,
     pub current_phase_title: Option<String>,
     pub current_task_id: Option<String>,
@@ -182,7 +183,10 @@ impl Plan {
     }
 
     pub fn progress(&self) -> PlanProgress {
-        let mut progress = PlanProgress::default();
+        let mut progress = PlanProgress {
+            phases_total: self.phases.len() as u32,
+            ..PlanProgress::default()
+        };
         for (_, task) in self.tasks() {
             progress.tasks_total += 1;
             match task.status {
@@ -440,6 +444,7 @@ impl From<pb::PlanProgress> for PlanProgress {
             tasks_total: p.tasks_total,
             tasks_done: p.tasks_done,
             tasks_skipped: p.tasks_skipped,
+            phases_total: p.phases_total,
             current_phase_id: p.current_phase_id,
             current_phase_title: p.current_phase_title,
             current_task_id: p.current_task_id,
@@ -454,6 +459,7 @@ impl From<PlanProgress> for pb::PlanProgress {
             tasks_total: p.tasks_total,
             tasks_done: p.tasks_done,
             tasks_skipped: p.tasks_skipped,
+            phases_total: p.phases_total,
             current_phase_id: p.current_phase_id,
             current_phase_title: p.current_phase_title,
             current_task_id: p.current_task_id,
@@ -798,6 +804,7 @@ mod tests {
                 tasks_total: 3,
                 tasks_done: 0,
                 tasks_skipped: 0,
+                phases_total: 2,
                 current_phase_id: Some("1".into()),
                 current_phase_title: Some("One".into()),
                 current_task_id: Some("1.1".into()),

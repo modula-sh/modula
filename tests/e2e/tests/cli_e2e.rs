@@ -382,7 +382,7 @@ async fn cli_plan_flow() -> Result<()> {
     );
     assert_eq!(
         String::from_utf8(out.stdout)?,
-        format!("plan set for variant {variant}: 0/3 tasks · phase 1 Engine · task 1.1 Types\n")
+        format!("plan set for variant {variant}: 0/3 tasks · phase 1/2 Engine · task 1.1 Types\n")
     );
 
     let dir = tempfile::tempdir()?;
@@ -399,7 +399,7 @@ async fn cli_plan_flow() -> Result<()> {
     assert_eq!(
         patch(r#"{"task":"1.1","status":"in_progress"}"#),
         format!(
-            "plan {variant}: task 1.1 in_progress (0/3 tasks · phase 1 Engine · task 1.1 Types)\n"
+            "plan {variant}: task 1.1 in_progress (0/3 tasks · phase 1/2 Engine · task 1.1 Types)\n"
         )
     );
     let out = patch(r#"{"task":"1.1","status":"done"}"#);
@@ -434,7 +434,7 @@ async fn cli_plan_flow() -> Result<()> {
 
     let vget = ok_stdout(&h, &ws, &["variant", "get", &variant]);
     assert!(
-        vget.contains("plan: 2/5 tasks · phase 2 CLI · task 2.1 Commands"),
+        vget.contains("plan: 2/5 tasks · phase 2/3 CLI · task 2.1 Commands"),
         "variant get: {vget}"
     );
     let tget = ok_stdout(&h, &ws, &["task", "get", &task_id]);
