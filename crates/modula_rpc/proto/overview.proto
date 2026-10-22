@@ -1,0 +1,56 @@
+syntax = "proto3";
+package modula.v1;
+
+import "config.proto";
+import "task.proto";
+
+// Host-global: every workspace's active tasks, their stage and plan progress.
+service OverviewService {
+  rpc Get(GetOverviewRequest) returns (GetOverviewResponse);
+}
+
+message GetOverviewRequest {}
+message GetOverviewResponse {
+  // Only workspaces with at least one active task.
+  repeated OverviewWorkspace workspaces = 1;
+}
+
+message OverviewWorkspace {
+  string id = 1;
+  string name = 2;
+  repeated PipelineStatus pipeline = 3;
+  repeated OverviewTask tasks = 4;
+}
+
+message OverviewTask {
+  string id = 1;
+  optional string external_id = 2;
+  string title = 3;
+  // Roadmap status key.
+  string status = 4;
+  string notes = 5;
+  bool needs_human = 6;
+  repeated OverviewAgent agents = 7;
+  repeated OverviewVariant variants = 8;
+}
+
+message OverviewAgent {
+  string name = 1;
+  optional string provider_type = 2;
+  optional string provider_name = 3;
+}
+
+message OverviewVariant {
+  string id = 1;
+  int64 position = 2;
+  optional string status = 3;
+  optional PlanProgress progress = 4;
+  repeated OverviewPlanTask recent_tasks = 5;
+}
+
+message OverviewPlanTask {
+  string id = 1;
+  string title = 2;
+  // pending | in_progress | done | skipped
+  string status = 3;
+}
