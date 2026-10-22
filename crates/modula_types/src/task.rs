@@ -21,7 +21,7 @@ impl From<pb::Variant> for Variant {
             id: v.id,
             status: v.status,
             position: v.position,
-            plan_progress: None,
+            plan_progress: v.plan_progress.map(PlanProgress::from),
         }
     }
 }
@@ -32,6 +32,7 @@ impl From<Variant> for pb::Variant {
             id: v.id,
             status: v.status,
             position: v.position,
+            plan_progress: v.plan_progress.map(pb::PlanProgress::from),
         }
     }
 }
@@ -184,7 +185,15 @@ mod tests {
                 id: "v1".into(),
                 status: Some("in_progress".into()),
                 position: 1,
-                plan_progress: None,
+                plan_progress: Some(PlanProgress {
+                    tasks_total: 3,
+                    tasks_done: 1,
+                    tasks_skipped: 0,
+                    current_phase_id: Some("1".into()),
+                    current_phase_title: Some("One".into()),
+                    current_task_id: Some("1.2".into()),
+                    current_task_title: Some("B".into()),
+                }),
             }],
             labels: vec![TaskLabel {
                 id: "l1".into(),

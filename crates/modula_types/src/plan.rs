@@ -6,7 +6,10 @@
 //! assigns them and every append mints the next one, so they stay positional.
 
 use std::fmt::Write;
+use std::str::FromStr;
 
+use modula_rpc::v1 as pb;
+use modula_rpc::v1::patch_plan_request::Op;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -230,7 +233,7 @@ impl Plan {
                     PlanTaskStatus::Done if t.status != PlanTaskStatus::InProgress => {
                         return Err(format!(
                             "task {task} is {}; mark it in_progress before done",
-                            status_name(t.status)
+                            t.status.as_str()
                         ));
                     }
                     PlanTaskStatus::Skipped => {
@@ -240,7 +243,7 @@ impl Plan {
                         ) {
                             return Err(format!(
                                 "task {task} is {}; only pending or in_progress tasks can be skipped",
-                                status_name(t.status)
+                                t.status.as_str()
                             ));
                         }
                         if note.as_deref().is_none_or(is_blank) {
@@ -391,12 +394,140 @@ fn is_blank(s: &str) -> bool {
     s.trim().is_empty()
 }
 
-fn status_name(status: PlanTaskStatus) -> &'static str {
-    match status {
-        PlanTaskStatus::Pending => "pending",
-        PlanTaskStatus::InProgress => "in_progress",
-        PlanTaskStatus::Done => "done",
-        PlanTaskStatus::Skipped => "skipped",
+impl PlanTaskStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PlanTaskStatus::Pending => "pending",
+            PlanTaskStatus::InProgress => "in_progress",
+            PlanTaskStatus::Done => "done",
+            PlanTaskStatus::Skipped => "skipped",
+        }
+    }
+}
+
+/// Parse a wire string with serde's message ("unknown variant `x`, expected
+/// one of …"), the same one a bad document gets.
+fn from_wire<T: serde::de::DeserializeOwned>(s: &str) -> Result<T, String> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| e.to_string())
+}
+
+impl FromStr for PlanTaskStatus {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        from_wire(s)
+    }
+}
+
+impl FromStr for PlanSummaryKind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        from_wire(s)
+    }
+}
+
+impl PlanSummaryKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PlanSummaryKind::Done => "done",
+            PlanSummaryKind::Rework => "rework",
+        }
+    }
+}
+
+impl From<pb::PlanProgress> for PlanProgress {
+    fn from(p: pb::PlanProgress) -> Self {
+        Self {
+            tasks_total: p.tasks_total,
+            tasks_done: p.tasks_done,
+            tasks_skipped: p.tasks_skipped,
+            current_phase_id: p.current_phase_id,
+            current_phase_title: p.current_phase_title,
+            current_task_id: p.current_task_id,
+            current_task_title: p.current_task_title,
+        }
+    }
+}
+
+impl From<PlanProgress> for pb::PlanProgress {
+    fn from(p: PlanProgress) -> Self {
+        Self {
+            tasks_total: p.tasks_total,
+            tasks_done: p.tasks_done,
+            tasks_skipped: p.tasks_skipped,
+            current_phase_id: p.current_phase_id,
+            current_phase_title: p.current_phase_title,
+            current_task_id: p.current_task_id,
+            current_task_title: p.current_task_title,
+        }
+    }
+}
+
+impl TryFrom<Op> for PlanPatch {
+    type Error = String;
+    fn try_from(op: Op) -> Result<Self, String> {
+        Ok(match op {
+            Op::SetTaskStatus(o) => PlanPatch::SetTaskStatus {
+                task: o.task,
+                status: o.status.parse()?,
+                note: o.note,
+            },
+            Op::AddTask(o) => PlanPatch::AddTask {
+                phase: o.phase,
+                title: o.title,
+            },
+            Op::AddPhase(o) => PlanPatch::AddPhase {
+                title: o.title,
+                scope: o.scope,
+                approach: o.approach,
+                notes: o.notes,
+                tasks: o.tasks,
+            },
+            Op::AppendDeviations(o) => PlanPatch::AppendDeviations {
+                phase: o.phase,
+                content: o.content,
+            },
+            Op::AddSummary(o) => PlanPatch::AddSummary(PlanSummary {
+                kind: o.kind.parse()?,
+                round: o.round,
+                content: o.content,
+            }),
+        })
+    }
+}
+
+impl From<PlanPatch> for Op {
+    fn from(p: PlanPatch) -> Self {
+        match p {
+            PlanPatch::SetTaskStatus { task, status, note } => {
+                Op::SetTaskStatus(pb::PlanSetTaskStatus {
+                    task,
+                    status: status.as_str().into(),
+                    note,
+                })
+            }
+            PlanPatch::AddTask { phase, title } => Op::AddTask(pb::PlanAddTask { phase, title }),
+            PlanPatch::AddPhase {
+                title,
+                scope,
+                approach,
+                notes,
+                tasks,
+            } => Op::AddPhase(pb::PlanAddPhase {
+                title,
+                scope,
+                approach,
+                notes,
+                tasks,
+            }),
+            PlanPatch::AppendDeviations { phase, content } => {
+                Op::AppendDeviations(pb::PlanAppendDeviations { phase, content })
+            }
+            PlanPatch::AddSummary(s) => Op::AddSummary(pb::PlanSummary {
+                kind: s.kind.as_str().into(),
+                round: s.round,
+                content: s.content,
+            }),
+        }
     }
 }
 
@@ -693,6 +824,40 @@ mod tests {
         assert_eq!((end.tasks_done, end.tasks_skipped), (2, 1));
         assert_eq!(end.current_phase_id, None);
         assert_eq!(end.current_task_id, None);
+    }
+
+    #[test]
+    fn patch_proto_round_trip() {
+        let patches = [
+            PlanPatch::SetTaskStatus {
+                task: "1.1".into(),
+                status: PlanTaskStatus::Skipped,
+                note: Some("n".into()),
+            },
+            PlanPatch::AddPhase {
+                title: "t".into(),
+                scope: "s".into(),
+                approach: "a".into(),
+                notes: String::new(),
+                tasks: vec!["x".into()],
+            },
+            PlanPatch::AddSummary(PlanSummary {
+                kind: PlanSummaryKind::Rework,
+                round: Some(2),
+                content: "c".into(),
+            }),
+        ];
+        for p in patches {
+            assert_eq!(PlanPatch::try_from(Op::from(p.clone())).unwrap(), p);
+        }
+        let bad = Op::SetTaskStatus(pb::PlanSetTaskStatus {
+            task: "1.1".into(),
+            status: "finished".into(),
+            note: None,
+        });
+        assert!(PlanPatch::try_from(bad)
+            .unwrap_err()
+            .contains("unknown variant `finished`"));
     }
 
     #[test]

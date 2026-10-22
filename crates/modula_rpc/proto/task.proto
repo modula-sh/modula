@@ -30,6 +30,18 @@ message Variant {
   string id = 1;
   optional string status = 2;
   int64 position = 3;
+  // Derived from the variant's plan; absent when it has none.
+  optional PlanProgress plan_progress = 4;
+}
+
+message PlanProgress {
+  uint32 tasks_total = 1;
+  uint32 tasks_done = 2;
+  uint32 tasks_skipped = 3;
+  optional string current_phase_id = 4;
+  optional string current_phase_title = 5;
+  optional string current_task_id = 6;
+  optional string current_task_title = 7;
 }
 
 message TaskLabel {

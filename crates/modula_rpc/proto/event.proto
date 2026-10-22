@@ -76,6 +76,7 @@ message WorkspaceEvent {
     ProviderUpdatedEvent provider_updated = 20;
     ProviderDeletedEvent provider_deleted = 21;
     ConversationRunEvent conversation_run = 22;
+    PlanUpdatedEvent plan_updated = 23;
   }
 }
 
@@ -123,6 +124,11 @@ message ConversationRunEvent {
 }
 message ConversationDeletedEvent {
   string conversation_id = 1;
+}
+
+message PlanUpdatedEvent {
+  string task_id = 1;
+  string variant_id = 2;
 }
 
 message ThreadAppendedEvent {

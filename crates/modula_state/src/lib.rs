@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use modula_engine_transport::EngineEndpoint;
 use modula_services::labels::LabelService;
+use modula_services::plans::PlanService;
 use modula_services::tasks::TaskService;
 use modula_services::threads::ThreadService;
 
@@ -40,6 +41,8 @@ pub struct AppState {
     pub threads: ThreadService,
     /// Label CRUD + task-association business service, owning its repository.
     pub labels: LabelService,
+    /// Variant plan documents: whole-plan set, Worker patches, `plan.update`.
+    pub plans: PlanService,
     /// Integration config CRUD + external search/fetch business service.
     pub integrations: IntegrationsService,
     /// Agent CRUD + manual `trigger`/`kill`/`list_running` business service,
@@ -129,6 +132,13 @@ impl AppState {
             event_sink.clone(),
         );
         let labels = LabelService::new(db.clone(), repos.labels.clone(), event_sink.clone());
+        let plans = PlanService::new(
+            db.clone(),
+            repos.variant_plans.clone(),
+            repos.variants.clone(),
+            repos.projects.clone(),
+            event_sink.clone(),
+        );
         let integrations = IntegrationsService::new(db.clone(), repos.integrations.clone());
         let providers = ProviderService::new(
             db.clone(),
@@ -155,6 +165,7 @@ impl AppState {
             db.clone(),
             repos.tasks.clone(),
             repos.variants.clone(),
+            repos.variant_plans.clone(),
             repos.roadmap.clone(),
             repos.pipeline.clone(),
             repos.labels.clone(),
@@ -250,6 +261,7 @@ impl AppState {
             tasks,
             threads,
             labels,
+            plans,
             integrations,
             agents,
             providers,

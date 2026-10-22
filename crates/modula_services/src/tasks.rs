@@ -19,9 +19,10 @@ use modula_db::roadmap::RoadmapRepository;
 use modula_db::task_agent_settings::TaskAgentSettingsRepository;
 use modula_db::tasks::{TaskPatch, TaskRepository};
 use modula_db::threads::ThreadRepository;
+use modula_db::variant_plans::VariantPlanRepository;
 use modula_db::variants::VariantRepository;
 use modula_rpc::status::DomainError;
-use modula_types::{RoadmapEntry, Task, TaskAgentSetting};
+use modula_types::{Plan, RoadmapEntry, Task, TaskAgentSetting};
 
 use crate::diff;
 use crate::events;
@@ -99,6 +100,7 @@ pub struct TaskService {
     pool: SqlitePool,
     tasks: TaskRepository,
     variants: VariantRepository,
+    variant_plans: VariantPlanRepository,
     roadmap: RoadmapRepository,
     pipeline: PipelineRepository,
     labels: LabelRepository,
@@ -118,6 +120,7 @@ impl TaskService {
         pool: SqlitePool,
         tasks: TaskRepository,
         variants: VariantRepository,
+        variant_plans: VariantPlanRepository,
         roadmap: RoadmapRepository,
         pipeline: PipelineRepository,
         labels: LabelRepository,
@@ -132,6 +135,7 @@ impl TaskService {
             pool,
             tasks,
             variants,
+            variant_plans,
             roadmap,
             pipeline,
             labels,
@@ -244,8 +248,24 @@ impl TaskService {
         let mut tasks = self.tasks.list(&self.pool, ws).await?;
         let mut variants_by_task = self.variants.list_all(&self.pool, ws).await?;
         let mut labels_by_task = self.labels.list_all_by_task(&self.pool, ws).await?;
+        let mut progress: std::collections::HashMap<_, _> = Default::default();
+        for (task_id, variant_id, text) in self
+            .variant_plans
+            .list_for_workspace(&self.pool, ws)
+            .await?
+        {
+            match Plan::parse(&text) {
+                Ok(plan) => {
+                    progress.insert((task_id, variant_id), plan.progress());
+                }
+                Err(e) => tracing::warn!("plan for variant {variant_id} does not parse: {e}"),
+            }
+        }
         for task in &mut tasks {
             task.variants = variants_by_task.remove(&task.id).unwrap_or_default();
+            for variant in &mut task.variants {
+                variant.plan_progress = progress.remove(&(task.id.clone(), variant.id.clone()));
+            }
             task.labels = labels_by_task.remove(&task.id).unwrap_or_default();
         }
         Ok(tasks)
@@ -683,6 +703,7 @@ mod tests {
             env.pool.clone(),
             TaskRepository::new(),
             VariantRepository::new(),
+            VariantPlanRepository::new(),
             RoadmapRepository::new(),
             PipelineRepository::new(),
             LabelRepository::new(),
