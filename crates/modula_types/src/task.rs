@@ -3,11 +3,16 @@ use modula_rpc::v1 as pb;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::PlanProgress;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Variant {
     pub id: String,
     pub status: Option<String>,
     pub position: i64,
+    /// Derived from the variant's plan on read; `None` when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_progress: Option<PlanProgress>,
 }
 
 impl From<pb::Variant> for Variant {
@@ -16,6 +21,7 @@ impl From<pb::Variant> for Variant {
             id: v.id,
             status: v.status,
             position: v.position,
+            plan_progress: None,
         }
     }
 }
@@ -178,6 +184,7 @@ mod tests {
                 id: "v1".into(),
                 status: Some("in_progress".into()),
                 position: 1,
+                plan_progress: None,
             }],
             labels: vec![TaskLabel {
                 id: "l1".into(),

@@ -17,6 +17,7 @@ use modula_db::settings::SettingsRepository;
 use modula_db::task_agent_settings::TaskAgentSettingsRepository;
 use modula_db::tasks::TaskRepository;
 use modula_db::threads::ThreadRepository;
+use modula_db::variant_plans::VariantPlanRepository;
 use modula_db::variants::VariantRepository;
 use modula_db::workspaces::WorkspaceRepository;
 use modula_db::Database;
@@ -31,6 +32,7 @@ pub struct Repositories {
     pub pool: Database,
     pub tasks: TaskRepository,
     pub variants: VariantRepository,
+    pub variant_plans: VariantPlanRepository,
     pub threads: ThreadRepository,
     pub roadmap: RoadmapRepository,
     pub labels: LabelRepository,
@@ -55,6 +57,7 @@ impl Repositories {
             pool: db.clone(),
             tasks: TaskRepository::new(),
             variants: VariantRepository::new(),
+            variant_plans: VariantPlanRepository::new(),
             threads: ThreadRepository::new(),
             roadmap: RoadmapRepository::new(),
             labels: LabelRepository::new(),

@@ -14,6 +14,7 @@ mod conversation;
 mod event;
 mod integration;
 mod label;
+mod plan;
 mod project;
 mod provider;
 mod roadmap;
@@ -34,6 +35,10 @@ pub use conversation::{ChatMessage, ConvEvent, Conversation, QueuedMessage};
 pub use event::{event_types, WorkspaceEvent, WorkspaceEventKind};
 pub use integration::{ExternalItem, Integration};
 pub use label::Label;
+pub use plan::{
+    Plan, PlanChange, PlanPatch, PlanPhase, PlanProgress, PlanProject, PlanSummary,
+    PlanSummaryKind, PlanTask, PlanTaskStatus,
+};
 pub use project::{CommitSummary, Project, RepoBranchInfo};
 pub use provider::{CatalogModel, CatalogProvider, McpServer, Provider};
 pub use roadmap::RoadmapEntry;

@@ -36,6 +36,7 @@ pub mod settings;
 pub mod task_agent_settings;
 pub mod tasks;
 pub mod threads;
+pub mod variant_plans;
 pub mod variants;
 pub mod workspaces;
 
@@ -113,6 +114,7 @@ mod tests {
             "task_labels",
             "thread_entries",
             "tasks",
+            "variant_plans",
             "variants",
             "workspace_settings",
             "workspaces",
