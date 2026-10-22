@@ -93,6 +93,58 @@ export interface Variant {
   position: number;
   /** `null` until promoted; a freshly-registered variant has no status. */
   status: VariantStatus | null;
+  /** Engine-derived plan summary; absent when the variant has no plan. */
+  plan_progress?: PlanProgress | null;
+}
+
+/** The current task is the `in_progress` one, else the first `pending`; both
+ * current fields are null once every task is done or skipped. */
+export interface PlanProgress {
+  tasks_total: number;
+  tasks_done: number;
+  tasks_skipped: number;
+  phases_total: number;
+  current_phase_id?: string | null;
+  current_phase_title?: string | null;
+  current_task_id?: string | null;
+  current_task_title?: string | null;
+}
+
+export type PlanTaskStatus = "pending" | "in_progress" | "done" | "skipped";
+
+export interface PlanTask {
+  id: string;
+  title: string;
+  status: PlanTaskStatus;
+  note?: string | null;
+}
+
+export interface PlanPhase {
+  id: string;
+  title: string;
+  scope: string;
+  approach: string;
+  notes?: string;
+  deviations?: string;
+  tasks: PlanTask[];
+}
+
+export interface PlanSummary {
+  kind: "done" | "rework";
+  round?: number | null;
+  content: string;
+}
+
+export interface Plan {
+  version: number;
+  title: string;
+  problem: string;
+  approach: string;
+  projects: { name: string; changes: { path: string; change: string }[] }[];
+  phases: PlanPhase[];
+  risks: string;
+  test_plan: string;
+  summaries?: PlanSummary[];
 }
 
 export interface RoadmapItem {

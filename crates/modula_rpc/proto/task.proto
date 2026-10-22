@@ -42,6 +42,7 @@ message PlanProgress {
   optional string current_phase_title = 5;
   optional string current_task_id = 6;
   optional string current_task_title = 7;
+  uint32 phases_total = 8;
 }
 
 message TaskLabel {

@@ -2,10 +2,12 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgentIdenticon } from "../components/AgentIdenticon";
 import { Pill } from "../components/Pill";
+import { PlanProgressBar } from "../components/PlanProgressBar";
 import { Spinner } from "../components/Spinner";
 import { usePipeline } from "../contexts/PipelineContext";
 import { useSnapshot } from "../contexts/SnapshotContext";
 import { toneDotClasses } from "../lib/pipeline";
+import { agentProgress } from "../lib/plan";
 import { externalStatusTextClass, variantStatusTone } from "../lib/task";
 import type { Agent, RoadmapItem, Task } from "../types";
 
@@ -117,15 +119,18 @@ function RoadmapCard({
         {taskAgents.length > 0 && (
           <div className="ml-auto flex items-center gap-1 shrink-0">
             <Spinner size={12} />
-            {taskAgents.map((a) => (
-              <span
-                key={a.pid}
-                title={`${a.name} (pid ${a.pid})`}
-                className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-surface-2 text-fg border border-border shrink-0"
-              >
-                <AgentIdenticon id={a.name} size={16} />
-              </span>
-            ))}
+            {taskAgents.map((a) => {
+              const current = agentProgress(a, task)?.current_task_title;
+              return (
+                <span
+                  key={a.pid}
+                  title={`${a.name} (pid ${a.pid})${current ? ` · ${current}` : ""}`}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-surface-2 text-fg border border-border shrink-0"
+                >
+                  <AgentIdenticon id={a.name} size={16} />
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -140,6 +145,9 @@ function RoadmapCard({
                 className={`inline-block w-2 h-2 rounded-full shrink-0 ${toneDotClasses[variantStatusTone(v.status)]}`}
               />
               v{v.position}
+              {v.plan_progress && (
+                <PlanProgressBar progress={v.plan_progress} status={v.status} compact />
+              )}
             </span>
           ))}
         </div>

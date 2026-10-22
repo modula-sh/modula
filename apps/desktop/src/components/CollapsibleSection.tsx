@@ -3,12 +3,14 @@ import { useState } from "react";
 
 export function CollapsibleSection({
   label,
+  defaultOpen = true,
   children,
 }: {
   label: string;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div>
       <button

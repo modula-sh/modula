@@ -5,6 +5,7 @@ import {
   FileDiff,
   Folder,
   GitPullRequest,
+  ListChecks,
   MoreHorizontal,
   RotateCcw,
   Trash2,
@@ -27,6 +28,7 @@ import { MarkdownContent } from "../components/MarkdownContent";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { openUrl } from "../components/openUrl";
 import { Pill } from "../components/Pill";
+import { PlanProgressBar } from "../components/PlanProgressBar";
 import { RunStatusIcon } from "../components/RunStatusIcon";
 import { SourceIcon, sourceDisplayName } from "../components/SourceIcon";
 import { Spinner } from "../components/Spinner";
@@ -40,6 +42,7 @@ import { useToast } from "../contexts/ToastContext";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { useFeedback } from "../hooks/useFeedback";
 import { toneDotClasses } from "../lib/pipeline";
+import { agentProgress } from "../lib/plan";
 import { externalStatusTextClass, sourceLabel, variantStatusTone } from "../lib/task";
 import { useResetOnChange } from "../lib/useResetOnChange";
 import { useVariantPr } from "../queries/diff";
@@ -318,7 +321,28 @@ export function TaskDetail({
                     />
                     {formatVariantStatus(v.status)}
                   </span>
-                  <VariantActions taskId={task.id} variant={v.id} status={v.status} runs={runs} />
+                  {v.plan_progress && (
+                    <>
+                      <PlanProgressBar progress={v.plan_progress} status={v.status} />
+                      <span className="tabular-nums text-fg-muted">
+                        {v.plan_progress.current_phase_id
+                          ? `phase ${v.plan_progress.current_phase_id}/${v.plan_progress.phases_total}`
+                          : "done"}
+                      </span>
+                      {v.plan_progress.current_task_title && (
+                        <span className="truncate min-w-0 text-fg-muted">
+                          {v.plan_progress.current_task_title}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  <VariantActions
+                    taskId={task.id}
+                    variant={v.id}
+                    status={v.status}
+                    hasPlan={!!v.plan_progress}
+                    runs={runs}
+                  />
                 </li>
               ))}
             </ul>
@@ -332,15 +356,19 @@ export function TaskDetail({
             <div className="text-fg-subtle text-xs">none running</div>
           ) : (
             <ul className="space-y-1">
-              {taskAgents.map((a) => (
-                <li key={a.pid} className="text-xs text-fg flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-[3px] bg-surface-2 text-fg border border-border shrink-0">
-                    <AgentIdenticon id={a.name} size={16} />
-                  </span>
-                  <span className="font-inter font-semibold">{a.name}</span>
-                  <TimeAgo iso={a.started_at} className="text-fg-subtle" />
-                </li>
-              ))}
+              {taskAgents.map((a) => {
+                const current = agentProgress(a, task)?.current_task_title;
+                return (
+                  <li key={a.pid} className="text-xs text-fg flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-[3px] bg-surface-2 text-fg border border-border shrink-0">
+                      <AgentIdenticon id={a.name} size={16} />
+                    </span>
+                    <span className="font-inter font-semibold">{a.name}</span>
+                    <TimeAgo iso={a.started_at} className="text-fg-subtle" />
+                    {current && <span className="truncate min-w-0 text-fg-muted">{current}</span>}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -894,11 +922,13 @@ function VariantActions({
   taskId,
   variant,
   status,
+  hasPlan,
   runs,
 }: {
   taskId: string;
   variant: string;
   status: VariantStatus | null;
+  hasPlan: boolean;
   runs: AgentRun[];
 }) {
   const ws = useContext(WorkspaceContext);
@@ -924,6 +954,15 @@ function VariantActions({
 
   return (
     <span className="flex items-center gap-1 ml-auto">
+      {hasPlan && (
+        <Button
+          onClick={() => openPanel({ type: "plan", workspace: ws, task: taskId, variant }, "card")}
+          className="!py-0.5 !text-[10px]"
+        >
+          <ListChecks size={12} />
+          Plan
+        </Button>
+      )}
       <Button
         onClick={() =>
           openPanel({ type: "branch-diff", workspace: ws, task: taskId, variant }, "card")

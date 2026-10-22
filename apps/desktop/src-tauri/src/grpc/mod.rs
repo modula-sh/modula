@@ -18,6 +18,7 @@ pub(crate) mod health;
 pub(crate) mod integration;
 pub(crate) mod label;
 pub(crate) mod log;
+pub(crate) mod plan;
 pub(crate) mod project;
 pub(crate) mod provider;
 pub(crate) mod remote;
