@@ -1,11 +1,14 @@
 import { Button } from "../components/Button";
+import { TERMINAL_MODE_KEY } from "../components/chat/TerminalView";
 import { DropdownSelect } from "../components/DropdownMenu";
 import { FieldRow } from "../components/FieldRow";
 import { IntegrationsList } from "../components/integrations/IntegrationsList";
 import { RecommendedToolsList } from "../components/recommended-tools/RecommendedToolsList";
 import { RemoteAccessPanel } from "../components/remote/RemoteAccessPanel";
+import { Switch } from "../components/Switch";
 import { useThemeContext } from "../contexts/ThemeContext";
 import { THEMES, type Theme } from "../hooks/useTheme";
+import { useLocalStorage } from "../lib/useLocalStorage";
 import { useRemoteAvailable } from "../queries/remote";
 
 export function SettingsView() {
@@ -29,6 +32,11 @@ export function SettingsView() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-fg">Appearance</h2>
           <AppearanceSettings />
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-fg">Conversations</h2>
+          <ConversationSettings />
         </section>
 
         <section className="space-y-3">
@@ -79,6 +87,24 @@ function AppearanceSettings() {
           value={theme}
           onChange={(v) => setTheme(v as Theme)}
           options={THEMES}
+        />
+      </FieldRow>
+    </section>
+  );
+}
+
+function ConversationSettings() {
+  const [terminal, setTerminal] = useLocalStorage(TERMINAL_MODE_KEY, false);
+  return (
+    <section className="border border-card-border/50 bg-card rounded-xl px-3">
+      <FieldRow
+        label="Open new conversations in terminal"
+        description="Runs the provider's own CLI. Claude and Gemini only; others open as chat."
+      >
+        <Switch
+          checked={terminal}
+          onChange={setTerminal}
+          label="Open new conversations in terminal"
         />
       </FieldRow>
     </section>

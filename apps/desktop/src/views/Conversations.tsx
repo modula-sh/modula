@@ -11,6 +11,7 @@ import { ContextPills } from "../components/chat/ContextPills";
 import { MessageList } from "../components/chat/MessageList";
 import { QueuedMessages } from "../components/chat/QueuedMessages";
 import { SendButton } from "../components/chat/SendButton";
+import { TERMINAL_MODE_KEY, TerminalView } from "../components/chat/TerminalView";
 import { DropdownSelect } from "../components/DropdownMenu";
 import { HeaderSlot } from "../components/HeaderSlot";
 import { IconButton } from "../components/IconButton";
@@ -98,6 +99,8 @@ export function ConversationsView() {
         title: deriveTitle(message),
         model: model ?? undefined,
         context: buildContext(),
+        // The engine falls back to chat for providers without a terminal launch.
+        mode: localStorage.getItem(TERMINAL_MODE_KEY) === "true" ? "terminal" : "chat",
       });
       localStorage.removeItem(draftKey);
       navigate(`/conversations/${id}`, { state: { initialMessage: message.trim() } });
@@ -264,9 +267,11 @@ export function ConversationDetailPage() {
     }
   }, [fromSeq, messages, queryClient, ws, id]);
 
+  // Unset until the conversation loads; terminal mode has no chat stream.
+  const mode = conv?.mode;
   useEffect(() => {
-    if (ws && id) attach();
-  }, [attach, ws, id]);
+    if (ws && id && mode === "chat") attach();
+  }, [attach, ws, id, mode]);
 
   // Invalidate whenever a turn ends here so the just-persisted assistant message
   // lands, and bump the sidebar nonce so its diff/commit panels refetch too.
@@ -356,7 +361,7 @@ export function ConversationDetailPage() {
   );
 
   useEffect(() => {
-    if (conv && initialMsg && !initialFiredRef.current) {
+    if (conv?.mode === "chat" && initialMsg && !initialFiredRef.current) {
       initialFiredRef.current = true;
       handleSend(initialMsg);
     }
@@ -413,38 +418,42 @@ export function ConversationDetailPage() {
       </ChatSidebarPortal>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
-          <MessageList
-            messages={shown}
-            hasOlder={(fromSeq ?? 0) > 0}
-            onReachTop={showOlder}
-            parts={parts}
-            streaming={streaming}
-            error={error ?? queueError}
-            scrollRef={scrollRef}
-          />
+        {conv?.mode === "terminal" ? (
+          <TerminalView ws={ws} conversationId={conv.id} initialPrompt={initialMsg} />
+        ) : (
+          <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
+            <MessageList
+              messages={shown}
+              hasOlder={(fromSeq ?? 0) > 0}
+              onReachTop={showOlder}
+              parts={parts}
+              streaming={streaming}
+              error={error ?? queueError}
+              scrollRef={scrollRef}
+            />
 
-          <div
-            aria-hidden
-            className="pointer-events-none absolute left-0 right-[8px] bottom-0 h-[220px] bg-gradient-to-t from-bg via-bg to-transparent"
-          />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute left-0 right-[8px] bottom-0 h-[220px] bg-gradient-to-t from-bg via-bg to-transparent"
+            />
 
-          <div className="absolute bottom-4 left-0 right-[8px] px-[50px]">
-            <div className="max-w-[800px] mx-auto">
-              <QueuedMessages queued={conv?.queued ?? []} onRemove={handleDequeue} />
-              <ChatInput
-                onSend={handleSend}
-                onQueue={handleQueue}
-                onCancel={cancel}
-                streaming={inFlight}
-                models={availableModels}
-                selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
-                draftKey={chatDraftKey(ws, id ?? "")}
-              />
+            <div className="absolute bottom-4 left-0 right-[8px] px-[50px]">
+              <div className="max-w-[800px] mx-auto">
+                <QueuedMessages queued={conv?.queued ?? []} onRemove={handleDequeue} />
+                <ChatInput
+                  onSend={handleSend}
+                  onQueue={handleQueue}
+                  onCancel={cancel}
+                  streaming={inFlight}
+                  models={availableModels}
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                  draftKey={chatDraftKey(ws, id ?? "")}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
