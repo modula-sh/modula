@@ -1,7 +1,7 @@
 //! `modula` subcommand surface — argument parsing + dispatch.
 //!
 //! `Engine`/`Status`/`Install` run the server and host management; the
-//! `Task`/`Variant`/`Comment`/`Config` families are a thin gRPC client over the
+//! `Task`/`Variant`/`Plan`/`Comment`/`Config` families are a thin gRPC client over the
 //! already-running engine ([`transport`]) — the surface every spawned agent uses
 //! instead of `curl`. Reads print formatted plain text ([`format`]); writes take
 //! a single JSON-string body. `Workspace` is host-global: it ignores the
@@ -68,6 +68,12 @@ pub enum Command {
     /// Register and transition task variants
     #[command(subcommand)]
     Variant(VariantCmd),
+    /// Read and advance a variant's plan
+    ///
+    /// One JSON document per variant: the Researcher sets it whole, the
+    /// Worker patches task status and appends.
+    #[command(subcommand)]
+    Plan(PlanCmd),
     /// Read and append task threads
     #[command(subcommand)]
     Comment(CommentCmd),
@@ -167,6 +173,40 @@ pub enum VariantCmd {
     ///
     /// Body is `{"status":"…"}`, or `{"action":"accept"}` /
     /// `{"action":"rework"}` for a code-reviewer verdict.
+    Patch {
+        /// Variant UUID
+        variant: String,
+        /// JSON object body
+        body: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PlanCmd {
+    /// Print a variant's plan as JSON
+    Get {
+        /// Variant UUID
+        variant: String,
+        /// Render the reviewer view as markdown instead
+        #[arg(long)]
+        md: bool,
+    },
+    /// Replace a variant's whole plan
+    ///
+    /// Reads the JSON document from `--file`, or stdin when absent. The engine
+    /// validates it and assigns phase and task ids.
+    Set {
+        /// Variant UUID
+        variant: String,
+        /// Read the document from this file instead of stdin
+        #[arg(long, value_name = "PATH")]
+        file: Option<PathBuf>,
+    },
+    /// Apply one targeted edit to a variant's plan
+    ///
+    /// Body is one of `{"task":"1.2","status":"…","note":"…"}`,
+    /// `{"phase":"2","add_task":"…"}`, `{"add_phase":{…}}`,
+    /// `{"phase":"1","deviations":"…"}`, or `{"summary":{…}}`.
     Patch {
         /// Variant UUID
         variant: String,
@@ -293,6 +333,7 @@ async fn dispatch(
         Command::Task(cmd) => commands::task(&tx, cmd).await,
         Command::Roadmap(cmd) => commands::roadmap(&tx, cmd).await,
         Command::Variant(cmd) => commands::variant(&tx, cmd).await,
+        Command::Plan(cmd) => commands::plan(&tx, cmd).await,
         Command::Comment(cmd) => commands::comment(&tx, cmd).await,
         Command::Config(cmd) => commands::config(&tx, cmd).await,
         Command::Workspace(cmd) => commands::workspace(&tx, cmd).await,

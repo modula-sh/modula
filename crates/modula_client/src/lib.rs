@@ -24,6 +24,7 @@ mod health;
 mod integration;
 mod label;
 mod log;
+mod plan;
 mod project;
 mod provider;
 mod raw;
@@ -60,12 +61,13 @@ use modula_rpc::v1::{
     conversation_service_client::ConversationServiceClient, diff_service_client::DiffServiceClient,
     event_service_client::EventServiceClient, health_service_client::HealthServiceClient,
     integration_service_client::IntegrationServiceClient, label_service_client::LabelServiceClient,
-    log_service_client::LogServiceClient, project_service_client::ProjectServiceClient,
-    provider_service_client::ProviderServiceClient, roadmap_service_client::RoadmapServiceClient,
-    run_service_client::RunServiceClient, search_service_client::SearchServiceClient,
-    task_service_client::TaskServiceClient, thread_service_client::ThreadServiceClient,
-    usage_service_client::UsageServiceClient, variant_service_client::VariantServiceClient,
-    wiki_service_client::WikiServiceClient, workspace_service_client::WorkspaceServiceClient,
+    log_service_client::LogServiceClient, plan_service_client::PlanServiceClient,
+    project_service_client::ProjectServiceClient, provider_service_client::ProviderServiceClient,
+    roadmap_service_client::RoadmapServiceClient, run_service_client::RunServiceClient,
+    search_service_client::SearchServiceClient, task_service_client::TaskServiceClient,
+    thread_service_client::ThreadServiceClient, usage_service_client::UsageServiceClient,
+    variant_service_client::VariantServiceClient, wiki_service_client::WikiServiceClient,
+    workspace_service_client::WorkspaceServiceClient,
 };
 use tonic::transport::Channel;
 
@@ -115,6 +117,10 @@ impl ModulaClient {
 
     async fn variants(&self) -> Result<VariantServiceClient<Channel>, ClientError> {
         Ok(VariantServiceClient::new(self.channel().await?))
+    }
+
+    async fn plans(&self) -> Result<PlanServiceClient<Channel>, ClientError> {
+        Ok(PlanServiceClient::new(self.channel().await?))
     }
 
     async fn roadmap(&self) -> Result<RoadmapServiceClient<Channel>, ClientError> {
