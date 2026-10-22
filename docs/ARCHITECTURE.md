@@ -197,7 +197,6 @@ written through `PlanService` (`modula plan`); progress is derived on read.
 
 `~/.modula/<workspace>/` holds the markdown:
 
-- `specs/<task-slug>/v<position>/` — names the variant's branch; holds markdown specs only for variants that predate `variant_plans`
 - `logs/` — stream-json log files from agent runs
 - `wiki/` — agent-maintained knowledge base
 - `overview.md`, `workflow.md` — copied in at workspace creation

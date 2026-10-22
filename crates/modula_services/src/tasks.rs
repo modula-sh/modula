@@ -27,7 +27,6 @@ use modula_types::{Plan, RoadmapEntry, Task, TaskAgentSetting};
 use crate::diff;
 use crate::events;
 use crate::events::EventSink;
-use crate::workspaces;
 use crate::workspaces::WorkspaceService;
 use modula_core::error::ApiResult;
 
@@ -148,7 +147,7 @@ impl TaskService {
         }
     }
 
-    /// Reset a task: wipe its derived state (spec folder, thread rows, logs,
+    /// Reset a task: wipe its derived state (thread rows, logs,
     /// roadmap row, variants) and publish `TASK_RESET`. The task row itself is
     /// preserved so a future archive feature can resurrect the ticket.
     pub async fn reset(&self, ws: &str, task_id: &str) -> ApiResult<Json> {
@@ -173,18 +172,6 @@ impl TaskService {
     ) -> ApiResult<Json> {
         let mut files: Vec<String> = Vec::new();
         let mut errors: Vec<String> = Vec::new();
-
-        let task = self.tasks.get(&self.pool, ws_id, task_id).await?;
-        let tf = workspaces::task_spec_dir(ws_dir, task.external_id.as_deref(), &task.title);
-        if tf.is_dir() {
-            match std::fs::remove_dir_all(&tf) {
-                Ok(()) => files.push(format!(
-                    "removed spec folder {}",
-                    tf.file_name().unwrap().to_string_lossy()
-                )),
-                Err(e) => errors.push(format!("spec folder remove failed: {e}")),
-            }
-        }
 
         if self
             .threads

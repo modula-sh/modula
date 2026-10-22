@@ -328,8 +328,8 @@ impl Plan {
             .ok_or_else(|| format!("unknown phase {id}"))
     }
 
-    /// The reviewer view: the same sections the markdown spec folder had, with
-    /// a checklist per phase (`[~]` in progress, `[-]` skipped).
+    /// The reviewer view: the plan's sections as markdown, with a checklist per
+    /// phase (`[~]` in progress, `[-]` skipped).
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
         let _ = writeln!(md, "# {}\n", self.title);

@@ -4,14 +4,12 @@ A variant's plan is the durable record of its design and progress: **one JSON do
 
 ```sh
 modula plan get   <variant-id>          # the document as JSON
-modula plan get   <variant-id> --md     # readable view: spec sections plus a checklist per phase
+modula plan get   <variant-id> --md     # readable view: plan sections plus a checklist per phase
 modula plan set   <variant-id>          # whole-plan write, body on stdin (or --file PATH)
 modula plan patch <variant-id> '<body>' # one targeted edit
 ```
 
 `modula variant get` and `modula task get` print a one-line progress summary per variant.
-
-If `modula plan get` errors with `has no plan`, the variant predates plans: use the markdown files in your spec folder (`phases.md`, `phase-N-plan.md`, `phase-N-task.md`) as before.
 
 ### Plan document
 
@@ -92,7 +90,3 @@ EOF
 | `summaries` | — | Append Done and Rework round N summaries. |
 
 The Worker never edits or removes the Researcher's structure or prose. `plan patch` offers no operation that could.
-
-### Spec folder
-
-Your prompt names a spec folder (`specs/<task-slug>/v<position>`). It no longer stores the plan. Its name gives the branch (see the Worktrees skill), and it holds the markdown specs of variants that predate plans.

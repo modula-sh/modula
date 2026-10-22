@@ -71,7 +71,7 @@ modula task create '{"external_id":"ENG-412","source":"linear","title":"Add rate
 
 One JSON plan document per variant, stored by the engine. Every write is validated and publishes `plan.update` with `{task_id, variant_id}`. A rejected write exits 1 with the engine's reason, for example ``error: invalid plan: unknown field `scop`, expected one of …``.
 
-- `get` prints the document as JSON. `--md` renders the reviewer view: the spec sections plus a checklist per phase (`[x]` done, `[~]` in progress, `[-]` skipped).
+- `get` prints the document as JSON. `--md` renders the reviewer view: the plan's sections plus a checklist per phase (`[x]` done, `[~]` in progress, `[-]` skipped).
 - `set` replaces the whole document. It reads `--file PATH`, or stdin when `--file` is absent, since a full plan is too large and quote-heavy for one shell argument. The engine numbers phases `1..N` and tasks `P.1..P.M` by position, overwriting any supplied `id`. Every `projects[].name` must be a workspace project.
 - `patch` applies exactly one edit. It prints the touched or minted id and the new progress.
 

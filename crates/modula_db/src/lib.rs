@@ -72,9 +72,9 @@ pub async fn open(path: &Path) -> anyhow::Result<Database> {
     agent_skills::AgentSkillRepository::new()
         .sync_all(&mut tx)
         .await?;
-    let agents = agents::AgentRepository::new();
-    agents.sync_missing_defaults(&mut tx).await?;
-    agents.refresh_retired_prompts(&mut tx).await?;
+    agents::AgentRepository::new()
+        .sync_missing_defaults(&mut tx)
+        .await?;
     tx.commit().await?;
     Ok(pool)
 }

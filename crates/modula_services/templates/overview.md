@@ -23,10 +23,6 @@ The factory has two parts: a **single `modula` binary** that ships with the desk
 │                                    #   agent_runs, agent_processes, conversations,
 │                                    #   variant_plans
 └── <workspace-slug>/               # one folder per workspace, named by slug
-    ├── specs/
-    │   └── <task-slug>/            # e.g. mod-0001-some-new-adjustment
-    │       └── v<position>/        # one dir per variant; names the branch, holds
-    │                               #   markdown specs only for pre-plan variants
     ├── logs/                        # Stream-json log files from agent runs
     ├── wiki/                        # Agent-maintained codebase knowledge base
     │   ├── SCHEMA.md
@@ -252,8 +248,6 @@ Each thread entry triggers a `thread.append` event. Agents subscribe to these wh
 Each variant has one JSON plan document in the `variant_plans` table, read and written only through `modula plan` (format and ownership: the Specs skill). It carries Problem, Approach, Projects touched, Risks & tradeoffs and Test plan, then the phases, each with its scope, approach, notes, deviations and task checklist, then the Worker's Done / Rework round N summaries. Prose fields stay markdown. Every write is validated and publishes `plan.update`.
 
 Researcher writes the whole plan once (`plan set`). Worker marks each task `in_progress` when it starts it and `done` when it finishes, one at a time, and only flips variant `ready_for_review` once every task is `done` or `skipped`. Phase status and percent complete are derived, never stored; `task get` and `variant get` print a progress line per variant. A single-shot Worker finishes all phases in one run; a looping Worker may take many iterations per phase.
-
-`specs/<task-slug>/v<position>/` still names the variant's branch, and holds the markdown specs of variants that predate plans.
 
 ## AI Wiki
 

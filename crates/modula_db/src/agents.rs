@@ -533,32 +533,6 @@ impl AgentRepository {
         Ok(())
     }
 
-    /// Replace `researcher` / `worker` / `code-reviewer` prompts that predate
-    /// variant plans (still mention `phases.md`) with the current defaults.
-    /// Run at startup; prompts are otherwise seeded only at workspace creation.
-    pub async fn refresh_retired_prompts(&self, conn: &mut SqliteConnection) -> Result<()> {
-        for seed in SEED_AGENTS
-            .iter()
-            .filter(|s| matches!(s.name, "researcher" | "worker" | "code-reviewer"))
-        {
-            let res = sqlx::query(
-                "UPDATE agents SET prompt = ? WHERE name = ? AND prompt LIKE '%phases.md%'",
-            )
-            .bind(seed.prompt)
-            .bind(seed.name)
-            .execute(&mut *conn)
-            .await?;
-            if res.rows_affected() > 0 {
-                tracing::info!(
-                    agent = seed.name,
-                    rows = res.rows_affected(),
-                    "refreshed retired prompt"
-                );
-            }
-        }
-        Ok(())
-    }
-
     /// Scheduled agents for the cron scheduler. Returns
     /// `(workspace_id, agent_id, agent_name, cron, tz)`.
     pub async fn scheduled_across_workspaces<'e, E>(
@@ -658,55 +632,5 @@ mod tests {
         assert!(a.rules.is_empty());
         assert!(a.args.is_empty());
         assert!(a.skills.is_empty());
-    }
-
-    /// The refresh matches on `phases.md`, so a current default containing it
-    /// would be rewritten on every startup.
-    #[test]
-    fn no_seed_prompt_mentions_phases_md() {
-        for seed in SEED_AGENTS {
-            assert!(!seed.prompt.contains("phases.md"), "{}", seed.name);
-        }
-    }
-
-    #[tokio::test]
-    async fn refresh_retired_prompts_replaces_only_phases_md_prompts() {
-        let dir = tempfile::tempdir().unwrap();
-        let pool = crate::open(&dir.path().join("t.sqlite")).await.unwrap();
-        let mut conn = pool.acquire().await.unwrap();
-        let ws = crate::workspaces::WorkspaceRepository::new()
-            .create(&mut conn, "Modula", None)
-            .await
-            .unwrap();
-        for (name, prompt) in [
-            ("worker", "Read `phases.md` first."),
-            ("researcher", "custom"),
-        ] {
-            sqlx::query("UPDATE agents SET prompt = ? WHERE workspace_id = ? AND name = ?")
-                .bind(prompt)
-                .bind(&ws)
-                .bind(name)
-                .execute(&mut *conn)
-                .await
-                .unwrap();
-        }
-
-        AgentRepository::new()
-            .refresh_retired_prompts(&mut conn)
-            .await
-            .unwrap();
-
-        let prompt = |name: &'static str| {
-            sqlx::query_scalar::<_, String>(
-                "SELECT prompt FROM agents WHERE workspace_id = ? AND name = ?",
-            )
-            .bind(ws.clone())
-            .bind(name)
-        };
-        let worker = prompt("worker").fetch_one(&mut *conn).await.unwrap();
-        let seed = SEED_AGENTS.iter().find(|s| s.name == "worker").unwrap();
-        assert_eq!(worker, seed.prompt);
-        let researcher = prompt("researcher").fetch_one(&mut *conn).await.unwrap();
-        assert_eq!(researcher, "custom");
     }
 }

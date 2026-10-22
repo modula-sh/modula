@@ -131,7 +131,7 @@ impl PrService {
             .ok_or_else(|| {
                 ApiError::NotFound(format!("unknown variant {variant_id} on {task_id}"))
             })?;
-        let task_slug = crate::workspaces::task_spec_slug(task.external_id.as_deref(), &task.title);
+        let task_slug = crate::workspaces::task_slug(task.external_id.as_deref(), &task.title);
 
         let mut projects = Vec::new();
         for p in self.projects.list(&self.pool, ws_id).await? {

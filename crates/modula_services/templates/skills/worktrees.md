@@ -7,7 +7,7 @@ Each task carries a `worktree` flag. It defaults to **true**.
 | Worktree | `worktree: true` or unset | Each project gets its own git worktree and branch, so variants stay isolated. |
 | Direct | `worktree: false` | Work on `base_branch` with no new branch. The researcher should have produced exactly one variant. |
 
-Name the branch `feature/<task-slug>-v<position>`. Use slugs, never UUIDs. `<task-slug>` and `<position>` come from your spec folder's name (`specs/<task-slug>/v<position>/`, named in your prompt). Spec folder `specs/mod-0001-some-new-adjustment/v1/` gives branch `feature/mod-0001-some-new-adjustment-v1`.
+Your prompt names the variant's branch (`feature/<task-slug>-v<position>`, e.g. `feature/mod-0001-some-new-adjustment-v1`). Use it as given. In direct mode, the start tag is that name with `modula/` in place of `feature/` and `/start` appended: `modula/<task-slug>-v<position>/start`.
 
 `<project_path>` and `<base_branch>` come from `.projects` in `/config`.
 

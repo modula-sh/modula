@@ -3,7 +3,7 @@
 One-binary desktop app for the Modula AI software factory.
 
 - Structured state lives in one global SQLite DB at `~/.modula/db.sqlite`.
-- Markdown artifacts (spec folders, logs, wiki) live under `~/.modula/<workspace>/`.
+- Markdown artifacts (logs, wiki) live under `~/.modula/<workspace>/`.
 - The engine serves gRPC over a local IPC socket, not a TCP port. The desktop app and the `modula` CLI are both its clients.
 
 ## Read before editing
