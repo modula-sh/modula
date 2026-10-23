@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   FileDiff,
   Folder,
   GitPullRequest,
@@ -290,16 +291,18 @@ export function TaskDetail({
             <div className="text-[10px] uppercase tracking-wide text-fg-subtle">description</div>
             <AiAssistTrigger />
           </div>
-          <div className="rounded-md border border-transparent focus-within:border-border-focus p-0 focus-within:p-4 transition-[padding,border-color] duration-150">
-            <MarkdownEditor
-              value={form.description}
-              onChange={(v) => update("description", v)}
-              onSave={() => saveRef.current()}
-              padding="0"
-              autoGrow
-              className="text-fg font-inter"
-            />
-          </div>
+          <ExpandableDescription taskId={task.id}>
+            <div className="rounded-md border border-transparent focus-within:border-border-focus p-0 focus-within:p-4 transition-[padding,border-color] duration-150">
+              <MarkdownEditor
+                value={form.description}
+                onChange={(v) => update("description", v)}
+                onSave={() => saveRef.current()}
+                padding="0"
+                autoGrow
+                className="text-fg font-inter"
+              />
+            </div>
+          </ExpandableDescription>
         </AiAssist>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-fg-subtle">variants</div>
@@ -911,6 +914,58 @@ const VARIANT_STATUSES: VariantStatus[] = [
   "rework",
   "accepted",
 ];
+
+/** Roughly the first dozen lines of a description. */
+const DESCRIPTION_COLLAPSED_PX = 280;
+
+/** Clips a long description until expanded. Collapsed it's inert, so it can't be edited. */
+function ExpandableDescription({
+  taskId,
+  children,
+}: {
+  taskId: string;
+  children: React.ReactNode;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  useResetOnChange(taskId, () => setExpanded(false));
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setOverflows(el.offsetHeight > DESCRIPTION_COLLAPSED_PX));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const collapsed = overflows && !expanded;
+  return (
+    <>
+      <div
+        className={collapsed ? "relative overflow-hidden" : undefined}
+        style={collapsed ? { maxHeight: DESCRIPTION_COLLAPSED_PX } : undefined}
+        inert={collapsed}
+      >
+        <div ref={contentRef}>{children}</div>
+        {collapsed && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-bg to-transparent" />
+        )}
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-1 mx-auto flex items-center gap-1 font-inter text-xs text-fg-subtle hover:text-fg transition-colors"
+        >
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {expanded ? "Collapse" : "Expand"}
+        </button>
+      )}
+    </>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
