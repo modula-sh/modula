@@ -1,7 +1,7 @@
 import type { Channel } from "@tauri-apps/api/core";
 import { call } from "../invoke";
 
-/** The desktop-hosted PTY behind a terminal-mode conversation. */
+/** The engine-hosted PTY behind a terminal-mode conversation. */
 export class TerminalResource {
   /** Attach to the conversation's PTY, replaying its output, or launch it at `cols`×`rows`. */
   open(
@@ -24,11 +24,11 @@ export class TerminalResource {
     });
   }
 
-  write(conversationId: string, data: string) {
-    return call<void>("pty_write", { conversationId, data });
+  write(ws: string, conversationId: string, data: string) {
+    return call<void>("pty_write", { workspaceId: ws, conversationId, data });
   }
 
-  resize(conversationId: string, cols: number, rows: number) {
-    return call<void>("pty_resize", { conversationId, cols, rows });
+  resize(ws: string, conversationId: string, cols: number, rows: number) {
+    return call<void>("pty_resize", { workspaceId: ws, conversationId, cols, rows });
   }
 }

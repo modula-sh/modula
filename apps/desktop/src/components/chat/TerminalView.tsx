@@ -47,8 +47,8 @@ const THEMES: Record<ThemeMode, ITheme> = {
   },
 };
 
-/** The provider's own TUI, running in a desktop-hosted PTY. Unmounting detaches
- * the view; the process keeps running until it exits or the app quits. */
+/** The provider's own TUI, running in an engine-hosted PTY. Unmounting detaches
+ * the view; the process keeps running until it exits or the engine stops. */
 export function TerminalView({
   ws,
   conversationId,
@@ -101,6 +101,11 @@ export function TerminalView({
       if (disposed) return;
       term.open(el);
       fitIfShown();
+      // A paired phone shares this PTY and may have resized it; focus takes it back.
+      term.textarea?.addEventListener("focus", () => {
+        if (opened)
+          client.terminal.resize(ws, conversationId, term.cols, term.rows).catch(() => {});
+      });
       term.focus();
       const { cols, rows } = term;
       client.terminal
@@ -108,22 +113,22 @@ export function TerminalView({
         .then(() => {
           opened = true;
           if (term.cols !== cols || term.rows !== rows) {
-            client.terminal.resize(conversationId, term.cols, term.rows).catch(() => {});
+            client.terminal.resize(ws, conversationId, term.cols, term.rows).catch(() => {});
           }
         })
         .catch((e) => setError(errorMessage(e)));
     });
 
     term.onData((data) => {
-      client.terminal.write(conversationId, data).catch(() => {});
+      client.terminal.write(ws, conversationId, data).catch(() => {});
     });
     term.onResize(({ cols, rows }) => {
-      if (opened) client.terminal.resize(conversationId, cols, rows).catch(() => {});
+      if (opened) client.terminal.resize(ws, conversationId, cols, rows).catch(() => {});
     });
     // xterm sends a bare CR for Shift+Enter; ESC CR is the TUIs' newline.
     term.attachCustomKeyEventHandler((e) => {
       if (e.key !== "Enter" || !e.shiftKey) return true;
-      if (e.type === "keydown") client.terminal.write(conversationId, "\x1b\r").catch(() => {});
+      if (e.type === "keydown") client.terminal.write(ws, conversationId, "\x1b\r").catch(() => {});
       return false;
     });
     const observer = new ResizeObserver(fitIfShown);

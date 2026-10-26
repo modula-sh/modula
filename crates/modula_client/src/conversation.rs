@@ -8,9 +8,10 @@ use modula_rpc::v1::{
     AttachConversationRequest, CancelConversationRequest, ConvEvent as PbConvEvent,
     CreateConversationRequest, DeleteConversationRequest, DequeueMessageRequest,
     EnqueueMessageRequest, ForkConversationRequest, GetConversationRequest, ListMessagesRequest,
-    SendMessageRequest, TerminalLaunchRequest, UpdateConversationRequest,
+    SendMessageRequest, TerminalOpenRequest, TerminalResizeRequest, TerminalWriteRequest,
+    UpdateConversationRequest,
 };
-use modula_types::{ChatMessage, ConvEvent, Conversation, LaunchSpec, QueuedMessage};
+use modula_types::{ChatMessage, ConvEvent, Conversation, QueuedMessage, TerminalOutput};
 use serde_json::Value;
 use tokio_stream::{Stream, StreamExt};
 
@@ -257,25 +258,71 @@ impl ModulaClient {
         Ok(conv_event_stream(stream))
     }
 
-    /// How to spawn a terminal conversation's TUI; the first call starts its
-    /// session with `prompt`.
-    pub async fn terminal_launch(
+    /// Attach to a terminal conversation's engine-hosted TUI, launching it at
+    /// `cols`×`rows` if it isn't running. Replays buffered output, then streams
+    /// live output until it exits. Dropping the stream detaches.
+    pub async fn terminal_open(
         &self,
         workspace_id: &str,
         conversation_id: &str,
         prompt: Option<String>,
-    ) -> Result<LaunchSpec, ClientError> {
-        let spec = self
+        cols: u16,
+        rows: u16,
+    ) -> Result<impl Stream<Item = Result<TerminalOutput, ClientError>>, ClientError> {
+        let stream = self
             .conversations()
             .await?
-            .terminal_launch(TerminalLaunchRequest {
+            .terminal_open(TerminalOpenRequest {
                 workspace_id: workspace_id.to_string(),
                 conversation_id: conversation_id.to_string(),
                 prompt,
+                cols: cols.into(),
+                rows: rows.into(),
             })
             .await
             .map_err(rpc)?
             .into_inner();
-        Ok(spec.into())
+        Ok(stream.filter_map(|item| match item {
+            Ok(out) => TerminalOutput::from_pb(out).map(Ok),
+            Err(e) => Some(Err(rpc(e))),
+        }))
+    }
+
+    pub async fn terminal_write(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        data: Vec<u8>,
+    ) -> Result<(), ClientError> {
+        self.conversations()
+            .await?
+            .terminal_write(TerminalWriteRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                data,
+            })
+            .await
+            .map_err(rpc)?;
+        Ok(())
+    }
+
+    pub async fn terminal_resize(
+        &self,
+        workspace_id: &str,
+        conversation_id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), ClientError> {
+        self.conversations()
+            .await?
+            .terminal_resize(TerminalResizeRequest {
+                workspace_id: workspace_id.to_string(),
+                conversation_id: conversation_id.to_string(),
+                cols: cols.into(),
+                rows: rows.into(),
+            })
+            .await
+            .map_err(rpc)?;
+        Ok(())
     }
 }

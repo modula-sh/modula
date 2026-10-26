@@ -34,7 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(update::UpdaterState::new())
         .manage(engine.clone())
-        .manage(pty::PtyHost::default())
+        .manage(pty::TerminalViews::default())
         .invoke_handler(tauri::generate_handler![
             update::update_status,
             update::install_update,
@@ -189,15 +189,11 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(move |app, event| {
+        .run(move |_app, event| {
             // Every quit path (tray, app menu, Cmd+Q) funnels through `Exit`.
-            // In dev the dev script owns the engine's lifecycle, but the PTYs
-            // are always ours.
-            if matches!(event, RunEvent::Exit) {
-                pty::kill_all(&app.state());
-                if !dev_mode() {
-                    engine::shutdown(&exit_engine);
-                }
+            // In dev the dev script owns the engine's lifecycle.
+            if matches!(event, RunEvent::Exit) && !dev_mode() {
+                engine::shutdown(&exit_engine);
             }
         });
 }

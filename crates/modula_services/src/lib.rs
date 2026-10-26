@@ -24,6 +24,7 @@ pub mod search;
 pub mod snapshot;
 pub mod spawn;
 pub mod tasks;
+pub mod terminals;
 pub mod threads;
 pub mod tools;
 pub mod usage;

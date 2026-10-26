@@ -37,10 +37,12 @@ pub async fn serve(opts: ServeOptions) -> anyhow::Result<()> {
         write_pidfile();
         let state = start_state(endpoint, &registry).await?;
         tracing::warn!("INSECURE dev gRPC over TCP on {addr} — no auth/TLS, local dev only");
-        grpc::make_router(state, &registry)
+        let terminals = state.conv.terminals.clone();
+        let result = grpc::make_router(state, &registry)
             .serve_with_shutdown(addr, shutdown_signal())
-            .await?;
-        return Ok(());
+            .await;
+        terminals.kill_all().await;
+        return Ok(result?);
     }
 
     let ipc = endpoint
@@ -62,10 +64,12 @@ async fn serve_ipc(
 ) -> anyhow::Result<()> {
     let state = start_state(endpoint.clone(), registry).await?;
     tracing::info!("engine listening on {endpoint}");
-    grpc::make_router(state, registry)
+    let terminals = state.conv.terminals.clone();
+    let result = grpc::make_router(state, registry)
         .serve_with_incoming_shutdown(listener.incoming(), shutdown_signal())
-        .await?;
-    Ok(())
+        .await;
+    terminals.kill_all().await;
+    Ok(result?)
 }
 
 /// Build `AppState` and start the event-driven dispatcher (services-direct; no

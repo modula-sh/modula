@@ -90,3 +90,4 @@ toml = "0.8"
 toml_edit = "0.25"
 jsonc-parser = { version = "0.32", features = ["serde"] }
 dirs = "6"
+portable-pty = "0.9"

@@ -27,6 +27,7 @@ use crate::events::{
     CONVERSATION_RUN_STARTED, CONVERSATION_UPDATE,
 };
 use crate::providers::{self, ChatEvent, ProviderRuntime, ProviderService, TermSession};
+use crate::terminals::TerminalHost;
 use crate::workspaces::WorkspaceService;
 use modula_core::error::{ApiError, ApiResult};
 use modula_core::repositories::Repositories;
@@ -570,6 +571,7 @@ pub struct ConvRuntime {
     pub conversations: ConversationService,
     pub workspaces: WorkspaceService,
     pub engine_socket: String,
+    pub terminals: TerminalHost,
 }
 
 /// Snapshot the buffer and subscribe atomically — see `emit`.
