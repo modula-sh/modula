@@ -320,6 +320,23 @@ impl From<LaunchSpec> for pb::LaunchSpec {
     }
 }
 
+/// One frame from a terminal conversation's output stream.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TerminalOutput {
+    Data(Vec<u8>),
+    Exit(u32),
+}
+
+impl TerminalOutput {
+    /// `None` for a frame with no event set.
+    pub fn from_pb(out: pb::TerminalOutput) -> Option<Self> {
+        Some(match out.event? {
+            pb::terminal_output::Event::Data(data) => Self::Data(data),
+            pb::terminal_output::Event::ExitCode(code) => Self::Exit(code),
+        })
+    }
+}
+
 /// One frame from a conversation stream (`dto::conv_event`), tagged by `kind`
 /// so the frontend `Channel` consumer can switch on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

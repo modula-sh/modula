@@ -54,8 +54,6 @@ modula-plugin-remote = { path = "../../../plugins/remote" }
 # and forward each item onto a Tauri `Channel`.
 tokio-stream.workspace = true
 tauri-plugin-os = "2.3.2"
-# Hosts terminal-mode conversations: one PTY per conversation (`pty`).
-portable-pty = "0.9"
 
 [features]
 default = ["custom-protocol"]

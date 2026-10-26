@@ -2,14 +2,15 @@ use std::pin::Pin;
 
 use modula_rpc::json::{json_to_struct, struct_to_json};
 use modula_rpc::v1::{
-    conv_event, conversation_service_server::ConversationService, AttachConversationRequest,
-    CancelConversationRequest, CancelConversationResponse, ConvEvent, Conversation,
-    ConversationSummary, CreateConversationRequest, CreateConversationResponse,
+    conv_event, conversation_service_server::ConversationService, terminal_output,
+    AttachConversationRequest, CancelConversationRequest, CancelConversationResponse, ConvEvent,
+    Conversation, ConversationSummary, CreateConversationRequest, CreateConversationResponse,
     DeleteConversationRequest, DeleteConversationResponse, DeltaEvent, DequeueMessageRequest,
     DoneEvent, EnqueueMessageRequest, ErrorEvent, ForkConversationRequest, GetConversationRequest,
     LaunchSpec, ListConversationsRequest, ListConversationsResponse, ListMessagesRequest,
     ListMessagesResponse, QueuedMessage, QueuedMessagesResponse, SendMessageRequest, SessionEvent,
-    TerminalLaunchRequest, ThinkingEvent, ToolResultEvent, ToolUseEvent, UpdateConversationRequest,
+    TerminalAck, TerminalLaunchRequest, TerminalOpenRequest, TerminalOutput, TerminalResizeRequest,
+    TerminalWriteRequest, ThinkingEvent, ToolResultEvent, ToolUseEvent, UpdateConversationRequest,
     UpdateConversationResponse, UserEvent,
 };
 use serde_json::json;
@@ -19,6 +20,7 @@ use tonic::{Request, Response, Status};
 
 use super::error::to_status;
 use modula_services::conversations::{self, ConvStream, WireEvent};
+use modula_services::terminals::{self, TermEvent};
 use modula_state::AppState;
 
 pub struct ConversationHandler {
@@ -26,6 +28,12 @@ pub struct ConversationHandler {
 }
 
 type ConvEventStream = Pin<Box<dyn Stream<Item = Result<ConvEvent, Status>> + Send>>;
+type TerminalStream = Pin<Box<dyn Stream<Item = Result<TerminalOutput, Status>> + Send>>;
+
+/// PTY sizes are u16; anything larger is clamped rather than refused.
+fn dim(n: u32) -> u16 {
+    n.clamp(1, u16::MAX as u32) as u16
+}
 
 /// Single decode point from the internal `WireEvent` vocabulary to the typed
 /// `ConvEvent` proto, shared by `Send` and `Attach` so they cannot drift.
@@ -350,5 +358,66 @@ impl ConversationService for ConversationHandler {
         .await
         .map_err(to_status)?;
         Ok(Response::new(spec.into()))
+    }
+
+    type TerminalOpenStream = TerminalStream;
+    async fn terminal_open(
+        &self,
+        req: Request<TerminalOpenRequest>,
+    ) -> Result<Response<Self::TerminalOpenStream>, Status> {
+        let body = req.into_inner();
+        let mut rx = terminals::open(
+            &self.state.conv,
+            &body.workspace_id,
+            &body.conversation_id,
+            body.prompt.as_deref(),
+            dim(body.cols),
+            dim(body.rows),
+        )
+        .await
+        .map_err(to_status)?;
+        let stream = async_stream::stream! {
+            while let Some(event) = rx.recv().await {
+                let event = match event {
+                    TermEvent::Data(data) => terminal_output::Event::Data(data),
+                    TermEvent::Exit(code) => terminal_output::Event::ExitCode(code),
+                };
+                yield Ok(TerminalOutput { event: Some(event) });
+            }
+        };
+        Ok(Response::new(Box::pin(stream)))
+    }
+
+    async fn terminal_write(
+        &self,
+        req: Request<TerminalWriteRequest>,
+    ) -> Result<Response<TerminalAck>, Status> {
+        let body = req.into_inner();
+        self.state
+            .conv
+            .terminals
+            .write(&body.workspace_id, &body.conversation_id, &body.data)
+            .await
+            .map_err(to_status)?;
+        Ok(Response::new(TerminalAck {}))
+    }
+
+    async fn terminal_resize(
+        &self,
+        req: Request<TerminalResizeRequest>,
+    ) -> Result<Response<TerminalAck>, Status> {
+        let body = req.into_inner();
+        self.state
+            .conv
+            .terminals
+            .resize(
+                &body.workspace_id,
+                &body.conversation_id,
+                dim(body.cols),
+                dim(body.rows),
+            )
+            .await
+            .map_err(to_status)?;
+        Ok(Response::new(TerminalAck {}))
     }
 }

@@ -267,6 +267,7 @@ impl AppState {
             conversations: conversations.clone(),
             workspaces: workspaces.clone(),
             engine_socket: engine_socket.clone(),
+            terminals: Default::default(),
         };
         Ok(Self {
             paths,

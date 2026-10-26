@@ -39,6 +39,8 @@ toml.workspace = true
 toml_edit.workspace = true
 jsonc-parser.workspace = true
 dirs.workspace = true
+# Hosts terminal-mode conversations: one PTY per conversation (`terminals`).
+portable-pty.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

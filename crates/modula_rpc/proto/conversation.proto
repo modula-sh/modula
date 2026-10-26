@@ -27,6 +27,13 @@ service ConversationService {
   // How to spawn a terminal conversation's TUI; the caller hosts the PTY. The
   // first launch starts a session with `prompt`, later ones resume it.
   rpc TerminalLaunch(TerminalLaunchRequest) returns (LaunchSpec);
+  // Attach to a terminal conversation's TUI, launching it at `cols`×`rows` when
+  // it isn't running. Replays its buffered output, then streams live output and
+  // ends with its exit code. Dropping the stream detaches; the TUI keeps running.
+  rpc TerminalOpen(TerminalOpenRequest) returns (stream TerminalOutput);
+  rpc TerminalWrite(TerminalWriteRequest) returns (TerminalAck);
+  // Every client shares the one PTY, so the last resize wins.
+  rpc TerminalResize(TerminalResizeRequest) returns (TerminalAck);
 }
 
 message QueuedMessage {
@@ -289,3 +296,34 @@ message LaunchSpec {
   map<string, string> env = 2;
   string cwd = 3;
 }
+
+message TerminalOpenRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  // The first message; ignored once the session exists.
+  optional string prompt = 3;
+  uint32 cols = 4;
+  uint32 rows = 5;
+}
+
+message TerminalOutput {
+  oneof event {
+    bytes data = 1;
+    uint32 exit_code = 2;
+  }
+}
+
+message TerminalWriteRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  bytes data = 3;
+}
+
+message TerminalResizeRequest {
+  string workspace_id = 1;
+  string conversation_id = 2;
+  uint32 cols = 3;
+  uint32 rows = 4;
+}
+
+message TerminalAck {}
